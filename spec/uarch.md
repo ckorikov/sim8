@@ -383,7 +383,7 @@ IP = IP + 2
 
 ### Bitwise
 
-**Note:** Bitwise operations (AND, OR, XOR, NOT) set only Z flag; C flag is unchanged (ARM-style).
+**Note:** Bitwise operations (AND, OR, XOR, NOT) clear C flag (C=0) and set Z flag based on the result.
 
 **AND reg, const (Opcode 73):**
 ```
@@ -391,7 +391,8 @@ dest = decodeGPR(instrByte(1))
 value = instrByte(2)
 result = registers[dest] AND value
 registers[dest] = result
-zero = (result == 0)       // C unchanged
+carry = false
+zero = (result == 0)
 IP = IP + 3
 ```
 
@@ -400,7 +401,8 @@ IP = IP + 3
 reg = decodeGPR(instrByte(1))
 result = registers[reg] XOR 255  // bitwise NOT (XOR 0xFF)
 registers[reg] = result
-zero = (result == 0)            // C unchanged
+carry = false
+zero = (result == 0)
 IP = IP + 2
 ```
 
