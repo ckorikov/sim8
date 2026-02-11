@@ -1,19 +1,28 @@
 # 8-bit CPU Simulator - Formal Verification
 
-JAVA     ?= java
-TLC_JAR  ?= tla2tools.jar
-TLC      := $(JAVA) -XX:+UseParallelGC -cp $(TLC_JAR) tlc2.TLC
-TESTS    := test_basic test_stack test_jumps test_math test_faults \
-			test_bitwise test_overflow test_indirect test_xor \
-			test_bitwise_laws test_shift test_fault_codes \
-			test_state_machine test_demorgan test_arithmetic \
-			test_associativity test_instruction_props test_registers \
-			test_adversarial test_stack_attack test_invalid_code test_div_zero \
-			test_shift_zero test_ip_overflow
+JAVA    ?= $(if $(JAVA_HOME),$(JAVA_HOME)/bin/java,java)
+TLC_JAR ?= tla2tools.jar
+TLC     := $(JAVA) -XX:+UseParallelGC -cp $(TLC_JAR) tlc2.TLC
+TESTS   := $(sort $(basename $(notdir $(wildcard tests/test_*.cfg))))
 
-.PHONY: test clean $(TESTS)
+.PHONY: help test clean _check $(TESTS)
+.DEFAULT_GOAL := help
 
-check_jar:
+help:
+	@echo "Usage: make <target>"
+	@echo ""
+	@echo "  test         Run all tests (verbose)"
+	@echo "  clean        Remove TLC artifacts"
+	@echo ""
+	@echo "  test_<name>  Run a single test, e.g. make test_basic"
+	@echo ""
+	@echo "Tests found: $(words $(TESTS))"
+
+_check:
+	@$(JAVA) -version >/dev/null 2>&1 || { echo "Error: java not found or not working."; \
+	echo "Set JAVA_HOME or add java to PATH, e.g.:"; \
+	echo "  export JAVA_HOME=/path/to/jdk  # in ~/.zshrc or ~/.bashrc"; \
+	exit 1; }
 	@test -f $(TLC_JAR) || { echo "Error: $(TLC_JAR) not found. Download it:"; \
 	echo "  curl -LO https://github.com/tlaplus/tlaplus/releases/latest/download/tla2tools.jar"; \
 	exit 1; }
@@ -22,14 +31,14 @@ define RUN_TEST
 $(TLC) -config tests/$(1).cfg tests/$(1).tla
 endef
 
-test: check_jar
+test: _check
 	@for t in $(TESTS); do \
-		printf "%-16s" "$$t:"; \
-		$(call RUN_TEST,$$t) 2>&1 | \
-		grep -oE "(No error has been found|Error:.*)" | head -1; \
+		echo "=== $$t ==="; \
+		$(call RUN_TEST,$$t); \
+		echo; \
 	done
 
-$(TESTS): check_jar
+$(TESTS): _check
 	@$(call RUN_TEST,$@)
 
 clean:
