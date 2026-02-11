@@ -344,7 +344,8 @@ Unsigned (logical) right shift (`>>>`).
 | Operands | Description |
 |----------|-------------|
 | const | Single byte |
-| "string" | Multiple bytes |
+| const, const, ... | Multiple bytes (comma-separated) |
+| "string" | Multiple bytes (ASCII codes) |
 
 ## 1.6 Flag Behavior
 
@@ -457,6 +458,7 @@ For the complete opcode mapping, see [Opcode Table](opcodes.md).
 | `CALL label` | `56, addr` | opcode=56, addr from label resolution |
 | `RET` | `57` | opcode only |
 | `DB "Hi"` | `72, 105` | raw bytes: 'H'=72, 'i'=105 |
+| `DB 10, 20, 30` | `10, 20, 30` | comma-separated list of raw bytes |
 
 ## 1.9 Error Codes
 
