@@ -369,6 +369,24 @@ Tests opcodes 60-67. Implicit accumulator: `A = A op operand`.
 | 62 | `MOV A, 0` | | |
 |    | `MUL 100` | A=0, Z=true | Zero result sets Z flag |
 |    | `HLT` | | |
+| 63 | `MOV B, 0x50` | | |
+|    | `MOV [0x50], 7` | | |
+|    | `MOV A, 6` | | |
+|    | `MUL [B]` | A=42 | MUL via register indirect (opcode 61) |
+|    | `HLT` | | |
+| 64 | `MOV [0x50], 5` | | |
+|    | `MOV A, 8` | | |
+|    | `MUL [0x50]` | A=40 | MUL via direct address (opcode 62) |
+|    | `HLT` | | |
+| 65 | `MOV B, 0x50` | | |
+|    | `MOV [0x50], 4` | | |
+|    | `MOV A, 20` | | |
+|    | `DIV [B]` | A=5 | DIV via register indirect (opcode 65) |
+|    | `HLT` | | |
+| 66 | `MOV [0x50], 3` | | |
+|    | `MOV A, 15` | | |
+|    | `DIV [0x50]` | A=5 | DIV via direct address (opcode 66) |
+|    | `HLT` | | |
 
 ---
 
@@ -378,23 +396,23 @@ Tests opcodes 70-82. GPR only (SP not allowed).
 
 | # | Source | Verify | Description |
 |---|--------|--------|-------------|
-| 63 | `MOV A, 0xFF` | | |
-|    | `AND A, 0x0F` | A=0x0F | Mask lower nibble |
+| 67 | `MOV A, 0xFF` | | |
+|    | `AND A, 0x0F` | A=0x0F, C=false | Mask lower nibble |
 |    | `HLT` | | |
-| 64 | `MOV A, 0xF0` | | |
-|    | `OR A, 0x0F` | A=0xFF | Combine bits |
+| 68 | `MOV A, 0xF0` | | |
+|    | `OR A, 0x0F` | A=0xFF, C=false | Combine bits |
 |    | `HLT` | | |
-| 65 | `MOV A, 0xFF` | | |
-|    | `XOR A, 0xFF` | A=0, Z=true | XOR self = zero |
+| 69 | `MOV A, 0xFF` | | |
+|    | `XOR A, 0xFF` | A=0, Z=true, C=false | XOR self = zero |
 |    | `HLT` | | |
-| 66 | `MOV A, 0` | | |
-|    | `NOT A` | A=255 | ~0 = 255 (C unchanged) |
+| 70 | `MOV A, 0` | | |
+|    | `NOT A` | A=255, C=false | ~0 = 255 (C cleared) |
 |    | `HLT` | | |
-| 67 | `MOV A, 0x0F` | | |
-|    | `NOT A` | A=0xF0 | ~15 = 240 (C unchanged) |
+| 71 | `MOV A, 0x0F` | | |
+|    | `NOT A` | A=0xF0, C=false | ~15 = 240 (C cleared) |
 |    | `HLT` | | |
-| 68 | `MOV A, 0xFF` | | |
-|    | `NOT A` | A=0, Z=true | ~255 = 0 (C unchanged) |
+| 72 | `MOV A, 0xFF` | | |
+|    | `NOT A` | A=0, Z=true, C=false | ~255 = 0 (C cleared) |
 |    | `HLT` | | |
 
 ---
@@ -405,26 +423,30 @@ Tests opcodes 90-97. GPR only.
 
 | # | Source | Verify | Description |
 |---|--------|--------|-------------|
-| 69 | `MOV A, 1` | | |
+| 73 | `MOV A, 1` | | |
 |    | `SHL A, 1` | A=2 | Shift left by 1 |
 |    | `HLT` | | |
-| 70 | `MOV A, 1` | | |
+| 74 | `MOV A, 1` | | |
 |    | `SHL A, 7` | A=128 | 1 << 7 |
 |    | `HLT` | | |
-| 71 | `MOV A, 128` | | |
+| 75 | `MOV A, 128` | | |
 |    | `SHL A, 1` | A=0, C=true | Overflow: 256 → 0 |
 |    | `HLT` | | |
-| 72 | `MOV A, 128` | | |
+| 76 | `MOV A, 128` | | |
 |    | `SHR A, 1` | A=64 | Unsigned right shift |
 |    | `HLT` | | |
-| 73 | `MOV A, 1` | | |
+| 77 | `MOV A, 1` | | |
 |    | `SHR A, 1` | A=0, Z=true, C=true | Bit shifted out (1 % 2 ≠ 0) |
 |    | `HLT` | | |
-| 74 | `MOV A, 3` | | |
+| 78 | `MOV A, 3` | | |
 |    | `SAL A, 2` | A=12 | SAL alias = SHL |
 |    | `HLT` | | |
-| 75 | `MOV A, 12` | | |
+| 79 | `MOV A, 12` | | |
 |    | `SAR A, 2` | A=3 | SAR alias = SHR |
+|    | `HLT` | | |
+| 80 | `MOV A, 200` | | |
+|    | `ADD A, 100` | | C=true from overflow |
+|    | `SHL A, 0` | A=44, C=true | Shift by 0: C preserved, value unchanged |
 |    | `HLT` | | |
 
 ---
@@ -437,12 +459,12 @@ Cross-instruction tests to verify all addressing modes work consistently.
 
 | # | Source | Verify | Description |
 |---|--------|--------|-------------|
-| 76 | `MOV B, 0x50` | | |
+| 81 | `MOV B, 0x50` | | |
 |    | `MOV [B+0], 10` | mem[0x50]=10 | Offset 0 (simple indirect) |
 |    | `MOV [B+5], 20` | mem[0x55]=20 | Positive offset |
 |    | `MOV [B-3], 30` | mem[0x4D]=30 | Negative offset |
 |    | `HLT` | | |
-| 77 | `MOV [SP-1], 42` | mem[230]=42 | SP-relative addressing |
+| 82 | `MOV [SP-1], 42` | mem[230]=42 | SP-relative addressing |
 |    | `MOV A, [SP-1]` | A=42 | |
 |    | `HLT` | | |
 
@@ -450,11 +472,11 @@ Cross-instruction tests to verify all addressing modes work consistently.
 
 | # | Source | Verify | Description |
 |---|--------|--------|-------------|
-| 78 | `MOV B, 0x50` | | |
+| 83 | `MOV B, 0x50` | | |
 |    | `MOV [B+15], 1` | mem[0x5F]=1 | Max positive offset |
 |    | `MOV A, [B+15]` | A=1 | |
 |    | `HLT` | | |
-| 79 | `MOV B, 0x50` | | |
+| 84 | `MOV B, 0x50` | | |
 |    | `MOV [B-16], 2` | mem[0x40]=2 | Max negative offset |
 |    | `MOV A, [B-16]` | A=2 | |
 |    | `HLT` | | |
@@ -467,23 +489,23 @@ Comprehensive flag tests for arithmetic flag behavior.
 
 | # | Source | Verify | Description |
 |---|--------|--------|-------------|
-| 80 | `MOV A, 5` | | |
+| 85 | `MOV A, 5` | | |
 |    | `ADD A, 0` | Z=false, C=false | Positive result: both clear |
 |    | `HLT` | | |
-| 81 | `MOV A, 0` | | |
+| 86 | `MOV A, 0` | | |
 |    | `ADD A, 0` | Z=true, C=false | Zero result: Z=1 |
 |    | `HLT` | | |
-| 82 | `MOV A, 255` | | |
+| 87 | `MOV A, 255` | | |
 |    | `ADD A, 1` | A=0, Z=true, C=true | Overflow: 256 wraps to 0, both flags set |
 |    | `HLT` | | |
-| 83 | `MOV A, 0` | | |
+| 88 | `MOV A, 0` | | |
 |    | `SUB A, 1` | Z=false, C=true | Underflow: C=1, value=255 |
 |    | `HLT` | | |
-| 84 | `MOV A, 128` | | |
+| 89 | `MOV A, 128` | | |
 |    | `ADD A, 128` | A=0, C=true, Z=true | 256 wraps to 0; both flags set |
 |    | `HLT` | | |
 
-**Test 84 detail:** When an arithmetic operation overflows/underflows and wraps to a result of 0, both C and Z may be set simultaneously.
+**Test 89 detail:** When an arithmetic operation overflows/underflows and wraps to a result of 0, both C and Z may be set simultaneously.
 
 ---
 
@@ -495,19 +517,19 @@ Verify that SP (code 4) is accepted where allowed and rejected where not.
 
 | # | Source | Verify | Description |
 |---|--------|--------|-------------|
-| 85 | `MOV SP, 100` | SP=100 | MOV to SP |
+| 90 | `MOV SP, 100` | SP=100 | MOV to SP |
 |    | `HLT` | | |
-| 86 | `MOV SP, 100` | | |
+| 91 | `MOV SP, 100` | | |
 |    | `ADD SP, 10` | SP=110 | ADD with SP |
 |    | `HLT` | | |
-| 87 | `MOV SP, 100` | | |
+| 92 | `MOV SP, 100` | | |
 |    | `SUB SP, 5` | SP=95 | SUB with SP |
 |    | `HLT` | | |
-| 88 | `INC SP` | SP=232 | INC SP (initial 231 + 1) |
+| 93 | `INC SP` | SP=232 | INC SP (initial 231 + 1) |
 |    | `HLT` | | |
-| 89 | `DEC SP` | SP=230 | DEC SP (initial 231 − 1) |
+| 94 | `DEC SP` | SP=230 | DEC SP (initial 231 − 1) |
 |    | `HLT` | | |
-| 90 | `CMP SP, 231` | Z=true | CMP with SP |
+| 95 | `CMP SP, 231` | Z=true | CMP with SP |
 |    | `HLT` | | |
 
 ### 5.14.2 Rejected at Runtime
@@ -518,16 +540,16 @@ These forms must not execute successfully. They may be rejected at assembly time
 
 | # | Source | Verify | Description |
 |---|--------|--------|-------------|
-| 91 | `PUSH SP` | fault **or** error | SP not supported for PUSH |
-| 92 | `POP SP` | fault **or** error | SP not supported for POP |
-| 93 | `AND SP, 0xFF` | fault **or** error | Bitwise: GPR only |
-| 94 | `OR SP, 0` | fault **or** error | |
-| 95 | `XOR SP, SP` | fault **or** error | |
-| 96 | `NOT SP` | fault **or** error | |
-| 97 | `SHL SP, 1` | fault **or** error | Shift: GPR only |
-| 98 | `SHR SP, 1` | fault **or** error | |
-| 99 | `MUL SP` | fault **or** error | MUL: GPR only |
-| 100 | `DIV SP` | fault **or** error | DIV: GPR only |
+| 96 | `PUSH SP` | fault **or** error | SP not supported for PUSH |
+| 97 | `POP SP` | fault **or** error | SP not supported for POP |
+| 98 | `AND SP, 0xFF` | fault **or** error | Bitwise: GPR only |
+| 99 | `OR SP, 0` | fault **or** error | |
+| 100 | `XOR SP, SP` | fault **or** error | |
+| 101 | `NOT SP` | fault **or** error | |
+| 102 | `SHL SP, 1` | fault **or** error | Shift: GPR only |
+| 103 | `SHR SP, 1` | fault **or** error | |
+| 104 | `MUL SP` | fault **or** error | MUL: GPR only |
+| 105 | `DIV SP` | fault **or** error | DIV: GPR only |
 
 ---
 
@@ -537,15 +559,15 @@ Console display region: addresses 232-255 (0xE8-0xFF).
 
 | # | Source | Verify | Description |
 |---|--------|--------|-------------|
-| 101 | `MOV [232], 72` | mem[232]=72 | Write 'H' to first display cell |
+| 106 | `MOV [232], 72` | mem[232]=72 | Write 'H' to first display cell |
 |     | `MOV [233], 105` | mem[233]=105 | Write 'i' to second cell |
 |     | `HLT` | display = "Hi" | |
-| 102 | `MOV A, 65` | | |
+| 107 | `MOV A, 65` | | |
 |     | `MOV [0xFF], A` | mem[255]=65 | Write to last display cell |
 |     | `HLT` | | |
-| 103 | `MOV A, [232]` | A = mem[232] | Read from display region |
+| 108 | `MOV A, [232]` | A = mem[232] | Read from display region |
 |     | `HLT` | | (region is readable) |
-| 104 | `MOV DP, 5` | | DP=5 (not page 0) |
+| 109 | `MOV DP, 5` | | DP=5 (not page 0) |
 |     | `MOV [232], 72` | mem[1512]=72 | Writes to page 5 (5×256+232), NOT I/O |
 |     | `HLT` | display unchanged | I/O only accessible when DP=0 |
 
@@ -559,44 +581,44 @@ Verify assembler produces correct bytecode for each instruction format.
 
 | # | Source | Expected bytes | Description |
 |---|--------|--------------------|-------------|
-| 104 | `HLT` | `[0]` | 1-byte instruction |
-| 105 | `RET` | `[57]` | 1-byte instruction |
-| 106 | `MOV A, B` | `[1, 0, 1]` | 3-byte: opcode, dest, src |
-| 107 | `MOV A, 42` | `[6, 0, 42]` | 3-byte: opcode, reg, const |
-| 108 | `INC C` | `[18, 2]` | 2-byte: opcode, reg |
-| 109 | `JMP 100` | `[31, 100]` | 2-byte: opcode, addr |
-| 110 | `PUSH 255` | `[53, 255]` | 2-byte: opcode, const |
-| 111 | `ADD A, [B+2]` | `[11, 0, 17]` | regaddr: (2<<3)\|1 = 17 |
-| 112 | `MOV A, [SP-1]` | `[3, 0, 252]` | regaddr: (31<<3)\|4 = 252 |
-| 113 | `DB 0` | `[0]` | Raw byte |
-| 114 | `DB "Hi"` | `[72, 105]` | String to ASCII bytes |
+| 110 | `HLT` | `[0]` | 1-byte instruction |
+| 111 | `RET` | `[57]` | 1-byte instruction |
+| 112 | `MOV A, B` | `[1, 0, 1]` | 3-byte: opcode, dest, src |
+| 113 | `MOV A, 42` | `[6, 0, 42]` | 3-byte: opcode, reg, const |
+| 114 | `INC C` | `[18, 2]` | 2-byte: opcode, reg |
+| 115 | `JMP 100` | `[31, 100]` | 2-byte: opcode, addr |
+| 116 | `PUSH 255` | `[53, 255]` | 2-byte: opcode, const |
+| 117 | `ADD A, [B+2]` | `[11, 0, 17]` | regaddr: (2<<3)\|1 = 17 |
+| 118 | `MOV A, [SP-1]` | `[3, 0, 252]` | regaddr: (31<<3)\|4 = 252 |
+| 119 | `DB 0` | `[0]` | Raw byte |
+| 120 | `DB "Hi"` | `[72, 105]` | String to ASCII bytes |
 
 ### 5.16.2 Number Formats
 
 | # | Source | Expected bytes | Description |
 |---|--------|--------------------|-------------|
-| 115 | `MOV A, 200` | `[6, 0, 200]` | Decimal |
-| 116 | `MOV A, 200d` | `[6, 0, 200]` | Decimal explicit |
-| 117 | `MOV A, 0xC8` | `[6, 0, 200]` | Hexadecimal |
-| 118 | `MOV A, 0o310` | `[6, 0, 200]` | Octal |
-| 119 | `MOV A, 11001000b` | `[6, 0, 200]` | Binary |
-| 120 | `MOV A, 'A'` | `[6, 0, 65]` | Character literal |
+| 121 | `MOV A, 200` | `[6, 0, 200]` | Decimal |
+| 122 | `MOV A, 200d` | `[6, 0, 200]` | Decimal explicit |
+| 123 | `MOV A, 0xC8` | `[6, 0, 200]` | Hexadecimal |
+| 124 | `MOV A, 0o310` | `[6, 0, 200]` | Octal |
+| 125 | `MOV A, 11001000b` | `[6, 0, 200]` | Binary |
+| 126 | `MOV A, 'A'` | `[6, 0, 65]` | Character literal |
 
 ### 5.16.3 Labels
 
 | # | Source | Expected | Description |
 |---|--------|----------|-------------|
-| 121 | `start: JMP start` | Bytes: `[31, 0]`; label `start` = 0 | Label at position 0 |
-| 122 | `JMP end` | Bytes: `[31, 2, 0]`; label `end` = 2 | Forward reference |
+| 127 | `start: JMP start` | Bytes: `[31, 0]`; label `start` = 0 | Label at position 0 |
+| 128 | `JMP end` | Bytes: `[31, 2, 0]`; label `end` = 2 | Forward reference |
 |     | `end: HLT` | (covered above) | |
-| 123 | `.loop: JMP .loop` | Bytes: `[31, 0]`; label `.loop` = 0 | Dot-prefix label |
+| 129 | `.loop: JMP .loop` | Bytes: `[31, 0]`; label `.loop` = 0 | Dot-prefix label |
 
 ### 5.16.4 Case Insensitivity
 
 | # | Source | Expected | Description |
 |---|--------|----------|-------------|
-| 124 | `mov a, 5` | Same as `MOV A, 5` | Mnemonics case-insensitive |
-| 125 | `Mov A, 5` | Same bytecode | Mixed case |
+| 130 | `mov a, 5` | Same as `MOV A, 5` | Mnemonics case-insensitive |
+| 131 | `Mov A, 5` | Same bytecode | Mixed case |
 
 ---
 
@@ -606,34 +628,34 @@ Each error must include the correct line number.
 
 | # | Source | Expected Error | Description |
 |---|--------|---------------|-------------|
-| 126 | `x: DB 0` | `Duplicate label: x` | Two labels with same name |
+| 132 | `x: DB 0` | `Duplicate label: x` | Two labels with same name |
 |     | `x: DB 1` | line: 1 | |
-| 127 | `X: DB 0` | `Duplicate label: x` | Case-insensitive duplicate |
+| 133 | `X: DB 0` | `Duplicate label: x` | Case-insensitive duplicate |
 |     | `x: DB 1` | line: 1 | |
-| 128 | `A: DB 0` | `Label contains keyword: A` | Reserved register name |
+| 134 | `A: DB 0` | `Label contains keyword: A` | Reserved register name |
 |     | | line: 0 | |
-| 129 | `B: DB 0` | `Label contains keyword: B` | |
-| 130 | `JMP nowhere` | `Undefined label: nowhere` | Label never defined |
-| 131 | `MOV A, 0xZZ` | `Invalid number format` | Bad hex |
+| 135 | `B: DB 0` | `Label contains keyword: B` | |
+| 136 | `JMP nowhere` | `Undefined label: nowhere` | Label never defined |
+| 137 | `MOV A, 0xZZ` | `Invalid number format` | Bad hex |
 |     | | line: 0 | |
-| 132 | `MOV A, 256` | `must have a value between 0-255` | Out of byte range |
-| 133 | `MOV A, [B+16]` | `offset must be a value between -16...+15` | Offset too large |
-| 134 | `MOV A, [B-17]` | `offset must be a value between -16...+15` | Offset too small |
-| 135 | `MOV A, 'AB'` | `Only one character is allowed` | Multi-char literal |
-| 136 | `ADD 5, A` | `ADD does not support this operand` | Invalid operand type |
-| 137 | `INC A, B` | `INC: too many arguments` | Extra operand |
-| 138 | `DB [0x50]` | `DB does not support this operand` | Invalid DB operand |
-| 139 | `FOO A` | `Invalid instruction: FOO` | Unknown mnemonic |
-| 140 | `???` | `Syntax error` | Unparseable line |
+| 138 | `MOV A, 256` | `must have a value between 0-255` | Out of byte range |
+| 139 | `MOV A, [B+16]` | `offset must be a value between -16...+15` | Offset too large |
+| 140 | `MOV A, [B-17]` | `offset must be a value between -16...+15` | Offset too small |
+| 141 | `MOV A, 'AB'` | `Only one character is allowed` | Multi-char literal |
+| 142 | `ADD 5, A` | `ADD does not support this operand` | Invalid operand type |
+| 143 | `INC A, B` | `INC: too many arguments` | Extra operand |
+| 144 | `DB [0x50]` | `DB does not support this operand` | Invalid DB operand |
+| 145 | `FOO A` | `Invalid instruction: FOO` | Unknown mnemonic |
+| 146 | `???` | `Syntax error` | Unparseable line |
 
 ### 5.17.1 Line Number Accuracy
 
 | # | Source | Expected line | Description |
 |---|--------|-------------|-------------|
-| 141 | `MOV A, 1` | line: 2 | Error on third line (0-indexed) |
+| 147 | `MOV A, 1` | line: 2 | Error on third line (0-indexed) |
 |     | `MOV B, 2` | | |
 |     | `FOO` | | |
-| 142 | `; comment` | line: 1 | Blank/comment lines counted |
+| 148 | `; comment` | line: 1 | Blank/comment lines counted |
 |     | `FOO` | | |
 
 ---
@@ -644,11 +666,11 @@ The `mapping` output maps code positions to source line numbers. DB is excluded.
 
 | # | Source | Expected `mapping` | Description |
 |---|--------|--------------------|-------------|
-| 143 | `MOV A, 1` | {0: 0, 3: 1} | Two 3-byte instructions |
+| 149 | `MOV A, 1` | {0: 0, 3: 1} | Two 3-byte instructions |
 |     | `MOV B, 2` | | positions 0 and 3 |
-| 144 | `DB 42` | {1: 1} | DB at pos 0 excluded |
+| 150 | `DB 42` | {1: 1} | DB at pos 0 excluded |
 |     | `INC A` | | INC at pos 1 mapped |
-| 145 | `label: HLT` | {0: 0} | Label doesn't consume code bytes |
+| 151 | `label: HLT` | {0: 0} | Label doesn't consume code bytes |
 
 ---
 
@@ -658,13 +680,13 @@ Full programs testing multiple subsystems together.
 
 | # | Program | Verify | Description |
 |---|---------|--------|-------------|
-| 146 | **Counter** | A=5 | Loop with INC and CMP |
+| 152 | **Counter** | A=5 | Loop with INC and CMP |
 |     | `MOV A, 0` | |
 |     | `loop: INC A` | |
 |     | `CMP A, 5` | |
 |     | `JNZ loop` | |
 |     | `HLT` | |
-| 147 | **Sum 1..10** | A=55 | Accumulator loop |
+| 153 | **Sum 1..10** | A=55 | Accumulator loop |
 |     | `MOV A, 0` | |
 |     | `MOV B, 1` | |
 |     | `loop: ADD A, B` | |
@@ -672,7 +694,7 @@ Full programs testing multiple subsystems together.
 |     | `CMP B, 11` | |
 |     | `JNZ loop` | |
 |     | `HLT` | |
-| 148 | **Factorial 5** | A=120 | Subroutine + multiplication |
+| 154 | **Factorial 5** | A=120 | Subroutine + multiplication |
 |     | `MOV A, 1` | |
 |     | `MOV B, 5` | |
 |     | `loop: MUL B` | |
@@ -680,7 +702,7 @@ Full programs testing multiple subsystems together.
 |     | `CMP B, 1` | |
 |     | `JA loop` | |
 |     | `HLT` | |
-| 149 | **Hello** | display="Hello" | Memory-mapped I/O |
+| 155 | **Hello** | display="Hello" | Memory-mapped I/O |
 |     | `MOV A, 0` | |
 |     | `MOV B, 232` | |
 |     | `MOV C, hello` | |
@@ -694,7 +716,7 @@ Full programs testing multiple subsystems together.
 |     | `.end: HLT` | |
 |     | `hello: DB "Hello"` | |
 |     | `DB 0` | |
-| 150 | **Stack frame** | A=30 | CALL/RET with stack params |
+| 156 | **Stack frame** | A=30 | CALL/RET with stack params |
 |     | `PUSH 10` | |
 |     | `PUSH 20` | |
 |     | `CALL add_two` | |
@@ -712,7 +734,7 @@ Full programs testing multiple subsystems together.
 
 | # | Source | Verify | Description |
 |---|--------|--------|-------------|
-| 151 | `JMP test` | F=true, A=6 | Invalid opcode (ERR_INVALID_OPCODE) |
+| 157 | `JMP test` | F=true, A=6 | Invalid opcode (ERR_INVALID_OPCODE) |
 |     | `test: DB 9` | | Opcode 9 is not assigned |
 
 ### 5.20.2 Page Boundary Violation
@@ -721,16 +743,16 @@ Offset calculation outside 0–255 triggers **FAULT (A=5)**. See [addressing mod
 
 | # | Source | Verify | Description |
 |---|--------|--------|-------------|
-| 152 | `MOV B, 250` | F=true, A=5 | Page boundary (ERR_PAGE_BOUNDARY) |
+| 158 | `MOV B, 250` | F=true, A=5 | Page boundary (ERR_PAGE_BOUNDARY) |
 |     | `MOV A, [B+15]` | | 250 + 15 = 265 > 255 |
-| 153 | `MOV B, 5` | F=true, A=5 | Page boundary (ERR_PAGE_BOUNDARY) |
+| 159 | `MOV B, 5` | F=true, A=5 | Page boundary (ERR_PAGE_BOUNDARY) |
 |     | `MOV A, [B-10]` | | 5 − 10 = −5 < 0 |
 
 ### 5.20.3 SP as Source Operand
 
 | # | Source | Verify | Description |
 |---|--------|--------|-------------|
-| 154 | `MOV SP, 100` | | |
+| 160 | `MOV SP, 100` | | |
 |     | `MOV A, 5` | | |
 |     | `ADD A, SP` | A=105 | SP as source in ADD |
 |     | `HLT` | | |
@@ -745,12 +767,12 @@ Tests for Data Page register. See [memory model](isa.md#13-memory-model).
 
 | # | Source | Verify | Description |
 |---|--------|--------|-------------|
-| 155 | `MOV DP, 0` | DP=0 | Write to DP |
+| 161 | `MOV DP, 0` | DP=0 | Write to DP |
 |     | `MOV A, DP` | A=0 | Read from DP |
 |     | `HLT` | | |
-| 156 | `MOV DP, 255` | DP=255 | Max DP value (page 255) |
+| 162 | `MOV DP, 255` | DP=255 | Max DP value (page 255) |
 |     | `HLT` | | |
-| 157 | `MOV DP, 128` | | Mid-range page |
+| 163 | `MOV DP, 128` | | Mid-range page |
 |     | `MOV B, 0` | | |
 |     | `MOV [B], 42` | mem[0x8000]=42 | Page 128, offset 0 |
 |     | `HLT` | | |
@@ -759,16 +781,16 @@ Tests for Data Page register. See [memory model](isa.md#13-memory-model).
 
 | # | Source | Verify | Description |
 |---|--------|--------|-------------|
-| 158 | `MOV DP, 0` | | Page 0 |
+| 164 | `MOV DP, 0` | | Page 0 |
 |     | `MOV B, 0x50` | | |
 |     | `MOV [B], 42` | mem[0x050]=42 | Write to page 0 |
 |     | `HLT` | | |
-| 159 | `MOV DP, 1` | | Page 1 |
+| 165 | `MOV DP, 1` | | Page 1 |
 |     | `MOV B, 0x50` | | |
 |     | `MOV [B], 99` | mem[0x150]=99 | Write to page 1 |
 |     | `MOV A, [B]` | A=99 | Read from page 1 |
 |     | `HLT` | | |
-| 160 | `MOV DP, 2` | | Page 2 |
+| 166 | `MOV DP, 2` | | Page 2 |
 |     | `MOV B, 0` | | |
 |     | `MOV [B+10], 77` | mem[0x20A]=77 | Page 2, offset 10 |
 |     | `HLT` | | |
@@ -777,7 +799,7 @@ Tests for Data Page register. See [memory model](isa.md#13-memory-model).
 
 | # | Source | Verify | Description |
 |---|--------|--------|-------------|
-| 161 | `MOV [0x50], 11` | mem[0x50]=11 | DP=0, store to page 0 |
+| 167 | `MOV [0x50], 11` | mem[0x50]=11 | DP=0, store to page 0 |
 |     | `MOV DP, 1` | | Switch to page 1 |
 |     | `MOV [0x50], 22` | mem[0x150]=22 | Store to page 1 |
 |     | `MOV A, [0x50]` | A=22 | Read from page 1 |
@@ -789,7 +811,7 @@ Tests for Data Page register. See [memory model](isa.md#13-memory-model).
 
 | # | Source | Verify | Description |
 |---|--------|--------|-------------|
-| 162 | `MOV DP, 1` | | Switch to page 1 |
+| 168 | `MOV DP, 1` | | Switch to page 1 |
 |     | `MOV [SP-1], 55` | mem[230]=55 | SP-relative ignores DP |
 |     | `MOV A, [SP-1]` | A=55 | Read from page 0 |
 |     | `HLT` | | |
@@ -798,7 +820,7 @@ Tests for Data Page register. See [memory model](isa.md#13-memory-model).
 
 | # | Source | Verify | Description |
 |---|--------|--------|-------------|
-| 163 | `MOV DP, 1` | F=true, A=5 | Page boundary (ERR_PAGE_BOUNDARY) |
+| 169 | `MOV DP, 1` | F=true, A=5 | Page boundary (ERR_PAGE_BOUNDARY) |
 |     | `MOV B, 250` | | 250 + 10 = 260 > 255 |
 |     | `MOV [B+10], 33` | | |
 
@@ -806,7 +828,7 @@ Tests for Data Page register. See [memory model](isa.md#13-memory-model).
 
 | # | Source | Verify | Description |
 |---|--------|--------|-------------|
-| 164 | `MOV DP, 1` | | Source page |
+| 170 | `MOV DP, 1` | | Source page |
 |     | `MOV B, 0` | | |
 |     | `MOV [B], 0xAA` | | Store 0xAA at page 1, offset 0 |
 |     | `MOV A, [B]` | | Load from page 1 |
@@ -824,7 +846,7 @@ These tests verify CPU robustness against unusual but valid programming patterns
 
 | # | Source | Verify | Description |
 |---|--------|--------|-------------|
-| 165 | `MOV [20], 0` | IP=20 at halt | Self-mod: write HLT to addr 20 |
+| 171 | `MOV [20], 0` | IP=20 at halt | Self-mod: write HLT to addr 20 |
 |     | `JMP 20` | state=HALTED | then jump there |
 |     | `MOV A, 255` | A=0 | unreachable code not executed |
 |     | `HLT` | | |
@@ -833,43 +855,43 @@ These tests verify CPU robustness against unusual but valid programming patterns
 
 | # | Source | Verify | Description |
 |---|--------|--------|-------------|
-| 166 | `POP A` | F=true, A=3 | Empty stack underflow |
+| 172 | `POP A` | F=true, A=3 | Empty stack underflow |
 |     | | state=FAULT | ERR_STACK_UNDERFLOW |
-| 167 | (fill stack to 0) | F=true, A=2 | Stack overflow |
+| 173 | (fill stack to 0) | F=true, A=2 | Stack overflow |
 |     | `PUSH 1` | state=FAULT | ERR_STACK_OVERFLOW |
 
 ### 5.22.3 Invalid Opcode Execution
 
 | # | Source | Verify | Description |
 |---|--------|--------|-------------|
-| 168 | `DB 9` | F=true, A=6 | Opcode 9 not assigned |
+| 174 | `DB 9` | F=true, A=6 | Opcode 9 not assigned |
 |     | | state=FAULT | ERR_INVALID_OPCODE |
-| 169 | `DB 99` | F=true, A=6 | Opcode 99 not assigned |
+| 175 | `DB 99` | F=true, A=6 | Opcode 99 not assigned |
 |     | | state=FAULT | ERR_INVALID_OPCODE |
 
 ### 5.22.4 Division by Zero (Self-Division)
 
 | # | Source | Verify | Description |
 |---|--------|--------|-------------|
-| 170 | `DIV A` | F=true, A=1 | A=0 initially, 0/0 = FAULT |
+| 176 | `DIV A` | F=true, A=1 | A=0 initially, 0/0 = FAULT |
 |     | | state=FAULT | ERR_DIV_ZERO |
-| 171 | `MOV B, 0` | F=true, A=1 | Divide by zero register |
+| 177 | `MOV B, 0` | F=true, A=1 | Divide by zero register |
 |     | `DIV B` | state=FAULT | ERR_DIV_ZERO |
 
 ### 5.22.5 Invalid Register Codes
 
 | # | Source | Verify | Description |
 |---|--------|--------|-------------|
-| 172 | `DB 70, 6, 0` | F=true, A=4 | AND with reg code 6 (invalid) |
+| 178 | `DB 70, 6, 0` | F=true, A=4 | AND with reg code 6 (invalid) |
 |     | | state=FAULT | ERR_INVALID_REG |
-| 173 | `DB 82, 5` | F=true, A=4 | NOT with reg code 5 (DP invalid for NOT) |
+| 179 | `DB 82, 5` | F=true, A=4 | NOT with reg code 5 (DP invalid for NOT) |
 |     | | state=FAULT | ERR_INVALID_REG |
 
 ### 5.22.6 Code Overwrite via Stack
 
 | # | Source | Verify | Description |
 |---|--------|--------|-------------|
-| 174 | `MOV SP, 5` | A=42 | Stack overwrites code area |
+| 180 | `MOV SP, 5` | A=42 | Stack overwrites code area |
 |     | `PUSH 0` | | writes HLT (0) to addr 5 |
 |     | `MOV A, 42` | | this executes |
 |     | `JMP 5` | | jump to overwritten HLT |
@@ -879,7 +901,7 @@ These tests verify CPU robustness against unusual but valid programming patterns
 
 | # | Source | Verify | Description |
 |---|--------|--------|-------------|
-| 175 | `MOV [200], 6` | A=77 | Write MOV A, 77 to addr 200 |
+| 181 | `MOV [200], 6` | A=77 | Write MOV A, 77 to addr 200 |
 |     | `MOV [201], 0` | | reg A |
 |     | `MOV [202], 77` | | value 77 |
 |     | `MOV [203], 0` | | HLT at 203 |
@@ -898,17 +920,18 @@ These tests verify CPU robustness against unusual but valid programming patterns
 | [Jumps](#56-jmp--conditional-jumps) | 30-44 | 14 opcodes, aliases |
 | [Stack](#57-stack-operations--push--pop) | 45-51 | 5 opcodes, LIFO, boundaries |
 | [CALL/RET](#58-call--ret--subroutines) | 52-56 | 3 opcodes, nesting, return addr |
-| [MUL/DIV](#59-mul--div) | 57-62 | 8 opcodes, div/0 |
-| [Bitwise](#510-bitwise--and--or--xor--not) | 63-68 | 13 opcodes, edge cases |
-| [Shift](#511-shift--shl--shr) | 69-75 | 8 opcodes, aliases |
-| [Addressing](#512-addressing-modes) | 76-79 | Offset encoding, SP-relative |
-| [Flags](#513-flag-behavior) | 80-84 | Arithmetic flag corner cases |
-| [SP restrictions](#514-sp-operand-restrictions) | 85-100 | Allowed/rejected SP usage |
-| [I/O](#515-memory-mapped-io) | 101-104 | Display read/write, DP=0 required |
-| [Encoding](#516-assembler--encoding) | 104-125 | Bytecode, numbers, labels |
-| [Errors](#517-assembler--error-handling) | 126-142 | All 12 error types, line numbers |
-| [Mapping](#518-assembler--source-mapping) | 143-145 | Position → line mapping |
-| [Integration](#519-integration--end-to-end-programs) | 146-150 | Full programs |
-| [Faults & edge cases](#520-fault-conditions-and-edge-cases) | 151-154 | Invalid opcode, address bounds, SP source |
-| [DP register](#521-dp-register--paged-memory-access) | 155-164 | Paged memory (64KB), SP-relative, direct+DP |
-| **Total** | **165** | |
+| [MUL/DIV](#59-mul--div) | 57-66 | 8 opcodes, all addressing modes, div/0 |
+| [Bitwise](#510-bitwise--and--or--xor--not) | 67-72 | 13 opcodes, C=0, edge cases |
+| [Shift](#511-shift--shl--shr) | 73-80 | 8 opcodes, aliases, shift-by-0 |
+| [Addressing](#512-addressing-modes) | 81-84 | Offset encoding, SP-relative |
+| [Flags](#513-flag-behavior) | 85-89 | Arithmetic flag corner cases |
+| [SP restrictions](#514-sp-operand-restrictions) | 90-105 | Allowed/rejected SP usage |
+| [I/O](#515-memory-mapped-io) | 106-109 | Display read/write, DP=0 required |
+| [Encoding](#516-assembler--encoding) | 110-131 | Bytecode, numbers, labels |
+| [Errors](#517-assembler--error-handling) | 132-148 | All 12 error types, line numbers |
+| [Mapping](#518-assembler--source-mapping) | 149-151 | Position → line mapping |
+| [Integration](#519-integration--end-to-end-programs) | 152-156 | Full programs |
+| [Faults & edge cases](#520-fault-conditions-and-edge-cases) | 157-160 | Invalid opcode, address bounds, SP source |
+| [DP register](#521-dp-register--paged-memory-access) | 161-170 | Paged memory (64KB), SP-relative, direct+DP |
+| [Robustness](#522-robustness-tests) | 171-181 | Self-mod, stack attacks, invalid opcodes/regs |
+| **Total** | **181** | |

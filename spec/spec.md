@@ -2,7 +2,7 @@
 
 ## 8-bit CPU Simulator
 
-**Reference Implementation:** Schweigi/assembler-simulator
+**Reference Implementation:** [Schweigi/assembler-simulator](https://github.com/Schweigi/assembler-simulator)
 **Target Platform:** Modern Web Browsers
 **Purpose:** Educational tool for assembly language learning
 
@@ -23,16 +23,7 @@
 
 ---
 
-## Appendix A: Functional Requirements
-
-| Priority | Feature |
-|----------|---------|
-| High | Code editor, assembler, complete ISA, step/run execution |
-| High | CPU state display, memory view, console output |
-| Medium | Breakpoints, example programs |
-| Low | Export/import source files |
-
-## Appendix B: Reference Resources
+## Reference Resources
 
 - **GitHub:** https://github.com/Schweigi/assembler-simulator
 - **Demo:** https://schweigi.github.io/assembler-simulator/

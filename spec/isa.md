@@ -50,6 +50,7 @@
 - **MUL:** C=1 if result > 255
 - **SHL:** C=1 if overflow (value × 2^n > 255)
 - **SHR:** C=1 if any bits were shifted out (value mod 2^n ≠ 0)
+- **AND/OR/XOR/NOT:** C=0 (always cleared)
 
 **Arithmetic wraparound:** All arithmetic results are modulo 256 (range 0-255). The C flag indicates if wraparound occurred.
 
@@ -307,7 +308,7 @@ Sets flags without storing result.
 |----------|--------|-------|
 | reg | 82 | 2 |
 
-**Bitwise operations flags:** C flag is **unchanged** (ARM-style). Z flag is set if result equals 0. Only GPR (A, B, C, D) allowed as register operands; SP/DP cause FAULT (`ERR_INVALID_REG`, A=4; see [Error Codes](errors.md)).
+**Bitwise operations flags:** C flag is **cleared** (set to 0). Z flag is set if result equals 0. Only GPR (A, B, C, D) allowed as register operands; SP/DP cause FAULT (`ERR_INVALID_REG`, A=4; see [Error Codes](errors.md)).
 
 ### SHL — Shift Left (Opcodes 90-93)
 
@@ -333,7 +334,7 @@ Unsigned (logical) right shift (`>>>`).
 
 **Alias:** `SAR` = `SHR`
 
-**Shift operations (ARM-style):** Only GPR (A, B, C, D) allowed as operands; SP/DP cause FAULT (`ERR_INVALID_REG`, A=4). Shift amount can be 0-255; shifting by N≥8 bits produces 0.
+**Shift operations:** Only GPR (A, B, C, D) allowed as operands; SP/DP cause FAULT (`ERR_INVALID_REG`, A=4). Shift amount can be 0-255; shifting by N≥8 bits produces 0.
 - **SHL:** C = 1 if overflow (value × 2^n > 255)
 - **SHR:** C = 1 if any bits were shifted out (value mod 2^n ≠ 0)
 - **Shift by 0:** C is unchanged
@@ -361,9 +362,11 @@ Arithmetic operations set flags via the two-step carry+wrap logic below (see [ps
 
 C and Z can both be set simultaneously (e.g., `255 + 1` = 256 wraps to 0: C=1, Z=1).
 
-**Applies to:** ADD, SUB, INC, DEC, CMP, MUL, DIV, SHL, SHR.
+**Applies to:** ADD, SUB, INC, DEC, CMP, MUL, DIV.
 
-**Bitwise exceptions:** AND, OR, XOR, NOT set only Z flag (based on result = 0); C flag is **unchanged** (ARM-style).
+**Shift operations:** SHL and SHR compute carry and zero with their own rules (see [SHL](#shl--shift-left-opcodes-90-93) and [SHR](#shr--shift-right-opcodes-94-97)). Shift by 0 leaves C unchanged; Z is always recomputed.
+
+**Bitwise operations:** AND, OR, XOR, NOT clear C flag (C=0) and set Z flag (based on result = 0).
 
 **Note:** MOV does **not** affect flags. CMP sets flags without storing the result.
 
