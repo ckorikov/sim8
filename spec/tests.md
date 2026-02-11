@@ -907,6 +907,14 @@ These tests verify CPU robustness against unusual but valid programming patterns
 |     | `MOV [203], 0` | | HLT at 203 |
 |     | `JMP 200` | IP=203 | execute from high address |
 
+### 5.22.8 DB Comma-Separated List
+
+| # | Source | Expected bytes | Description |
+|---|--------|----------------|-------------|
+| 182 | `DB 10, 20, 30` | `[10, 20, 30]` | Comma-separated list |
+| 183 | `DB 0xFF, 0, 42` | `[255, 0, 42]` | Mixed number formats in list |
+| 184 | `DB 1` | `[1]` | Single value (unchanged behavior) |
+
 ---
 
 ## 5.23 Test Summary
@@ -934,4 +942,5 @@ These tests verify CPU robustness against unusual but valid programming patterns
 | [Faults & edge cases](#520-fault-conditions-and-edge-cases) | 157-160 | Invalid opcode, address bounds, SP source |
 | [DP register](#521-dp-register--paged-memory-access) | 161-170 | Paged memory (64KB), SP-relative, direct+DP |
 | [Robustness](#522-robustness-tests) | 171-181 | Self-mod, stack attacks, invalid opcodes/regs |
-| **Total** | **181** | |
+| [DB list](#5228-db-comma-separated-list) | 182-184 | Comma-separated DB operands |
+| **Total** | **184** | |

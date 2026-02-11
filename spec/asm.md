@@ -64,6 +64,7 @@ The assembler produces:
 - Data storage: 64 KB via DP register (256 pages × 256 bytes); see [memory model](isa.md#13-memory-model)
 - All immediate values must fit in one byte (0-255)
 - Mnemonics are case-insensitive (`mov` = `MOV` = `Mov`)
+- DB with comma-separated operands generates one byte per value (`DB 1, 2, 3` → `[1, 2, 3]`)
 - DB with string operand generates one byte per character (ASCII codes)
 - DB is not recorded in the instruction mapping (not a CPU instruction)
 
