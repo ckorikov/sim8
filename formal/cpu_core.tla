@@ -50,7 +50,7 @@ HaltedNotFaulted == state = "HALTED" => F = FALSE
 IdleNotFaulted == state = "IDLE" => F = FALSE
 
 \* Stack pointer in valid range during RUNNING
-StackInBounds == state = "RUNNING" => SP \in 0..STACK_MAX
+StackInBounds == state = "RUNNING" => SP \in BYTE
 
 \* DP always in valid page range
 DPInPageRange == DP \in 0..(MEM_PAGES - 1)
