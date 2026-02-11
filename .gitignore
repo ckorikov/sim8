@@ -208,3 +208,6 @@ __marimo__/
 
 # Java
 *.jar
+
+Mac Os
+.DS_Store
