@@ -7,7 +7,8 @@ from click.testing import CliRunner
 from pysim8.asm.cli import main
 
 
-def test_cli_default_output(tmp_path: Path) -> None:
+def test_cli_default_output(tmp_path: Path, monkeypatch: object) -> None:
+    monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     src = tmp_path / "test.asm"
     src.write_text("MOV A, 42\nHLT\n")
     runner = CliRunner()
