@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from pysim8.isa import Ot, Reg, InsnDef, BY_MNEMONIC, GPR_CODES, STACK_CODES
+from pysim8.isa import (
+    Ot, Reg, InsnDef, BY_MNEMONIC, GPR_CODES, STACK_CODES, encode_regaddr,
+)
 from pysim8.asm.parser import (
     AsmError,
     OpReg,
@@ -56,13 +58,7 @@ def _operand_matches(op: Operand, ot: Ot) -> bool:
 
 
 def _encode_regaddr(ra: OpRegAddr) -> int:
-    """Encode register indirect operand to a single byte.
-
-    Format: 5 bits offset (two's complement) | 3 bits reg code.
-    """
-    offset_range = 1 << 5  # 32: range of 5-bit two's complement
-    offset_u = ra.offset if ra.offset >= 0 else offset_range + ra.offset
-    return (offset_u << 3) | ra.reg_code
+    return encode_regaddr(ra.reg_code, ra.offset)
 
 
 def _encode_operand(op: Operand) -> int:
