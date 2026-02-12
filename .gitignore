@@ -209,5 +209,8 @@ __marimo__/
 # Java
 *.jar
 
-Mac Os
+# Mac OS
 .DS_Store
+
+# Assembler build artifacts
+*.bin
