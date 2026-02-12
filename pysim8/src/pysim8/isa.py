@@ -6,6 +6,7 @@ from enum import Enum, IntEnum
 __all__ = [
     "Op", "Reg", "REGISTERS", "GPR_CODES", "STACK_CODES", "MNEMONIC_ALIASES",
     "Ot", "InsnDef", "ISA", "BY_CODE", "BY_MNEMONIC", "MNEMONICS",
+    "encode_regaddr", "decode_regaddr",
 ]
 
 
@@ -156,6 +157,41 @@ REGISTERS: dict[str, Reg] = {r.name: r for r in Reg}
 #   REG_GPR   = A B C D        — MOV + arithmetic + logic/shift/stack/jump
 GPR_CODES: frozenset[int] = frozenset({Reg.A, Reg.B, Reg.C, Reg.D})
 STACK_CODES: frozenset[int] = GPR_CODES | {Reg.SP}
+
+# ── REGADDR encoding ──────────────────────────────────────────────────
+#
+# Register-indirect operands ([B], [C+3], [D-1]) are packed into one byte:
+#
+#   bit  7 6 5 4 3  2 1 0
+#        ┌─offset──┐ ┌reg┐
+#
+#   reg    — 3-bit register code (0..5, same as Reg enum)
+#   offset — 5-bit signed offset in two's complement (−16 .. +15)
+#
+# Examples:
+#   [A]    → reg=0, offset=0  → 0b00000_000 = 0x00
+#   [B+3]  → reg=1, offset=3  → 0b00011_001 = 0x19
+#   [C-1]  → reg=2, offset=-1 → 0b11111_010 = 0xFA
+
+_RA_REG_BITS = 3
+_RA_REG_MASK = (1 << _RA_REG_BITS) - 1  # 0x07
+_RA_OFF_RANGE = 1 << (8 - _RA_REG_BITS)  # 32
+_RA_OFF_MAX = _RA_OFF_RANGE // 2 - 1     # 15
+
+
+def encode_regaddr(reg_code: int, offset: int) -> int:
+    """Encode [reg±offset] into a single byte."""
+    offset_u = offset if offset >= 0 else _RA_OFF_RANGE + offset
+    return (offset_u << _RA_REG_BITS) | reg_code
+
+
+def decode_regaddr(encoded: int) -> tuple[int, int]:
+    """Decode a REGADDR byte into (reg_code, offset)."""
+    reg_code = encoded & _RA_REG_MASK
+    offset_u = encoded >> _RA_REG_BITS
+    offset = offset_u if offset_u <= _RA_OFF_MAX else offset_u - _RA_OFF_RANGE
+    return reg_code, offset
+
 
 # Mnemonic aliases → canonical mnemonic
 MNEMONIC_ALIASES: dict[str, str] = {
