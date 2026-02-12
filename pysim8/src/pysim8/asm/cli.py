@@ -31,6 +31,6 @@ def main(source: str, output: str | None, stdout: bool) -> None:
         click.echo(f"Bytes: {list(code)}")
         return
 
-    out_path = Path(output) if output else Path(source).with_suffix(".bin")
+    out_path = Path(output) if output else Path(Path(source).stem + ".bin")
     out_path.write_bytes(code)
     click.echo(f"Wrote {len(code)} bytes to {out_path}")
