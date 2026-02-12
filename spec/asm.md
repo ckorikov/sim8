@@ -26,7 +26,7 @@ The assembler produces:
 
 - Machine code as a sequence of bytes (each 0–255)
 - A label table (label name → address)
-- A source mapping (output position → source line number) for diagnostics
+- A source mapping (output position → source line number, 1-based) for diagnostics
 
 **Note:** DB pseudo-instructions are not CPU instructions and may be excluded from source-to-instruction mapping.
 
@@ -70,7 +70,7 @@ The assembler produces:
 
 ## 4.7 Error Handling
 
-All errors include the source line number.
+All errors include the source line number (1-based: first line is 1).
 
 | Error | Trigger |
 |-------|---------|

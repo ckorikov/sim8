@@ -624,20 +624,20 @@ Verify assembler produces correct bytecode for each instruction format.
 
 ## 5.17 Assembler — Error Handling
 
-Each error must include the correct line number.
+Each error must include the correct source line number (1-based: first line is 1).
 
 | # | Source | Expected Error | Description |
 |---|--------|---------------|-------------|
 | 132 | `x: DB 0` | `Duplicate label: x` | Two labels with same name |
-|     | `x: DB 1` | line: 1 | |
+|     | `x: DB 1` | line: 2 | |
 | 133 | `X: DB 0` | `Duplicate label: x` | Case-insensitive duplicate |
-|     | `x: DB 1` | line: 1 | |
+|     | `x: DB 1` | line: 2 | |
 | 134 | `A: DB 0` | `Label contains keyword: A` | Reserved register name |
-|     | | line: 0 | |
+|     | | line: 1 | |
 | 135 | `B: DB 0` | `Label contains keyword: B` | |
 | 136 | `JMP nowhere` | `Undefined label: nowhere` | Label never defined |
 | 137 | `MOV A, 0xZZ` | `Invalid number format` | Bad hex |
-|     | | line: 0 | |
+|     | | line: 1 | |
 | 138 | `MOV A, 256` | `must have a value between 0-255` | Out of byte range |
 | 139 | `MOV A, [B+16]` | `offset must be a value between -16...+15` | Offset too large |
 | 140 | `MOV A, [B-17]` | `offset must be a value between -16...+15` | Offset too small |
@@ -652,25 +652,25 @@ Each error must include the correct line number.
 
 | # | Source | Expected line | Description |
 |---|--------|-------------|-------------|
-| 147 | `MOV A, 1` | line: 2 | Error on third line (0-indexed) |
+| 147 | `MOV A, 1` | line: 3 | Error on third line (1-based) |
 |     | `MOV B, 2` | | |
 |     | `FOO` | | |
-| 148 | `; comment` | line: 1 | Blank/comment lines counted |
+| 148 | `; comment` | line: 2 | Blank/comment lines counted |
 |     | `FOO` | | |
 
 ---
 
 ## 5.18 Assembler — Source Mapping
 
-The `mapping` output maps code positions to source line numbers. DB is excluded.
+The `mapping` output maps code positions to source line numbers (1-based). DB is excluded.
 
 | # | Source | Expected `mapping` | Description |
 |---|--------|--------------------|-------------|
-| 149 | `MOV A, 1` | {0: 0, 3: 1} | Two 3-byte instructions |
+| 149 | `MOV A, 1` | {0: 1, 3: 2} | Two 3-byte instructions |
 |     | `MOV B, 2` | | positions 0 and 3 |
-| 150 | `DB 42` | {1: 1} | DB at pos 0 excluded |
+| 150 | `DB 42` | {1: 2} | DB at pos 0 excluded |
 |     | `INC A` | | INC at pos 1 mapped |
-| 151 | `label: HLT` | {0: 0} | Label doesn't consume code bytes |
+| 151 | `label: HLT` | {0: 1} | Label doesn't consume code bytes |
 
 ---
 
