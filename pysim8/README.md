@@ -1,7 +1,7 @@
 # pysim8
 
-Assembler for the sim8 8-bit CPU. Translates assembly source into machine code
-per the [specification](../spec/).
+Assembler, simulator, and disassembler for the sim8 8-bit CPU.
+See [specification](../spec/).
 
 ## Requirements
 
@@ -20,24 +20,28 @@ Assemble to binary (default: `source.bin`)
 
 ```bash
 uv run pysim8-asm program.asm
-```
-
-Specify output file
-
-```bash
 uv run pysim8-asm program.asm -o custom.bin
+uv run pysim8-asm program.asm -S          # print to stdout
 ```
 
-Print to stdout without writing a file
+## Simulator
+
+Run a binary in the TUI (scrolling trace log + register/IO status bar)
 
 ```bash
-uv run pysim8-asm program.asm -S
+uv run pysim8 program.bin
+uv run pysim8 program.bin --speed 50      # steps per second (default: 25, 0 = max)
+uv run pysim8 program.bin --paused        # start paused (Space to run)
 ```
 
-View compiled binary as hex
+Keys: `Space` run/pause, `n` step, `q` quit.
+
+## Disassembler
+
+Disassemble a binary to readable assembly
 
 ```bash
-xxd program.bin
+uv run pysim8-disasm program.bin
 ```
 
 ## Tests
@@ -50,12 +54,27 @@ uv run pytest
 
 ```
 src/pysim8/
-  isa.py          ISA definitions: opcodes, registers, instruction table
+  isa.py            ISA definitions: opcodes, registers, instruction table
   asm/
-    parser.py     Tokenizer and parser (source -> parsed lines)
-    codegen.py    Two-pass assembler (parsed lines -> machine code)
-    cli.py        CLI entry point (pysim8-asm command)
+    parser.py       Tokenizer and parser (source -> parsed lines)
+    codegen.py      Two-pass assembler (parsed lines -> machine code)
+    cli.py          CLI entry point (pysim8-asm)
+  sim/
+    cpu.py          CPU control unit: step/run pipeline
+    handlers.py     Instruction handlers (HandlersMixin)
+    alu.py          Stateless ALU operations
+    memory.py       Memory model (64KB, 256-byte pages)
+    registers.py    Register file and flags
+    decoder.py      Instruction fetch and decode
+    tracing.py      Trace events and callbacks
+    tui.py          Rich-based TUI runner (pysim8)
+    errors.py       Fault codes
+  disasm/
+    core.py         Disassembler (machine code -> assembly text)
+    cli.py          CLI entry point (pysim8-disasm)
 tests/
-  test_asm.py     Assembler unit tests (149 tests)
-  test_cli.py     CLI smoke tests
+  test_asm.py       Assembler tests
+  test_sim.py       Simulator tests
+  test_disasm.py    Disassembler roundtrip tests
+  test_cli.py       CLI smoke tests
 ```
