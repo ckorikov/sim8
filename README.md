@@ -21,6 +21,8 @@ formal/         TLA+ formal model and tests
   cpu_core.tla      CPU state machine
   cpu_ops_*.tla     Instruction semantics
   tests/            TLC test suites
+
+pysim8/         Python toolchain (assembler, simulator, disassembler)
 ```
 
 ## Formal Verification
@@ -43,6 +45,21 @@ make test          # all tests
 make test_basic    # single test
 make clean         # remove TLC artifacts
 ```
+
+## pysim8
+
+Python implementation: assembler, TUI simulator, and disassembler. Requires Python 3.13+ and [uv](https://docs.astral.sh/uv/).
+
+```bash
+cd pysim8 && uv sync
+
+uv run pysim8-asm program.asm       # assemble → program.bin
+uv run pysim8 program.bin           # run in TUI
+uv run pysim8-disasm program.bin    # disassemble
+uv run pytest                       # tests
+```
+
+See [pysim8/README.md](pysim8/README.md) for details.
 
 ## License
 
