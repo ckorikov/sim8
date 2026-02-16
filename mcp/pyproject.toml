@@ -1,0 +1,19 @@
+[project]
+name = "sim8-mcp"
+version = "0.1.0"
+description = "MCP server for 8-bit CPU simulator"
+requires-python = ">=3.13"
+dependencies = [
+    "fastmcp>=2.0,<3",
+    "pysim8",
+]
+
+[tool.uv.sources]
+pysim8 = { path = "../pysim8" }
+
+[dependency-groups]
+dev = ["pytest"]
+
+[build-system]
+requires = ["uv_build>=0.8.0,<0.9"]
+build-backend = "uv_build"
