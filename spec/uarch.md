@@ -16,6 +16,8 @@ The pseudocode in this section is language-agnostic. All values are integers unl
 
 Instruction length is opcode-dependent (1–3 bytes). Each instruction handler advances `IP` by its own encoded length (or assigns `IP` directly for control-flow instructions).
 
+**Instruction fetch boundary:** If `IP + instrLength > 256`, the instruction would cross the page 0 boundary. This is a `FAULT(5)` (`ERR_PAGE_BOUNDARY`) before any operand bytes are read. For example, a 3-byte instruction at IP=254 faults because bytes 254, 255, 256 span two pages.
+
 The CPU also maintains a control state variable:
 
 - `state` ∈ {`IDLE`, `RUNNING`, `HALTED`, `FAULT`}
@@ -37,8 +39,10 @@ FUNCTION step():
         state = HALTED
         RETURN false
 
-    execute(opcode)
+    execute(opcode)               // FAULT(6) if opcode is unassigned
     IF state == FAULT: RETURN false
+    steps = steps + 1
+    cycles = cycles + cost(opcode)
     RETURN true                   // RUNNING
 ```
 
@@ -94,6 +98,7 @@ FUNCTION indirectAddress(encoded_byte):
 
 FUNCTION instrByte(k):
     // Fetch the k-th byte of the current instruction (k=0 is opcode)
+    // Caller guarantees IP + instrLength <= 256 (checked at decode time)
     RETURN memory[IP + k]
 
 FUNCTION decodeGPR(reg_code):
@@ -274,6 +279,12 @@ IP = IP + 3
 
 ### Jumps
 
+**JMP reg (Opcode 30):**
+```
+reg = decodeGPR(instrByte(1))
+IP = registers[reg]
+```
+
 **JMP addr (Opcode 31):**
 ```
 target = instrByte(1)
@@ -340,6 +351,16 @@ IP = IP + 2
 
 ### Subroutines
 
+**CALL reg (Opcode 55):**
+```
+reg = decodeGPR(instrByte(1))
+IF SP == 0: FAULT(2)      // check BEFORE write
+return_addr = IP + 2
+memory[SP] = return_addr
+SP = SP - 1
+IP = registers[reg]
+```
+
 **CALL addr (Opcode 56):**
 ```
 target = instrByte(1)
@@ -349,6 +370,8 @@ memory[SP] = return_addr
 SP = SP - 1
 IP = target
 ```
+
+**Return address note:** `return_addr` is stored as an 8-bit value. If `IP + 2 > 255` (e.g., CALL at IP=254), the stored value wraps modulo 256. This is a natural consequence of 8-bit memory — no special fault is raised, but RET will jump to the wrapped address. In practice, executable code should stay below address 232 (I/O region).
 
 **RET (Opcode 57):**
 ```
@@ -380,6 +403,8 @@ IF value == 0: FAULT(1)  // ERR_DIV_ZERO
 A = checkOperation(A DIV value)
 IP = IP + 2
 ```
+
+**DIV carry note:** `checkOperation` always sets C=0 for DIV because the quotient of two 8-bit values is always in 0–255.
 
 ### Bitwise
 
@@ -442,4 +467,42 @@ zero = (result == 0)
 IP = IP + 3
 ```
 
+**Shift by N ≥ 8:** For SHL, `value * 2^N` is always > 255 for any nonzero `value`, so C=1 and result=0. For SHR, `value DIV 2^N` is always 0, and C=1 if `value` was nonzero. If `value` is 0, shifting by any amount gives result=0 with C=0.
+
 For instruction encoding details, see [ISA section 1.8](isa.md#18-instruction-encoding-format).
+
+## 3.5 Cost Model
+
+The CPU maintains two monotonic counters:
+
+- **steps** — number of executed instructions (excluding HLT and faults).
+- **cycles** — simulation clock, sum of per-instruction costs in clock ticks.
+
+Each instruction variant has an integer **cost** (in ticks). `reset()` zeroes both counters.
+
+### Cost Assignment Rules
+
+| Category | Base cost | Examples |
+|----------|-----------|---------|
+| Register-register / register-immediate | 1 | `MOV A, B`, `ADD A, 5`, `INC A`, `JMP addr` |
+| Memory access (each `[addr]` or `[reg]` operand) | +1 | `MOV A, [addr]` = 2, `ADD A, [B]` = 2 |
+| Implicit stack access (push/pop) | +1 | `PUSH A` = 2, `POP A` = 2, `CALL` = 2, `RET` = 2 |
+| Stack + memory operand | +1 +1 | `PUSH [addr]` = 3, `PUSH [B]` = 3 |
+| MUL / DIV (expensive ALU) | 2 | `MUL B` = 2, `DIV 3` = 2 |
+| MUL / DIV + memory | 2 +1 | `MUL [addr]` = 3, `DIV [B]` = 3 |
+| Conditional jumps | 1 | Same cost whether taken or not: `JZ addr` = 1 |
+| HLT | 0 | Not counted in steps or cycles |
+
+### Fault Semantics
+
+If an instruction raises a FAULT, neither `steps` nor `cycles` is incremented.
+
+### Configuration
+
+Cost defaults are derived from the rules above and encoded per instruction variant in the implementation. A simulator may accept per-mnemonic overrides at construction time:
+
+```
+cpu = CPU(costs={"MUL": 8})   // all MUL variants become cost 8
+```
+
+An override replaces the cost for **all** variants of the given mnemonic.
