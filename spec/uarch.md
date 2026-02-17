@@ -482,16 +482,40 @@ Each instruction variant has an integer **cost** (in ticks). `reset()` zeroes bo
 
 ### Cost Assignment Rules
 
-| Category | Base cost | Examples |
-|----------|-----------|---------|
-| Register-register / register-immediate | 1 | `MOV A, B`, `ADD A, 5`, `INC A`, `JMP addr` |
-| Memory access (each `[addr]` or `[reg]` operand) | +1 | `MOV A, [addr]` = 2, `ADD A, [B]` = 2 |
-| Implicit stack access (push/pop) | +1 | `PUSH A` = 2, `POP A` = 2, `CALL` = 2, `RET` = 2 |
-| Stack + memory operand | +1 +1 | `PUSH [addr]` = 3, `PUSH [B]` = 3 |
-| MUL / DIV (expensive ALU) | 2 | `MUL B` = 2, `DIV 3` = 2 |
-| MUL / DIV + memory | 2 +1 | `MUL [addr]` = 3, `DIV [B]` = 3 |
-| Conditional jumps | 1 | Same cost whether taken or not: `JZ addr` = 1 |
-| HLT | 0 | Not counted in steps or cycles |
+The CPU models three pipeline stages: **register** (1 tick), **memory** (2 ticks), and **expensive ALU** (2 ticks for MUL/DIV).
+
+| Pipeline | Latency | Triggers |
+|----------|---------|----------|
+| Register / immediate / simple ALU | 1 | Register read/write, ADD/SUB/AND/OR/XOR/NOT/SHL/SHR, jumps |
+| Memory | 2 | `[addr]`, `[reg]`, stack (PUSH/POP/CALL/RET) |
+| Expensive ALU (MUL/DIV) | 2 | Multiplication, division |
+
+**Scheduling rule:** Independent pipelines execute in parallel — cost = **max**. When one pipeline's output feeds another pipeline's input (data dependency), they execute sequentially — cost = **sum**.
+
+**Pipeline stages and their latencies:**
+
+| Stage | Latency | Notes |
+|-------|---------|-------|
+| Register read / writeback | 0 | Free — part of any pipeline's final stage |
+| Simple ALU (ADD, SUB, AND, OR, XOR, NOT, SHL, SHR, CMP) | 1 | |
+| Memory access (read or write) | 2 | `[addr]`, `[reg]`, stack |
+| Expensive ALU (MUL, DIV) | 2 | |
+
+**Scheduling rule:** Independent stages execute in parallel — cost = **max**. When one stage's output feeds another stage's input (data dependency), they execute sequentially — cost = **sum**.
+
+**Resulting costs per category:**
+
+| Category | Cost | Rule | Examples |
+|----------|------|------|---------|
+| Register-only / register-immediate | 1 | alu(1) | `MOV A, B`, `ADD A, 5`, `INC A`, `NOT A` |
+| Conditional / unconditional jumps | 1 | alu(1) | `JMP addr`, `JZ addr`, `JA reg` |
+| Memory read or write (no ALU) | 2 | mem(2) | `MOV A, [addr]` = 2, `MOV [B], 5` = 2 |
+| Stack operations | 2 | mem(2) | `PUSH A` = 2, `POP A` = 2, `CALL` = 2, `RET` = 2 |
+| MUL / DIV (register or immediate) | 2 | alu(2) | `MUL B` = 2, `DIV 3` = 2 |
+| Simple ALU + memory | **3** | mem(2) + alu(1), dependency | `ADD A, [addr]` = 3, `CMP A, [B]` = 3 |
+| Stack + memory operand | **4** | mem(2) + mem(2), dependency | `PUSH [addr]` = 4, `PUSH [B]` = 4 |
+| MUL / DIV + memory | **4** | mem(2) + alu(2), dependency | `MUL [addr]` = 4, `DIV [B]` = 4 |
+| HLT | 0 | Not counted in steps or cycles | `HLT` |
 
 ### Fault Semantics
 
