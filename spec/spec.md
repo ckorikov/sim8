@@ -58,7 +58,7 @@ Redesigned architecture with formal specification and verification. Key changes 
 
 **Bug fixes from v0:**
 - Stack bounds checked **before** write/read (v0 checked after)
-- IP overflow: explicit `IP + instrLen > 256` → FAULT(5) (v0 had generic "IP outside memory")
+- IP overflow: explicit `IP + instrLen >= 256` → FAULT(5) (v0 had generic "IP outside memory")
 - CALL return address wraps mod 256 when `IP + 2 > 255`
 
 **Cost model (new):**
