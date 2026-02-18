@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pysim8.isa import BY_CODE, Op
+from pysim8.isa import BY_CODE, ISA, Op
 
 from .decoder import Decoder
 from .errors import CpuFault, ErrorCode
@@ -22,15 +22,35 @@ __all__ = ["CPU"]
 class CPU(HandlersMixin):
     """8-bit CPU simulator (control unit)."""
 
-    __slots__ = ("mem", "regs", "state", "_dispatch", "_tracer")
+    __slots__ = (
+        "mem", "regs", "state", "_dispatch", "_tracer",
+        "_steps", "_cycles", "_op_cost",
+    )
 
-    def __init__(self, tracer: TraceCallback | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        tracer: TraceCallback | None = None,
+        costs: dict[str, int] | None = None,
+    ) -> None:
         self.mem = Memory()
         self.regs = RegisterFile()
         self.state = CpuState.IDLE
         self._tracer = tracer
+        self._steps = 0
+        self._cycles = 0
         self._dispatch: dict[Op, Handler] = {}
         self._build_dispatch()
+
+        overrides = costs or {}
+        valid = {d.mnemonic for d in ISA}
+        unknown = overrides.keys() - valid
+        if unknown:
+            raise ValueError(f"Unknown mnemonics in costs: {sorted(unknown)}")
+        self._op_cost: dict[int, int] = {
+            int(d.op): overrides.get(d.mnemonic, d.cost)
+            for d in ISA
+        }
 
     # ── Public API ─────────────────────────────────────────────────────
 
@@ -57,18 +77,16 @@ class CPU(HandlersMixin):
                 opcode = self.mem[ip_before]
                 defn = BY_CODE.get(opcode)
                 size = defn.size if defn is not None else 1
-                self._tracer(TraceEvent(
-                    ip=ip_before, opcode=opcode, operands=(),
-                    size=size, changes={"FF": True, "A": int(fault.code)},
-                    is_fault=True,
-                ))
+                self._trace(ip_before, opcode, (), size,
+                            {"FF": True, "A": int(fault.code)},
+                            is_fault=True)
             return False
 
+        # HLT: cost=0, not counted in steps/cycles
         if insn.op == Op.HLT:
             self.state = CpuState.HALTED
             return False
 
-        # Snapshot before (for tracer)
         tracer = self._tracer
         snap_before = self._snapshot() if tracer is not None else {}
 
@@ -78,19 +96,19 @@ class CPU(HandlersMixin):
         except CpuFault as fault:
             self._enter_fault(fault.code)
             if tracer is not None:
-                tracer(TraceEvent(
-                    ip=ip_before, opcode=int(insn.op), operands=insn.operands,
-                    size=insn.size, changes=self._diff(snap_before),
-                    is_fault=True,
-                ))
+                self._trace(ip_before, int(insn.op), insn.operands,
+                            insn.size, self._diff(snap_before),
+                            is_fault=True)
             return False
 
+        cost = self._op_cost[int(insn.op)]
+        self._steps += 1
+        self._cycles += cost
+
         if tracer is not None:
-            tracer(TraceEvent(
-                ip=ip_before, opcode=int(insn.op), operands=insn.operands,
-                size=insn.size, changes=self._diff(snap_before),
-                is_fault=False,
-            ))
+            self._trace(ip_before, int(insn.op), insn.operands,
+                        insn.size, self._diff(snap_before),
+                        is_fault=False, cost=cost)
 
         return self.state == CpuState.RUNNING
 
@@ -110,6 +128,8 @@ class CPU(HandlersMixin):
         self.mem.reset()
         self.regs.reset()
         self.state = CpuState.IDLE
+        self._steps = 0
+        self._cycles = 0
 
     @property
     def tracer(self) -> TraceCallback | None:
@@ -118,6 +138,14 @@ class CPU(HandlersMixin):
     @tracer.setter
     def tracer(self, cb: TraceCallback | None) -> None:
         self._tracer = cb
+
+    @property
+    def steps(self) -> int:
+        return self._steps
+
+    @property
+    def cycles(self) -> int:
+        return self._cycles
 
     # Convenience properties
     @property
@@ -183,6 +211,24 @@ class CPU(HandlersMixin):
         self.state = CpuState.FAULT
 
     # ── Tracer helpers ─────────────────────────────────────────────────
+
+    def _trace(
+        self,
+        ip: int,
+        opcode: int,
+        operands: tuple[int, ...],
+        size: int,
+        changes: dict[str, int | bool],
+        *,
+        is_fault: bool,
+        cost: int = 0,
+    ) -> None:
+        assert self._tracer is not None
+        self._tracer(TraceEvent(
+            ip=ip, opcode=opcode, operands=operands,
+            size=size, changes=changes,
+            is_fault=is_fault, cost=cost,
+        ))
 
     def _snapshot(self) -> dict[str, int | bool]:
         r = self.regs

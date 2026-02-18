@@ -18,6 +18,7 @@ class TraceEvent:
     size: int
     changes: dict[str, int | bool]
     is_fault: bool
+    cost: int = 0
 
 
 def print_tracer(event: TraceEvent) -> None:
@@ -27,6 +28,8 @@ def print_tracer(event: TraceEvent) -> None:
         parts.append(f"operands={list(event.operands)}")
     if event.changes:
         parts.append(f"changes={event.changes}")
+    if event.cost > 0:
+        parts.append(f"cost={event.cost}")
     if event.is_fault:
         parts.append("FAULT")
     print(" ".join(parts))
