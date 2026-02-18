@@ -34,7 +34,7 @@ class Decoder:
             raise CpuFault(ErrorCode.INVALID_OPCODE, ip)
 
         size = defn.size
-        if ip + size > PAGE_SIZE:
+        if ip + size >= PAGE_SIZE:
             raise CpuFault(ErrorCode.PAGE_BOUNDARY, ip)
 
         operands = tuple(mem[ip + k] for k in range(1, size))

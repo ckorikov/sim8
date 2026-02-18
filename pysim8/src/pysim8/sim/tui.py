@@ -118,6 +118,9 @@ def _make_status(cpu: CPU, filename: str, paused: bool = False) -> Panel:
     for name, val in [("Z", r.flags.z), ("C", r.flags.c), ("F", r.flags.f)]:
         row1.append(f" {name}", style="dim")
         row1.append(str(int(val)), style="bold yellow" if val else "dim")
+    row1.append("  ┊", style="dim")
+    row1.append(" cycles ", style="dim")
+    row1.append(str(cpu.cycles), style="bold" if cpu.cycles else "dim")
 
     # ── Row 2: I/O output ──
     io_padded = io_raw.ljust(_IO_SIZE).replace(" ", "·") if io_raw else "·" * _IO_SIZE
