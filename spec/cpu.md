@@ -1,8 +1,8 @@
-# 2. CPU Architecture
+# 3. CPU Architecture
 
-> Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Memory Model & Addressing](mem.md), [Microarchitecture](uarch.md)
+> Architecture v1 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Memory Model & Addressing](mem.md), [Microarchitecture](uarch.md)
 
-## 2.1 Processor States
+## 3.1 Processor States
 
 | State | Description |
 |-------|-------------|
@@ -29,7 +29,7 @@ IDLE ──step()──► RUNNING ──HLT──► HALTED
 
 **Fault invariant:** Every transition into FAULT state is accompanied by a defined error code: CPU sets `F=true` and writes the error code into register `A`.
 
-## 2.2 Instruction Cycle
+## 3.2 Instruction Cycle
 
 1. **Fetch:** Read opcode from memory[IP]
 2. **Decode:** Determine operation and addressing modes
@@ -37,6 +37,6 @@ IDLE ──step()──► RUNNING ──HLT──► HALTED
 4. **Execute:** Perform operation, compute [flags](isa.md#16-flag-behavior)
 5. **Writeback:** Store result, update IP/SP
 
-**Important:** Validation occurs before any state modification. For example, PUSH checks `SP > 0` before writing to memory. If validation fails, CPU enters FAULT without modifying memory or registers (except F and A for error code; see [Error Codes](errors.md)).
+**Important:** Validation occurs before any state modification. For example, PUSH faults when `SP == 0` before writing to memory. If validation fails, CPU enters FAULT without modifying memory or registers (except F and A for error code; see [Error Codes](errors.md)).
 
-For implementation pseudocode, see [Microarchitecture](uarch.md#31-execution-loop).
+For implementation pseudocode, see [Microarchitecture](uarch.md#41-execution-loop).

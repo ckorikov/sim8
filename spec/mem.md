@@ -1,6 +1,6 @@
-# Memory Model & Addressing
+# 2. Memory Model & Addressing
 
-> Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [CPU Architecture](cpu.md), [Microarchitecture](uarch.md), [Assembler](asm.md), [Tests](tests.md)
+> Architecture v1 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [CPU Architecture](cpu.md), [Microarchitecture](uarch.md), [Assembler](asm.md), [Tests](tests.md)
 
 This document is a focused reference for **memory layout**, **paged addressing via DP**, and **effective address calculation**.
 
@@ -88,6 +88,7 @@ $$\text{EA} = \text{pageOffset} \quad (\text{page 0 only})$$
 - Stack resides on **page 0**
 - PUSH/POP/CALL/RET perform bounds checking and enter **FAULT (A=2/A=3)** on underflow/overflow (see [Error Codes](errors.md))
 - Arithmetic that manually modifies SP via MOV/ADD/SUB/INC/DEC does **not** perform bounds checking
+- **PUSH source and DP:** `PUSH [addr]` and `PUSH [reg]` read the source value using DP (effective address = `DP × 256 + offset`), but always write to the stack on page 0. This is asymmetric by design — DP affects where data is *read from*, not where the stack resides.
 
 ## Conformance Notes
 
