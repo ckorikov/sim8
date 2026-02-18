@@ -1,6 +1,6 @@
 # 1. Instruction Set Architecture (ISA)
 
-> Part of [Technical Specification](spec.md) | See also: [Memory Model & Addressing](mem.md), [CPU Architecture](cpu.md), [Microarchitecture](uarch.md), [Assembler](asm.md), [Opcode Table](opcodes.md)
+> Architecture v1 | Part of [Technical Specification](spec.md) | See also: [Memory Model & Addressing](mem.md), [CPU Architecture](cpu.md), [Microarchitecture](uarch.md), [Assembler](asm.md), [Opcode Table](opcodes.md)
 
 ## 1.1 Overview
 
@@ -26,9 +26,11 @@
 
 | Register | Code | Initial Value | Description |
 |----------|------|---------------|-------------|
-| IP | — | 0 | Instruction Pointer; not directly accessible |
+| IP | — | 0 | Instruction Pointer (internal, wider than 8 bits); not directly accessible |
 | SP | 4 | 231 (0xE7) | Stack Pointer; grows downward |
 | DP | 5 | 0 | Data Page register (0-255); selects active 256-byte page for data access |
+
+**IP note:** IP is an internal register wider than 8 bits. Instruction advancement (`IP = IP + N`) does **not** wrap at 255; instead, the fetch boundary check (`IP + len > 256`) detects out-of-range access and triggers FAULT(5). Jump/CALL/RET targets assign 8-bit values to IP.
 
 **SP note:** SP (code 4) can be used as a register operand in MOV, ADD, SUB, INC, DEC, CMP instructions. It is **not** supported as operand in bitwise (AND/OR/XOR/NOT), shift (SHL/SHR), stack (PUSH/POP), jump, MUL, DIV, and CALL instructions.
 
@@ -48,6 +50,7 @@
 - **ADD/INC:** C=1 if result > 255 (unsigned overflow)
 - **SUB/DEC/CMP:** C=1 if result < 0 (unsigned underflow, i.e., borrow)
 - **MUL:** C=1 if result > 255
+- **DIV:** C=0 always (quotient of two 8-bit values is always 0-255)
 - **SHL:** C=1 if overflow (value × 2^n > 255)
 - **SHR:** C=1 if any bits were shifted out (value mod 2^n ≠ 0)
 - **AND/OR/XOR/NOT:** C=0 (always cleared)
@@ -79,7 +82,7 @@ Total: 64 KB organized as 256 pages of 256 bytes each.
 | Console Output | 0xE8 - 0xFF | 24 bytes | Memory-mapped I/O |
 
 **Key constraints:**
-- IP always executes from page 0 (code cannot exceed 232 bytes)
+- IP always executes from page 0 (code should stay below address 232 to avoid overwriting the I/O region; the CPU enforces the page boundary at address 256, not 232). Executing code from the I/O region (232-255) is technically valid — no special protection exists.
 - SP and stack operations always use page 0
 - `[SP]` and `[SP±offset]` always access page 0 (stack-relative)
 - JMP/CALL addresses are page-0 offsets (0-255)
@@ -90,7 +93,7 @@ Total: 64 KB organized as 256 pages of 256 bytes each.
 - At reset DP=0, so default behavior accesses page 0
 - **I/O region (232-255) exists only on page 0.** There is no special handling — to access I/O, DP must be 0. When DP≠0, `[232]`-`[255]` access extended memory, not console.
 
-See also: [Console I/O rule](mem.md#console-io-rule-important).
+See also: [DP interaction with I/O](mem.md#dp-interaction-important).
 
 ### Console Output (Memory-Mapped I/O)
 
@@ -308,7 +311,7 @@ Sets flags without storing result.
 |----------|--------|-------|
 | reg | 82 | 2 |
 
-**Bitwise operations flags:** C flag is **cleared** (set to 0). Z flag is set if result equals 0. Only GPR (A, B, C, D) allowed as register operands; SP/DP cause FAULT (`ERR_INVALID_REG`, A=4; see [Error Codes](errors.md)).
+**Bitwise operations flags:** C flag is **cleared** (set to 0). Z flag is set if result equals 0. Only GPR (A, B, C, D) allowed as **destination** register operands; SP/DP as destination cause FAULT (`ERR_INVALID_REG`, A=4; see [Error Codes](errors.md)). Note: SP is valid as a base in `[SP±offset]` source addressing.
 
 ### SHL — Shift Left (Opcodes 90-93)
 
@@ -332,12 +335,12 @@ Unsigned (logical) right shift (`>>>`).
 | reg, [addr] | 96 | 3 |
 | reg, const | 97 | 3 |
 
-**Alias:** `SAR` = `SHR`
+**Alias:** `SAR` = `SHR` (both perform unsigned logical right shift; unlike x86, SAR does not preserve the sign bit)
 
-**Shift operations:** Only GPR (A, B, C, D) allowed as operands; SP/DP cause FAULT (`ERR_INVALID_REG`, A=4). Shift amount can be 0-255; shifting by N≥8 bits produces 0.
+**Shift operations:** Only GPR (A, B, C, D) allowed as **destination** operands; SP/DP as destination cause FAULT (`ERR_INVALID_REG`, A=4). SP is valid as a base in `[SP±offset]` source addressing. Shift amount can be 0-255; shifting by N≥8 bits produces 0.
 - **SHL:** C = 1 if overflow (value × 2^n > 255)
 - **SHR:** C = 1 if any bits were shifted out (value mod 2^n ≠ 0)
-- **Shift by 0:** C is unchanged
+- **Shift by 0:** C is unchanged; Z is recomputed (based on the unchanged value)
 
 ### DB — Define Byte (Pseudo-instruction)
 
@@ -349,7 +352,7 @@ Unsigned (logical) right shift (`>>>`).
 
 ## 1.6 Flag Behavior
 
-Arithmetic operations set flags via the two-step carry+wrap logic below (see [pseudocode in uarch.md](uarch.md#32-flag-computation)). Shift and bitwise operations have explicit exceptions described in their instruction sections.
+Arithmetic operations set flags via the two-step carry+wrap logic below (see [pseudocode in uarch.md](uarch.md#42-flag-computation)). Shift and bitwise operations have explicit exceptions described in their instruction sections.
 
 **Step 1 — Carry and wrapping:**
 
@@ -369,7 +372,7 @@ C and Z can both be set simultaneously (e.g., `255 + 1` = 256 wraps to 0: C=1, Z
 
 **Bitwise operations:** AND, OR, XOR, NOT clear C flag (C=0) and set Z flag (based on result = 0).
 
-**Note:** MOV does **not** affect flags. CMP sets flags without storing the result.
+**Flag-neutral instructions:** MOV, PUSH, POP, CALL, RET, JMP, and all conditional jumps do **not** affect flags. CMP sets flags without storing the result.
 
 ## 1.7 Assembly Syntax
 
@@ -437,7 +440,7 @@ For the complete opcode mapping, see [Opcode Table](opcodes.md).
 | MOV reg, const | 6 | dest reg (0-5) | src const |
 | MOV [addr], const | 7 | dest addr | src const |
 | MOV [reg], const | 8 | dest regaddr | src const |
-| ADD/SUB/CMP | 10-17, 20-23 | dest reg (0-4) | src reg/regaddr/addr/const |
+| ADD/SUB/CMP | 10-17, 20-23 | dest reg (0-4) | src reg (0-4)/regaddr/addr/const |
 | AND/OR/XOR | 70-81 | dest reg_gpr (0-3) | src reg_gpr/regaddr/addr/const |
 | SHL/SHR | 90-97 | dest reg_gpr (0-3) | src reg_gpr/regaddr/addr/const |
 

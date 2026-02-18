@@ -1,6 +1,6 @@
-# Appendix C: Complete Opcode Table
+# Appendix A: Complete Opcode Table
 
-> Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Instruction Encoding](isa.md#18-instruction-encoding-format)
+> Architecture v1 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Instruction Encoding](isa.md#18-instruction-encoding-format)
 
 | Opcode | Mnemonic | Operands | Bytes |
 |--------|----------|----------|-------|
@@ -80,4 +80,4 @@
 | 97 | SHR | reg, const | 3 |
 
 **Total: 74 opcodes**
-**Unused ranges:** 9, 24-29, 44-49, 58-59, 68-69, 83-89, 98-255
+**Unused (reserved):** 9, 24-29, 44-49, 58-59, 68-69, 83-89, 98-255. These ranges are reserved for future architecture versions. Executing a reserved opcode triggers FAULT (`ERR_INVALID_OPCODE`, A=6).

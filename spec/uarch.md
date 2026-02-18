@@ -1,16 +1,17 @@
-# 3. Microarchitecture: Interpreter Model
+# 4. Microarchitecture: Interpreter Model
 
-> Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Memory Model & Addressing](mem.md), [CPU Architecture](cpu.md)
+> Architecture v1 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Memory Model & Addressing](mem.md), [CPU Architecture](cpu.md)
 
-## 3.0 Pseudocode Conventions
+## 4.0 Pseudocode Conventions
 
 The pseudocode in this section is language-agnostic. All values are integers unless specified.
 
 - `DIV` is integer division: `a DIV b = floor(a / b)` for `b>0`.
 - `mod` is mathematical modulo with a non-negative result: `x mod 256` is always in `0..255` (including for negative `x`).
 - `2 ^ n` denotes exponentiation: $2^n$.
-- `FAULT(code)` means: enter FAULT state by setting `state=FAULT`, set `F=true`, set `A=code`, and stop executing the current instruction/step (see [Error Codes](errors.md)).
+- `FAULT(code)` means: enter FAULT state by setting `state=FAULT`, set `F=true`, set `A=code`, and **immediately return** (non-local exit) — no further lines in the current handler or `step()` execute. Flags `Z` and `C` retain their pre-fault values. See [Error Codes](errors.md).
 - `carry` and `zero` refer to the architectural flags `C` and `Z`.
+- `memory[addr] = value` stores `value mod 256` (memory cells are 8-bit).
 
 **Instruction stream:** Machine code is stored in memory. The opcode is fetched from `memory[IP]`, and operand bytes are fetched from `memory[IP + k]` as part of instruction decode.
 
@@ -21,9 +22,11 @@ Instruction length is opcode-dependent (1–3 bytes). Each instruction handler a
 The CPU also maintains a control state variable:
 
 - `state` ∈ {`IDLE`, `RUNNING`, `HALTED`, `FAULT`}
-- `reset()` initializes `state=IDLE` and architectural registers/flags as defined in [CPU Architecture](cpu.md#21-processor-states).
+- `reset()` zeroes all memory (64 KB), initializes `state=IDLE`, and sets architectural registers/flags to their initial values as defined in [CPU Architecture](cpu.md#31-processor-states). `steps` and `cycles` are zeroed.
 
-## 3.1 Execution Loop
+## 4.1 Execution Loop
+
+Calling `step()` on a HALTED or FAULT CPU is a no-op (returns `false`, no state changes).
 
 ```
 FUNCTION step():
@@ -39,14 +42,18 @@ FUNCTION step():
         state = HALTED
         RETURN false
 
-    execute(opcode)               // FAULT(6) if opcode is unassigned
+    len = instructionLength(opcode)    // from opcode table; 0 if unassigned
+    IF len == 0: FAULT(6)             // ERR_INVALID_OPCODE
+    IF IP + len > 256: FAULT(5)       // ERR_PAGE_BOUNDARY
+
+    execute(opcode)
     IF state == FAULT: RETURN false
     steps = steps + 1
     cycles = cycles + cost(opcode)
     RETURN true                   // RUNNING
 ```
 
-## 3.2 Flag Computation
+## 4.2 Flag Computation
 
 **Carry semantics (formally verified):**
 - For ADD: `carry = (result > 255)` — unsigned overflow
@@ -61,7 +68,7 @@ FUNCTION checkOperation(value):
     RETURN value
 ```
 
-## 3.3 Address Calculation
+## 4.3 Address Calculation
 
 **Direct address** — always uses DP:
 ```
@@ -117,7 +124,7 @@ FUNCTION decodeMovReg(reg_code):
     RETURN reg_code
 ```
 
-## 3.4 Instruction Handlers
+## 4.4 Instruction Handlers
 
 **Note:** This section shows reference handlers for representative instruction forms to demonstrate the interpreter execution model. The complete instruction set (all opcode variants) is defined in [ISA](isa.md) and the opcode table in [Opcodes](opcodes.md). Any instruction form not listed here follows the same decode/validate conventions and uses the same effective-address and flag rules described above.
 
@@ -371,7 +378,7 @@ SP = SP - 1
 IP = target
 ```
 
-**Return address note:** `return_addr` is stored as an 8-bit value. If `IP + 2 > 255` (e.g., CALL at IP=254), the stored value wraps modulo 256. This is a natural consequence of 8-bit memory — no special fault is raised, but RET will jump to the wrapped address. In practice, executable code should stay below address 232 (I/O region).
+**Return address note:** If `IP + 2 > 255` (e.g., CALL at IP=254), the stored return address wraps modulo 256 per the memory write convention. In practice, executable code should stay below address 232 (I/O region).
 
 **RET (Opcode 57):**
 ```
@@ -471,7 +478,7 @@ IP = IP + 3
 
 For instruction encoding details, see [ISA section 1.8](isa.md#18-instruction-encoding-format).
 
-## 3.5 Cost Model
+## 4.5 Cost Model
 
 The CPU maintains two monotonic counters:
 

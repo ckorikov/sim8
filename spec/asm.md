@@ -1,8 +1,8 @@
-# 4. Assembler Specification
+# 5. Assembler Specification
 
-> Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Memory Model & Addressing](mem.md), [Instruction Encoding](isa.md#18-instruction-encoding-format)
+> Architecture v1 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Memory Model & Addressing](mem.md), [Instruction Encoding](isa.md#18-instruction-encoding-format)
 
-## 4.1 Two-Pass Assembly
+## 5.1 Two-Pass Assembly
 
 **Pass 1 — Code Generation:**
 
@@ -20,7 +20,7 @@ Forward label references may be left unresolved during pass 1.
 
 Resolve all label references in operands to their numeric addresses. If a label is not found, report an "Undefined label" error.
 
-## 4.2 Assembler Output
+## 5.2 Assembler Output
 
 The assembler produces:
 
@@ -30,7 +30,7 @@ The assembler produces:
 
 **Note:** DB pseudo-instructions are not CPU instructions and may be excluded from source-to-instruction mapping.
 
-## 4.3 Labels
+## 5.3 Labels
 
 - Defined with trailing colon: `start:`, `.loop:`
 - Must start with a letter or dot, followed by word characters: `/^[.A-Za-z]\w*$/`
@@ -39,14 +39,14 @@ The assembler produces:
 - Forward references allowed — a label can be used before its definition
 - Dot-prefix labels supported for local scope convention: `.loop`, `.end`
 
-## 4.4 Comments
+## 5.4 Comments
 
 - Semicolon (`;`) begins a comment
 - Standalone comment lines: `; this is a comment`
 - Inline comments after instructions: `MOV A, 5 ; load value`
 - Empty lines are allowed
 
-## 4.5 Register Operands
+## 5.5 Register Operands
 
 | Register | Code | Allowed as operand |
 |----------|------|-------------------|
@@ -58,7 +58,7 @@ The assembler produces:
 
 **SP in indirect addressing:** `[SP±offset]` always uses page 0, regardless of DP. This ensures stack-relative access is consistent with PUSH/POP.
 
-## 4.6 Constraints
+## 5.6 Constraints
 
 - Maximum program size: 232 bytes (code + data + stack share 0x00-0xE7); addresses 232-255 are I/O and will be overwritten if program exceeds 232 bytes
 - Data storage: 64 KB via DP register (256 pages × 256 bytes); see [memory model](isa.md#13-memory-model)
@@ -66,9 +66,13 @@ The assembler produces:
 - Mnemonics are case-insensitive (`mov` = `MOV` = `Mov`)
 - DB with comma-separated operands generates one byte per value (`DB 1, 2, 3` → `[1, 2, 3]`)
 - DB with string operand generates one byte per character (ASCII codes)
+- DB does not support mixing strings and numbers in a single directive (`DB "A", 66` is a syntax error)
+- `DB ""` (empty string) is a syntax error — DB must produce at least one byte
+- Multiple distinct labels on the same address are allowed (`a: \n b: \n HLT` defines both `a` and `b` at offset 0)
+- An empty program (only comments/blank lines) produces zero bytes of output and an empty label table — this is valid
 - DB is not recorded in the instruction mapping (not a CPU instruction)
 
-## 4.7 Error Handling
+## 5.7 Error Handling
 
 All errors include the source line number (1-based: first line is 1).
 
