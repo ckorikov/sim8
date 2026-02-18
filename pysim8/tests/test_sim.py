@@ -1,4 +1,4 @@
-"""CPU simulator tests from spec/tests.md (tests 1-109, 152-181).
+"""CPU simulator tests from spec/tests.md (tests 1-231).
 
 Tests are organized by spec sections. Each test assembles source code,
 executes it on the CPU, and verifies the resulting state.
@@ -912,3 +912,402 @@ class TestTracing:
         cpu.run()
         assert "A" in events[0].changes
         assert events[0].changes["A"] == 42
+
+
+# ── Cost Model ────────────────────────────────────────────────────────
+
+
+class TestCostModel:
+    """Cost model: steps, cycles, per-instruction cost."""
+
+    def test_zero_after_load(self) -> None:
+        cpu = CPU()
+        cpu.load(assemble("HLT").code)
+        assert cpu.steps == 0
+        assert cpu.cycles == 0
+
+    def test_mov_reg_const(self) -> None:
+        cpu = run("MOV A, 42\nHLT")
+        assert cpu.steps == 1
+        assert cpu.cycles == 1
+
+    def test_mov_reg_addr(self) -> None:
+        cpu = run("MOV A, [200]\nHLT")
+        assert cpu.steps == 1
+        assert cpu.cycles == 2
+
+    def test_mul_reg_cost(self) -> None:
+        cpu = run("MOV A, 2\nMUL 5\nHLT")
+        assert cpu.steps == 2
+        # MOV A,const=1 + MUL const=2
+        assert cpu.cycles == 3
+
+    def test_push_const_cost(self) -> None:
+        cpu = run("PUSH 1\nHLT")
+        assert cpu.steps == 1
+        assert cpu.cycles == 2
+
+    def test_push_regaddr_cost(self) -> None:
+        cpu = run("MOV B, 0x50\nPUSH [B]\nHLT")
+        assert cpu.steps == 2
+        # MOV reg,const=1 + PUSH regaddr=4 (mem read + stack write, dependency)
+        assert cpu.cycles == 5
+
+    def test_push_addr_cost(self) -> None:
+        cpu = run("PUSH [0x50]\nHLT")
+        assert cpu.steps == 1
+        # mem read + stack write, dependency → 4
+        assert cpu.cycles == 4
+
+    def test_pop_cost(self) -> None:
+        cpu = run("PUSH 1\nPOP A\nHLT")
+        assert cpu.steps == 2
+        # PUSH const=2 + POP reg=2
+        assert cpu.cycles == 4
+
+    def test_call_ret_cost(self) -> None:
+        cpu = run("CALL fn\nHLT\nfn: RET")
+        assert cpu.steps == 2
+        # CALL addr=2 + RET=2
+        assert cpu.cycles == 4
+
+    def test_custom_cost_override(self) -> None:
+        cpu = CPU(costs={"MUL": 8})
+        cpu.load(assemble("MOV A, 2\nMUL 3\nHLT").code)
+        cpu.run()
+        assert cpu.steps == 2
+        # MOV=1 + MUL=8
+        assert cpu.cycles == 9
+
+    def test_custom_override_all_variants(self) -> None:
+        """Override replaces ALL variants of a mnemonic."""
+        cpu = CPU(costs={"MUL": 8})
+        # MUL reg (default 2), MUL [addr] (default 4) — both become 8
+        cpu.load(assemble(
+            "MOV A, 2\nMOV B, 3\nMUL B\n"
+            "MOV A, 2\nMUL [0x50]\nHLT"
+        ).code)
+        cpu.mem[0x50] = 1
+        cpu.run()
+        # MOV=1 + MOV=1 + MUL_REG=8 + MOV=1 + MUL_ADDR=8
+        assert cpu.cycles == 19
+
+    def test_multi_instruction_sum(self) -> None:
+        cpu = run("MOV A, 1\nMOV B, 2\nADD A, B\nHLT")
+        assert cpu.steps == 3
+        # 1+1+1 (all reg-reg/imm)
+        assert cpu.cycles == 3
+
+    def test_hlt_not_counted(self) -> None:
+        cpu = run("HLT")
+        assert cpu.steps == 0
+        assert cpu.cycles == 0
+
+    def test_fault_not_counted(self) -> None:
+        cpu = CPU()
+        cpu.load(assemble("DB 9").code)
+        cpu.run()
+        assert cpu.state == CpuState.FAULT
+        assert cpu.steps == 0
+        assert cpu.cycles == 0
+
+    def test_trace_event_cost(self) -> None:
+        events, cb = list_tracer()
+        cpu = CPU(tracer=cb)
+        cpu.load(assemble("PUSH 1\nHLT").code)
+        cpu.run()
+        assert len(events) == 1
+        assert events[0].cost == 2
+
+    def test_unknown_mnemonic_raises(self) -> None:
+        with pytest.raises(ValueError, match="Unknown mnemonics"):
+            CPU(costs={"NOPE": 5})
+
+    def test_reset_clears_counters(self) -> None:
+        cpu = CPU()
+        cpu.load(assemble("MOV A, 1\nHLT").code)
+        cpu.run()
+        assert cpu.steps == 1
+        cpu.load(assemble("MOV A, 2\nHLT").code)
+        cpu.run()
+        assert cpu.steps == 1
+        assert cpu.cycles == 1
+
+    def test_reset_preserves_op_cost(self) -> None:
+        cpu = CPU(costs={"MUL": 10})
+        cpu.load(assemble("MOV A, 2\nMUL 3\nHLT").code)
+        cpu.run()
+        assert cpu.cycles == 11  # 1 + 10
+        cpu.load(assemble("MOV A, 2\nMUL 3\nHLT").code)
+        cpu.run()
+        assert cpu.cycles == 11  # still 1 + 10
+
+
+# ── 6.20 Fault Conditions and Edge Cases (tests 157-160) ─────────────
+
+
+class TestFaultEdge:
+    """Spec §6.20 — faults and edge cases."""
+
+    def test_157_invalid_opcode(self) -> None:
+        cpu = run("JMP test\ntest: DB 9")
+        assert cpu.state == CpuState.FAULT
+        assert cpu.fault is True
+        assert cpu.a == ErrorCode.INVALID_OPCODE
+
+    def test_158_page_boundary_positive(self) -> None:
+        run_fault("MOV B, 250\nMOV A, [B+15]", ErrorCode.PAGE_BOUNDARY)
+
+    def test_159_page_boundary_negative(self) -> None:
+        run_fault("MOV B, 5\nMOV A, [B-10]", ErrorCode.PAGE_BOUNDARY)
+
+    def test_160_sp_as_source(self) -> None:
+        cpu = run("MOV SP, 100\nMOV A, 5\nADD A, SP\nHLT")
+        assert cpu.a == 105
+
+
+# ── 6.23 Coverage Completeness (tests 185-197) ──────────────────────
+
+
+class TestCoverageCompleteness:
+    """Spec §6.23 — edge cases and coverage gaps."""
+
+    def test_185_fetch_boundary(self) -> None:
+        """3-byte opcode at IP=254 crosses page boundary."""
+        cpu = run(
+            "MOV [254], 13\n"  # ADD opcode
+            "MOV [255], 0\n"   # reg A
+            "JMP 254"
+        )
+        assert cpu.state == CpuState.FAULT
+        assert cpu.a == ErrorCode.PAGE_BOUNDARY
+
+    def test_186_dp_rejected_in_add(self) -> None:
+        """ADD with reg_code=5 (DP) → FAULT(4)."""
+        run_fault("DB 13, 5, 1", ErrorCode.INVALID_REG)
+
+    def test_187_div_clears_carry(self) -> None:
+        """DIV always clears C regardless of prior state."""
+        cpu = run("MOV A, 200\nADD A, 100\nMOV A, 10\nDIV 2\nHLT")
+        assert cpu.a == 5
+        assert cpu.carry is False
+
+    def test_188_shift_by_8(self) -> None:
+        """Shift by 8: result=0, C=1 (nonzero value)."""
+        cpu = run("MOV A, 255\nSHL A, 8\nHLT")
+        assert cpu.a == 0
+        assert cpu.zero is True
+        assert cpu.carry is True
+
+    def test_191_sub_addr(self) -> None:
+        """SUB reg, [addr] (opcode 16)."""
+        cpu = run("MOV [0x50], 3\nMOV A, 10\nSUB A, [0x50]\nHLT")
+        assert cpu.a == 7
+        assert cpu.carry is False
+
+    def test_192_call_stack_overflow(self) -> None:
+        """CALL with SP=0 → FAULT(2)."""
+        run_fault("MOV SP, 0\nMOV A, 100\nCALL A", ErrorCode.STACK_OVERFLOW)
+
+    def test_193_ret_underflow(self) -> None:
+        """RET on initial state (SP=231) → underflow."""
+        run_fault("RET", ErrorCode.STACK_UNDERFLOW)
+
+    def test_194_call_return_addr_wrapping(self) -> None:
+        """CALL at IP=254: return_addr = 256 mod 256 = 0."""
+        cpu = run(
+            "MOV [254], 56\n"  # CALL addr
+            "MOV [255], 20\n"  # target = 20
+            "MOV [20], 54\n"   # POP B
+            "MOV [21], 1\n"    # reg = B
+            "MOV [22], 0\n"    # HLT
+            "JMP 254"
+        )
+        assert cpu.b == 0  # wrapped return address
+
+    def test_195_mul_carry_and_zero(self) -> None:
+        """128*2=256 wraps to 0, carry set."""
+        cpu = run("MOV A, 128\nMUL 2\nHLT")
+        assert cpu.a == 0
+        assert cpu.carry is True
+        assert cpu.zero is True
+
+    def test_196_push_source_uses_dp(self) -> None:
+        """PUSH [reg] reads from DP page."""
+        cpu = run(
+            "MOV DP, 1\n"
+            "MOV B, 0x50\n"
+            "MOV [B], 42\n"   # writes 42 to page 1, offset 0x50
+            "PUSH [B]\n"      # reads from page 1 via DP
+            "MOV DP, 0\n"
+            "POP A\n"
+            "HLT"
+        )
+        assert cpu.a == 42
+
+    def test_197_exec_from_io_region(self) -> None:
+        """Code in I/O region (232-255) is executable."""
+        cpu = run(
+            "MOV [232], 6\n"   # MOV opcode
+            "MOV [233], 0\n"   # reg A
+            "MOV [234], 99\n"  # value 99
+            "MOV [235], 0\n"   # HLT
+            "JMP 232"
+        )
+        assert cpu.a == 99
+        assert cpu.ip == 235
+
+
+# ── 6.24 Opcode Coverage (tests 198-228) ─────────────────────────────
+
+
+class TestOpcodeCoverage:
+    """Spec §6.24 — opcode variants not covered elsewhere."""
+
+    # 6.24.2 Conditional jumps via register (200-205)
+
+    def test_200_jz_reg(self) -> None:
+        cpu = run(
+            "MOV A, 5\nCMP A, 5\nMOV B, equal\nJZ B\nMOV C, 1\nequal: HLT"
+        )
+        assert cpu.c == 0
+
+    def test_201_jnz_reg(self) -> None:
+        cpu = run(
+            "MOV A, 5\nCMP A, 3\nMOV B, nz\nJNZ B\nMOV C, 1\nnz: HLT"
+        )
+        assert cpu.c == 0
+
+    def test_202_jc_reg(self) -> None:
+        cpu = run(
+            "MOV A, 200\nADD A, 100\nMOV B, carry\nJC B\nMOV C, 1\ncarry: HLT"
+        )
+        assert cpu.c == 0
+
+    def test_203_jnc_reg(self) -> None:
+        cpu = run(
+            "MOV A, 5\nADD A, 3\nMOV B, nc\nJNC B\nMOV C, 1\nnc: HLT"
+        )
+        assert cpu.c == 0
+
+    def test_204_ja_reg(self) -> None:
+        cpu = run(
+            "MOV A, 10\nCMP A, 3\nMOV B, above\nJA B\nMOV C, 1\nabove: HLT"
+        )
+        assert cpu.c == 0
+
+    def test_205_jna_reg(self) -> None:
+        cpu = run(
+            "MOV A, 3\nCMP A, 10\nMOV B, na\nJNA B\nMOV C, 1\nna: HLT"
+        )
+        assert cpu.c == 0
+
+    # 6.24.3 Bitwise — all addressing modes (206-214)
+
+    def test_206_and_reg_reg(self) -> None:
+        cpu = run("MOV A, 0xFF\nMOV B, 0x0F\nAND A, B\nHLT")
+        assert cpu.a == 0x0F
+        assert cpu.carry is False
+
+    def test_207_and_reg_regaddr(self) -> None:
+        cpu = run("MOV B, 0x50\nMOV [0x50], 0x0F\nMOV A, 0xFF\nAND A, [B]\nHLT")
+        assert cpu.a == 0x0F
+
+    def test_208_and_reg_addr(self) -> None:
+        cpu = run("MOV [0x50], 0x0F\nMOV A, 0xFF\nAND A, [0x50]\nHLT")
+        assert cpu.a == 0x0F
+
+    def test_209_or_reg_reg(self) -> None:
+        cpu = run("MOV A, 0xF0\nMOV B, 0x0F\nOR A, B\nHLT")
+        assert cpu.a == 0xFF
+
+    def test_210_or_reg_regaddr(self) -> None:
+        cpu = run("MOV B, 0x50\nMOV [0x50], 0x0F\nMOV A, 0xF0\nOR A, [B]\nHLT")
+        assert cpu.a == 0xFF
+
+    def test_211_or_reg_addr(self) -> None:
+        cpu = run("MOV [0x50], 0x0F\nMOV A, 0xF0\nOR A, [0x50]\nHLT")
+        assert cpu.a == 0xFF
+
+    def test_212_xor_reg_reg(self) -> None:
+        cpu = run("MOV A, 0xFF\nMOV B, 0xFF\nXOR A, B\nHLT")
+        assert cpu.a == 0
+        assert cpu.zero is True
+
+    def test_213_xor_reg_regaddr(self) -> None:
+        cpu = run("MOV B, 0x50\nMOV [0x50], 0xFF\nMOV A, 0xFF\nXOR A, [B]\nHLT")
+        assert cpu.a == 0
+        assert cpu.zero is True
+
+    def test_214_xor_reg_addr(self) -> None:
+        cpu = run("MOV [0x50], 0xFF\nMOV A, 0xFF\nXOR A, [0x50]\nHLT")
+        assert cpu.a == 0
+        assert cpu.zero is True
+
+    # 6.24.4 Shift — all addressing modes (215-220)
+
+    def test_215_shl_reg_reg(self) -> None:
+        cpu = run("MOV A, 1\nMOV B, 3\nSHL A, B\nHLT")
+        assert cpu.a == 8
+
+    def test_216_shl_reg_regaddr(self) -> None:
+        cpu = run("MOV B, 0x50\nMOV [0x50], 2\nMOV A, 1\nSHL A, [B]\nHLT")
+        assert cpu.a == 4
+
+    def test_217_shl_reg_addr(self) -> None:
+        cpu = run("MOV [0x50], 3\nMOV A, 1\nSHL A, [0x50]\nHLT")
+        assert cpu.a == 8
+
+    def test_218_shr_reg_reg(self) -> None:
+        cpu = run("MOV A, 128\nMOV B, 1\nSHR A, B\nHLT")
+        assert cpu.a == 64
+
+    def test_219_shr_reg_regaddr(self) -> None:
+        cpu = run("MOV B, 0x50\nMOV [0x50], 2\nMOV A, 128\nSHR A, [B]\nHLT")
+        assert cpu.a == 32
+
+    def test_220_shr_reg_addr(self) -> None:
+        cpu = run("MOV [0x50], 3\nMOV A, 128\nSHR A, [0x50]\nHLT")
+        assert cpu.a == 16
+
+    # 6.24.5 MOV + DP forms (221-225)
+
+    def test_221_mov_dp_from_reg(self) -> None:
+        cpu = run("MOV A, 5\nMOV DP, A\nHLT")
+        assert cpu.dp == 5
+
+    def test_222_mov_dp_from_addr(self) -> None:
+        cpu = run("MOV [0x50], 3\nMOV DP, [0x50]\nHLT")
+        assert cpu.dp == 3
+
+    def test_223_mov_dp_from_regaddr(self) -> None:
+        cpu = run("MOV B, 0x50\nMOV [0x50], 7\nMOV DP, [B]\nHLT")
+        assert cpu.dp == 7
+
+    def test_224_mov_addr_dp(self) -> None:
+        """MOV [addr], DP — addr uses current DP value."""
+        cpu = run("MOV DP, 42\nMOV [0x50], DP\nHLT")
+        assert cpu.mem[42 * 256 + 0x50] == 42
+
+    def test_225_mov_regaddr_dp(self) -> None:
+        """MOV [reg], DP — addr uses current DP value."""
+        cpu = run("MOV DP, 42\nMOV B, 0x50\nMOV [B], DP\nHLT")
+        assert cpu.mem[42 * 256 + 0x50] == 42
+
+    # 6.24.6 Flag preservation — SP/DP MOV (226-227)
+
+    def test_226_mov_sp_preserves_flags(self) -> None:
+        cpu = run("MOV A, 255\nADD A, 1\nMOV SP, 200\nHLT")
+        assert cpu.carry is True
+        assert cpu.zero is True
+
+    def test_227_mov_dp_preserves_flags(self) -> None:
+        cpu = run("MOV A, 255\nADD A, 1\nMOV DP, 5\nHLT")
+        assert cpu.carry is True
+        assert cpu.zero is True
+
+    # 6.24.7 Initial memory zero (228)
+
+    def test_228_initial_memory_zero(self) -> None:
+        cpu = run("MOV A, [0x50]\nHLT")
+        assert cpu.a == 0
