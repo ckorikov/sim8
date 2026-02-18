@@ -926,7 +926,7 @@ Additional tests for edge cases and opcode variants identified by specification 
 | # | Source | Verify | Description |
 |---|--------|--------|-------------|
 | 185 | `MOV [254], 13` | F=true, A=5 | 3-byte opcode at IP=254 crosses page boundary |
-|     | `MOV [255], 0` | state=FAULT | IP+len = 254+3 = 257 > 256 → FAULT(5) |
+|     | `MOV [255], 0` | state=FAULT | IP+len = 254+3 = 257 >= 256 → FAULT(5) |
 |     | `JMP 254` | | ERR_PAGE_BOUNDARY from fetch |
 
 ### 6.23.2 DP Rejection in Non-MOV

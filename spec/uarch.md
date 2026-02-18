@@ -17,7 +17,7 @@ The pseudocode in this section is language-agnostic. All values are integers unl
 
 Instruction length is opcode-dependent (1–3 bytes). Each instruction handler advances `IP` by its own encoded length (or assigns `IP` directly for control-flow instructions).
 
-**Instruction fetch boundary:** If `IP + instrLength > 256`, the instruction would cross the page 0 boundary. This is a `FAULT(5)` (`ERR_PAGE_BOUNDARY`) before any operand bytes are read. For example, a 3-byte instruction at IP=254 faults because bytes 254, 255, 256 span two pages.
+**Instruction fetch boundary:** If `IP + instrLength >= 256`, the instruction extends to or past the page 0 boundary. This is a `FAULT(5)` (`ERR_PAGE_BOUNDARY`) before any operand bytes are read. For example, a 3-byte instruction at IP=254 faults because 254 + 3 = 257 >= 256.
 
 The CPU also maintains a control state variable:
 
@@ -44,7 +44,7 @@ FUNCTION step():
 
     len = instructionLength(opcode)    // from opcode table; 0 if unassigned
     IF len == 0: FAULT(6)             // ERR_INVALID_OPCODE
-    IF IP + len > 256: FAULT(5)       // ERR_PAGE_BOUNDARY
+    IF IP + len >= 256: FAULT(5)      // ERR_PAGE_BOUNDARY
 
     execute(opcode)
     IF state == FAULT: RETURN false
@@ -105,7 +105,7 @@ FUNCTION indirectAddress(encoded_byte):
 
 FUNCTION instrByte(k):
     // Fetch the k-th byte of the current instruction (k=0 is opcode)
-    // Caller guarantees IP + instrLength <= 256 (checked at decode time)
+    // Caller guarantees IP + instrLength < 256 (checked at decode time)
     RETURN memory[IP + k]
 
 FUNCTION decodeGPR(reg_code):

@@ -30,7 +30,7 @@
 | SP | 4 | 231 (0xE7) | Stack Pointer; grows downward |
 | DP | 5 | 0 | Data Page register (0-255); selects active 256-byte page for data access |
 
-**IP note:** IP is an internal register wider than 8 bits. Instruction advancement (`IP = IP + N`) does **not** wrap at 255; instead, the fetch boundary check (`IP + len > 256`) detects out-of-range access and triggers FAULT(5). Jump/CALL/RET targets assign 8-bit values to IP.
+**IP note:** IP is an 8-bit register (0–255). The fetch boundary check (`IP + len >= 256`) ensures IP never leaves this range; it triggers FAULT(5) before execution when an instruction would reach or cross the page 0 boundary. Jump/CALL/RET targets are 8-bit values and always stay in range.
 
 **SP note:** SP (code 4) can be used as a register operand in MOV, ADD, SUB, INC, DEC, CMP instructions. It is **not** supported as operand in bitwise (AND/OR/XOR/NOT), shift (SHL/SHR), stack (PUSH/POP), jump, MUL, DIV, and CALL instructions.
 
