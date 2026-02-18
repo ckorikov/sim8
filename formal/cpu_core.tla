@@ -32,6 +32,7 @@ TypeInvariant ==
     /\ A \in BYTE /\ B \in BYTE /\ C \in BYTE /\ D \in BYTE
     /\ Z \in BOOLEAN /\ C_flag \in BOOLEAN /\ F \in BOOLEAN
     /\ state \in {"IDLE", "RUNNING", "HALTED", "FAULT"}
+    /\ cycles \in Nat
 
 -----------------------------------------------------------------------------
 (* State Machine Invariants *)
@@ -61,6 +62,12 @@ MemoryInByte == \A i \in DOMAIN memory: memory[i] \in BYTE
 \* Step counter bounded
 StepsBounded == step_count <= MAX_STEPS
 
+\* Cycles bounded: max cost per instruction is 4 (MUL/DIV + memory)
+CyclesBounded == cycles <= MAX_STEPS * 4
+
+\* Cycles are monotonically non-negative
+CyclesNonNeg == cycles >= 0
+
 \* Combined safety invariant
 Safety == TypeInvariant /\ FaultConsistency /\ FaultCodeValid /\ DPInPageRange
 
@@ -80,7 +87,7 @@ ExecInvalid == memory[IP] \notin OPCODES
 IPOverflowGuard ==
     /\ memory[IP] \in OPCODES
     /\ memory[IP] # OP_HLT
-    /\ IP + InstrSize(memory[IP]) > 255
+    /\ IP + InstrSize(memory[IP]) >= 256
 
 \* Initialize memory with program
 InitMem == [i \in 0..MEMORY_SIZE-1 |-> IF i < Len(PROGRAM) THEN PROGRAM[i+1] ELSE 0]
@@ -93,12 +100,13 @@ Init ==
     /\ memory = InitMem
     /\ state = "IDLE"
     /\ step_count = 0
+    /\ cycles = 0
 
 \* First step transitions IDLE -> RUNNING
 FirstStep ==
     /\ state = "IDLE"
     /\ state' = "RUNNING"
-    /\ UNCHANGED <<IP, SP, DP, A, B, C, D, Z, C_flag, F, memory, step_count>>
+    /\ UNCHANGED <<IP, SP, DP, A, B, C, D, Z, C_flag, F, memory, step_count, cycles>>
 
 \* Execute one instruction (state must be RUNNING)
 \* IP overflow is checked first to ensure mutual exclusion with handlers
@@ -130,6 +138,7 @@ Step ==
             \/ ExecSHL_90 \/ ExecSHL_91 \/ ExecSHL_92 \/ ExecSHL_93
             \/ ExecSHR_94 \/ ExecSHR_95 \/ ExecSHR_96 \/ ExecSHR_97
             \/ ExecInvalid
+    /\ cycles' = IF state' = "RUNNING" THEN cycles + Cost(memory[IP]) ELSE cycles
 
 \* Reset signal: from HALTED or FAULT back to IDLE
 Reset ==
@@ -140,6 +149,7 @@ Reset ==
     /\ memory' = InitMem
     /\ state' = "IDLE"
     /\ step_count' = 0
+    /\ cycles' = 0
 
 \* Stutter in terminal states (no Reset action taken)
 Stutter == state \in {"HALTED", "FAULT"} /\ UNCHANGED vars

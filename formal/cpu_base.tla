@@ -11,9 +11,9 @@ VARIABLES
     IP, SP, DP,
     A, B, C, D,
     Z, C_flag, F,
-    memory, state, step_count
+    memory, state, step_count, cycles
 
-vars == <<IP, SP, DP, A, B, C, D, Z, C_flag, F, memory, state, step_count>>
+vars == <<IP, SP, DP, A, B, C, D, Z, C_flag, F, memory, state, step_count, cycles>>
 
 -----------------------------------------------------------------------------
 (* Constants *)
@@ -156,6 +156,36 @@ InstrSize(op) ==
     ELSE IF op \in {OP_INC, OP_DEC, OP_NOT} \cup (30..43) \cup (50..56)
                    \cup (60..67) THEN 2
     ELSE 3  \* MOV 1-8, ADD/SUB/CMP, AND/OR/XOR, SHL/SHR
+
+\* Instruction cost (pipeline model)
+\* Stages: reg_writeback=0, simple_alu=1, mem=2, expensive_alu=2
+\* Independent: max.  Dependent (data dependency): sum.
+Cost(op) ==
+    IF op = OP_HLT THEN 0
+    ELSE IF op \in {OP_PUSH_I, OP_PUSH_A,
+                    OP_MUL_I, OP_MUL_A,
+                    OP_DIV_I, OP_DIV_A} THEN 4   \* mem(2)+mem(2) or mem(2)+alu(2)
+    ELSE IF op \in {OP_ADD_RI, OP_ADD_RA,
+                    OP_SUB_RI, OP_SUB_RA,
+                    OP_CMP_RI, OP_CMP_RA,
+                    OP_AND_RI, OP_AND_RA,
+                    OP_OR_RI, OP_OR_RA,
+                    OP_XOR_RI, OP_XOR_RA,
+                    OP_SHL_RI, OP_SHL_RA,
+                    OP_SHR_RI, OP_SHR_RA} THEN 3  \* mem(2)+alu(1)
+    ELSE IF op \in {OP_MOV_RR, OP_MOV_RC,
+                    OP_ADD_RR, OP_ADD_RC,
+                    OP_SUB_RR, OP_SUB_RC,
+                    OP_INC, OP_DEC,
+                    OP_CMP_RR, OP_CMP_RC,
+                    OP_AND_RR, OP_AND_RC,
+                    OP_OR_RR, OP_OR_RC,
+                    OP_XOR_RR, OP_XOR_RC,
+                    OP_NOT,
+                    OP_SHL_RR, OP_SHL_RC,
+                    OP_SHR_RR, OP_SHR_RC}
+                    \cup (30..43) THEN 1           \* alu(1) only
+    ELSE 2                                         \* mem(2) only
 
 \* Common UNCHANGED patterns
 unch_jump == <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state>>

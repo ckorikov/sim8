@@ -47,13 +47,13 @@ ExecCALL_55 == memory[IP] = OP_CALL_R
     /\ LET reg == Mem(IP+1) IN
        IF reg \notin 0..3 THEN Fault(ERR_INVALID_REG)
        ELSE IF SP = 0 THEN Fault(ERR_STACK_OVERFLOW)
-       ELSE memory' = [memory EXCEPT ![SP] = IP + 2]
+       ELSE memory' = [memory EXCEPT ![SP] = (IP + 2) % 256]
             /\ SP' = SP - 1 /\ IP' = RegValue(reg)
             /\ UNCHANGED <<DP,A,B,C,D,F,state,Z,C_flag>>
 
 ExecCALL_56 == memory[IP] = OP_CALL
     /\ IF SP = 0 THEN Fault(ERR_STACK_OVERFLOW)
-       ELSE memory' = [memory EXCEPT ![SP] = IP + 2]
+       ELSE memory' = [memory EXCEPT ![SP] = (IP + 2) % 256]
             /\ SP' = SP - 1 /\ IP' = Mem(IP+1)
             /\ UNCHANGED <<DP,A,B,C,D,F,state,Z,C_flag>>
 
