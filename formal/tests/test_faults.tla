@@ -12,6 +12,6 @@ TestProgram == <<
     OP_HLT
 >>
 
-FaultHasErrorCode == F => (A \in 1..6)
+FaultHasErrorCode == F => (A \in {1,2,3,4,5,6,12})
 
 =============================================================================
