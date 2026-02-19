@@ -1,6 +1,6 @@
 # 2. Memory Model & Addressing
 
-> Architecture v1 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [CPU Architecture](cpu.md), [Microarchitecture](uarch.md), [Assembler](asm.md), [Tests](tests.md)
+> Architecture v2 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [CPU Architecture](cpu.md), [Microarchitecture](uarch.md), [Assembler](asm.md), [Tests](tests.md), [FP Tests](tests-fp.md), [FPU](fp.md)
 
 This document is a focused reference for **memory layout**, **paged addressing via DP**, and **effective address calculation**.
 
@@ -89,6 +89,46 @@ $$\text{EA} = \text{pageOffset} \quad (\text{page 0 only})$$
 - PUSH/POP/CALL/RET perform bounds checking and enter **FAULT (A=2/A=3)** on underflow/overflow (see [Error Codes](errors.md))
 - Arithmetic that manually modifies SP via MOV/ADD/SUB/INC/DEC does **not** perform bounds checking
 - **PUSH source and DP:** `PUSH [addr]` and `PUSH [reg]` read the source value using DP (effective address = `DP × 256 + offset`), but always write to the stack on page 0. This is asymmetric by design — DP affects where data is *read from*, not where the stack resides.
+
+## FP Memory Access
+
+FP instructions (FMOV, FADD, FSUB, FMUL, FDIV, FCMP) access multi-byte values in memory. All FP memory access follows the same DP-based addressing as integer instructions.
+
+### Byte Ordering
+
+FP values are stored in **little-endian** byte order (least significant byte at lowest address).
+
+**Example:** float32 `1.0` = `0x3F800000` is stored as:
+
+| Address | Byte |
+|---------|------|
+| EA + 0  | 0x00 |
+| EA + 1  | 0x00 |
+| EA + 2  | 0x80 |
+| EA + 3  | 0x3F |
+
+### Effective Address
+
+FP instructions use the same effective address calculation as integer instructions:
+
+- Direct: `EA = DP × 256 + addr`
+- Register indirect: `EA = DP × 256 + reg_value + offset` (SP-relative uses page 0)
+
+### Page Boundary Constraint
+
+An FP memory access must not cross a page boundary. If `page_offset + size - 1 > 255`, the CPU enters FAULT with `ERR_PAGE_BOUNDARY` (A=5).
+
+| Format width | Bytes | Max page_offset | Constraint |
+|-------------|-------|-----------------|------------|
+| 32-bit (.F) | 4 | 252 | addr ≤ 252 |
+| 16-bit (.H, .BF) | 2 | 254 | addr ≤ 254 |
+| 8-bit (.O3, .O2) | 1 | 255 | No additional constraint (single byte) |
+
+**Note on 4-bit formats:** 4-bit formats (.N1, .N2) are permanently reserved in v2. They are sub-byte (4 bits) and fundamentally incompatible with the byte-addressable memory model — the smallest addressable memory unit is 8 bits. FOA-FOH sub-register views are accessible only through aliasing (writing to a wider view that contains them). Any FP instruction using fmt ≥ 5 triggers FAULT(`ERR_FP_FORMAT`) at decode. See [FPU](fp.md#72-fp-register-model).
+
+### Atomicity
+
+FP memory reads and writes are not atomic with respect to interrupts (sim8 has no interrupt model). A multi-byte read fetches bytes sequentially from low to high address. A multi-byte write stores bytes sequentially from low to high address.
 
 ## Conformance Notes
 

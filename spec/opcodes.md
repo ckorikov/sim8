@@ -1,6 +1,6 @@
 # Appendix A: Complete Opcode Table
 
-> Architecture v1 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Instruction Encoding](isa.md#18-instruction-encoding-format)
+> Architecture v2 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Instruction Encoding](isa.md#18-instruction-encoding-format), [FPU](fp.md)
 
 | Opcode | Mnemonic | Operands | Bytes |
 |--------|----------|----------|-------|
@@ -78,6 +78,41 @@
 | 95 | SHR | reg, [reg] | 3 |
 | 96 | SHR | reg, [addr] | 3 |
 | 97 | SHR | reg, const | 3 |
+| | **FP Instructions** | | |
+| 128 | FMOV | FP, [addr] | 3 |
+| 129 | FMOV | FP, [reg] | 3 |
+| 130 | FMOV | [addr], FP | 3 |
+| 131 | FMOV | [reg], FP | 3 |
+| 132 | FADD | FP, [addr] | 3 |
+| 133 | FADD | FP, [reg] | 3 |
+| 134 | FSUB | FP, [addr] | 3 |
+| 135 | FSUB | FP, [reg] | 3 |
+| 136 | FMUL | FP, [addr] | 3 |
+| 137 | FMUL | FP, [reg] | 3 |
+| 138 | FDIV | FP, [addr] | 3 |
+| 139 | FDIV | FP, [reg] | 3 |
+| 140 | FCMP | FP, [addr] | 3 |
+| 141 | FCMP | FP, [reg] | 3 |
+| 142 | FABS | FP | 2 |
+| 143 | FNEG | FP | 2 |
+| 144 | FSQRT | FP | 2 |
+| 145 | *(reserved)* | — | — |
+| 146 | FCVT | dst_FP, src_FP | 3 |
+| 147 | FITOF | FP, gpr | 3 |
+| 148 | FFTOI | gpr, FP | 3 |
+| 149 | FSTAT | gpr | 2 |
+| 150 | FCFG | gpr | 2 |
+| 151 | FSCFG | gpr | 2 |
+| 152 | FCLR | — | 1 |
+| | **FP Reg-Reg & Extensions** | | |
+| 153 | FADD | FP, FP | 3 |
+| 154 | FSUB | FP, FP | 3 |
+| 155 | FMUL | FP, FP | 3 |
+| 156 | FDIV | FP, FP | 3 |
+| 157 | FCMP | FP, FP | 3 |
+| 158 | FCLASS | gpr, FP | 3 |
+| 159 | FMADD | FP, FP, [addr] | 4 |
+| 160 | FMADD | FP, FP, [reg] | 4 |
 
-**Total: 74 opcodes**
-**Unused (reserved):** 9, 24-29, 44-49, 58-59, 68-69, 83-89, 98-255. These ranges are reserved for future architecture versions. Executing a reserved opcode triggers FAULT (`ERR_INVALID_OPCODE`, A=6).
+**Total: 106 opcodes** (74 integer + 32 FP)
+**Unused (reserved):** 9, 24-29, 44-49, 58-59, 68-69, 83-89, 98-127, 145, 161-255. These ranges are reserved for future architecture versions. Executing a reserved opcode triggers FAULT (`ERR_INVALID_OPCODE`, A=6).

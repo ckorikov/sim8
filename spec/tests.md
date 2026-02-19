@@ -1,6 +1,6 @@
 # 6. Test Specification
 
-> Architecture v1 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Memory Model & Addressing](mem.md), [Assembler](asm.md), [Microarchitecture](uarch.md)
+> Architecture v2 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Memory Model & Addressing](mem.md), [Assembler](asm.md), [Microarchitecture](uarch.md), [FPU](fp.md), [FP Tests](tests-fp.md)
 
 ## 6.1 Test Methodology
 
@@ -21,6 +21,7 @@ Verification targets:
 | `error` | Assembler returned error with line number |
 
 Assembler-only tests assemble source and verify either:
+
 - successful output (machine code bytes and resolved labels), or
 - an error that includes the source line number.
 
@@ -1221,6 +1222,8 @@ Tests for opcode variants not covered by earlier sections.
 
 ## 6.25 Test Summary
 
+FP tests (FMOV, FP arithmetic, special values, compare, unary, conversions, control registers, exception model, format faults, flag isolation, cost model, assembler encoding, and IEEE 754 arithmetic validation vectors) are in the separate [FP Test Specification](tests-fp.md).
+
 | Group | Tests | Coverage |
 |-------|-------|----------|
 | [MOV](#62-mov--data-movement) | 1-9 | 8 opcodes, flag preservation |
@@ -1245,6 +1248,6 @@ Tests for opcode variants not covered by earlier sections.
 | [DP register](#621-dp-register--paged-memory-access) | 161-170 | Paged memory (64KB), SP-relative, direct+DP |
 | [Robustness](#622-robustness-tests-adversarial-scenarios) | 171-181 | Self-mod, stack attacks, invalid opcodes/regs |
 | [DB list](#6228-db-comma-separated-list) | 182-184 | Comma-separated DB operands |
-| [Coverage](#623-coverage-completeness) | 185-197 | Fetch boundary, DP reject, DIV carry, shift≥8, CMP/SUB modes, CALL/RET faults, wrapping, MUL C+Z, PUSH+DP, I/O exec |
+| [Coverage](#623-coverage-completeness) | 185-197 | Fetch boundary, DP reject, DIV carry, shift>=8, CMP/SUB modes, CALL/RET faults, wrapping, MUL C+Z, PUSH+DP, I/O exec |
 | [Opcode coverage](#624-opcode-coverage-completeness) | 198-231 | SUB/CMP [reg], Jcc reg, AND/OR/XOR all modes, SHL/SHR all modes, MOV+DP forms, SP/DP flag preservation, initial memory, asm edge cases |
-| **Total** | **231** | |
+| **Total** | **231** | **Integer tests only. FP tests: [tests-fp.md](tests-fp.md)** |

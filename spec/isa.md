@@ -1,6 +1,6 @@
 # 1. Instruction Set Architecture (ISA)
 
-> Architecture v1 | Part of [Technical Specification](spec.md) | See also: [Memory Model & Addressing](mem.md), [CPU Architecture](cpu.md), [Microarchitecture](uarch.md), [Assembler](asm.md), [Opcode Table](opcodes.md)
+> Architecture v2 | Part of [Technical Specification](spec.md) | See also: [Memory Model & Addressing](mem.md), [CPU Architecture](cpu.md), [Microarchitecture](uarch.md), [Assembler](asm.md), [Opcode Table](opcodes.md), [FPU](fp.md)
 
 ## 1.1 Overview
 
@@ -9,7 +9,8 @@
 | Word Size | 8 bits |
 | Address Space | 64 KB (256 pages × 256 bytes) |
 | General Purpose Registers | 4 (A, B, C, D) |
-| Instruction Encoding | 1-3 bytes per instruction |
+| FP Registers | 1 physical × 32-bit (15 named sub-register views); see [FPU](fp.md) |
+| Instruction Encoding | 1-4 bytes per instruction |
 
 ## 1.2 Registers
 
@@ -47,6 +48,7 @@
 | F | false | Fault flag — set when CPU encounters an error |
 
 **Carry flag semantics (verified by formal model):**
+
 - **ADD/INC:** C=1 if result > 255 (unsigned overflow)
 - **SUB/DEC/CMP:** C=1 if result < 0 (unsigned underflow, i.e., borrow)
 - **MUL:** C=1 if result > 255
@@ -58,6 +60,26 @@
 **Arithmetic wraparound:** All arithmetic results are modulo 256 (range 0-255). The C flag indicates if wraparound occurred.
 
 **Fault behavior:** When an error occurs, F is set to true and the error code is written to register A. The CPU enters FAULT state and stops execution. See [Error Codes](errors.md).
+
+### Floating-Point Registers
+
+The FPU provides one 32-bit physical register with 15 named sub-register views at 4 granularity levels:
+
+| Register(s) | Width | Count | Description |
+|-------------|-------|-------|-------------|
+| FA | 32-bit | 1 | Full register |
+| FHA, FHB | 16-bit | 2 | Half views (low, high) |
+| FQA-FQD | 8-bit | 4 | Quarter views |
+| FOA-FOH | 4-bit | 8 | Octet views |
+
+**FP Control Registers:**
+
+| Register | Width | Initial Value | Description |
+|----------|-------|---------------|-------------|
+| FPCR | 8-bit | 0 | FP Control: rounding mode |
+| FPSR | 8-bit | 0 | FP Status: sticky exception flags |
+
+For full register model, aliasing rules, and format details, see [FPU](fp.md).
 
 ## 1.3 Memory Model
 
@@ -82,12 +104,14 @@ Total: 64 KB organized as 256 pages of 256 bytes each.
 | Console Output | 0xE8 - 0xFF | 24 bytes | Memory-mapped I/O |
 
 **Key constraints:**
+
 - IP always executes from page 0 (code should stay below address 232 to avoid overwriting the I/O region; the CPU enforces the page boundary at address 256, not 232). Executing code from the I/O region (232-255) is technically valid — no special protection exists.
 - SP and stack operations always use page 0
 - `[SP]` and `[SP±offset]` always access page 0 (stack-relative)
 - JMP/CALL addresses are page-0 offsets (0-255)
 
 **DP affects data access:**
+
 - Direct addressing `[addr]` → effective address = `DP × 256 + addr`
 - Register indirect `[A]`, `[B]`, `[C]`, `[D]` and `[reg±offset]` → effective address = `DP × 256 + reg + offset`
 - At reset DP=0, so default behavior accesses page 0
@@ -119,6 +143,7 @@ For a single-page summary of effective address rules and the page-boundary fault
 | SP-Relative | `[SP±offset]` | `[SP-2]` | `SP + offset` (always page 0) |
 
 **Register Indirect Encoding:** A single byte encodes both register and offset.
+
 - Bits [2:0] — register code (0=A, 1=B, 2=C, 3=D, 4=SP); codes 5-7 cause FAULT (`ERR_INVALID_REG`, A=4; see [Error Codes](errors.md))
 - Bits [7:3] — signed offset (-16 to +15), two's complement for negative values
 - Encode: `encoded_byte = (offset_u << 3) | register_code`
@@ -217,6 +242,7 @@ Sets flags without storing result.
 **Aliases:** JB=JNAE=JC, JNB=JAE=JNC, JE=JZ, JNE=JNZ, JNBE=JA, JBE=JNA
 
 **Important:** Jump and CALL register operands differ from other instructions:
+
 - Syntax uses **plain register name** without brackets: `JMP A`, not `JMP [A]`
 - Only GPR accepted (A, B, C, D) — SP is **not** supported
 - Register indirect with offset is **not** supported for jumps
@@ -233,6 +259,7 @@ Sets flags without storing result.
 | POP | reg | 54 | 2 |
 
 **Stack mechanics:**
+
 - PUSH: store value at memory[SP], then decrement SP (post-decrement)
 - POP: increment SP (pre-increment), then load value from memory[SP]
 - Stack grows downward from address 231 (0xE7) toward 0
@@ -338,6 +365,7 @@ Unsigned (logical) right shift (`>>>`).
 **Alias:** `SAR` = `SHR` (both perform unsigned logical right shift; unlike x86, SAR does not preserve the sign bit)
 
 **Shift operations:** Only GPR (A, B, C, D) allowed as **destination** operands; SP/DP as destination cause FAULT (`ERR_INVALID_REG`, A=4). SP is valid as a base in `[SP±offset]` source addressing. Shift amount can be 0-255; shifting by N≥8 bits produces 0.
+
 - **SHL:** C = 1 if overflow (value × 2^n > 255)
 - **SHR:** C = 1 if any bits were shifted out (value mod 2^n ≠ 0)
 - **Shift by 0:** C is unchanged; Z is recomputed (based on the unchanged value)
@@ -386,7 +414,7 @@ For label rules, comment syntax, and error handling, see [Assembler Specificatio
 
 ## 1.8 Instruction Encoding Format
 
-All instructions are encoded as 1-3 bytes. Operand bytes follow syntactic operand order.
+All instructions are encoded as 1-4 bytes. Operand bytes follow syntactic operand order (see [FP encoding exceptions](#19-floating-point-instructions-opcodes-128-160) for FFTOI and FCLASS).
 
 For the complete opcode mapping, see [Opcode Table](opcodes.md).
 
@@ -399,8 +427,12 @@ For the complete opcode mapping, see [Opcode Table](opcodes.md).
 | const | 1 byte | 0-255 | Immediate value |
 | addr | 1 byte | 0-255 | Memory address |
 | regaddr | 1 byte | 0-255 | Register indirect with offset (see [section 1.4](#14-addressing-modes)) |
+| fpm | 1 byte | 0-255 | FP modifier byte: format + position + physical register (see [FPU](fp.md#75-fpm-byte-encoding)) |
+| gpr | 1 byte | 0-3 | GPR-only code for FP↔integer conversion (A=0, B=1, C=2, D=3) |
 
 ### Encoding by Instruction Size
+
+The tables below cover integer instructions (opcodes 0-97). For FP instruction encoding (opcodes 128-160, up to 4 bytes), see [FP Encoding Summary](#fp-encoding-summary).
 
 **1-byte** `[opcode]`:
 
@@ -463,6 +495,54 @@ For the complete opcode mapping, see [Opcode Table](opcodes.md).
 | `DB "Hi"` | `72, 105` | raw bytes: 'H'=72, 'i'=105 |
 | `DB 10, 20, 30` | `10, 20, 30` | comma-separated list of raw bytes |
 
-## 1.9 Error Codes
+## 1.9 Floating-Point Instructions (Opcodes 128-160)
+
+The FPU adds 32 opcodes (128-160, except 145) for IEEE 754 floating-point operations. All FP data instructions use a format suffix in assembly and an FPM byte in encoding. For full instruction semantics, encoding details, and the FP exception model, see [FPU](fp.md).
+
+### FP Instruction Summary
+
+| Opcodes | Mnemonic | Category | Description |
+|---------|----------|----------|-------------|
+| 128-131 | FMOV | Data movement | Load/store between FP register and memory |
+| 132-133 | FADD | Arithmetic | FP addition |
+| 134-135 | FSUB | Arithmetic | FP subtraction |
+| 136-137 | FMUL | Arithmetic | FP multiplication |
+| 138-139 | FDIV | Arithmetic | FP division |
+| 140-141 | FCMP | Compare | FP compare, sets integer Z/C flags |
+| 142 | FABS | Unary | Absolute value (clear sign bit) |
+| 143 | FNEG | Unary | Negate (toggle sign bit) |
+| 144 | FSQRT | Unary | Square root |
+| 145 | *(reserved)* | — | — |
+| 146 | FCVT | Conversion | Convert between FP formats |
+| 147 | FITOF | Conversion | uint8 (GPR) → FP |
+| 148 | FFTOI | Conversion | FP → uint8 (GPR), saturating |
+| 149 | FSTAT | Control | Read FPSR → GPR |
+| 150 | FCFG | Control | Read FPCR → GPR |
+| 151 | FSCFG | Control | Write GPR → FPCR |
+| 152 | FCLR | Control | Clear all FPSR flags |
+| 153 | FADD | Reg-reg arith | FP addition (register-to-register) |
+| 154 | FSUB | Reg-reg arith | FP subtraction (register-to-register) |
+| 155 | FMUL | Reg-reg arith | FP multiplication (register-to-register) |
+| 156 | FDIV | Reg-reg arith | FP division (register-to-register) |
+| 157 | FCMP | Reg-reg compare | FP compare (register-to-register), sets Z/C |
+| 158 | FCLASS | Classification | Classify FP value → 8-bit mask in GPR |
+| 159 | FMADD | Fused multiply-add | dst = src × mem[addr] + dst (direct) |
+| 160 | FMADD | Fused multiply-add | dst = src × mem[reg] + dst (indirect) |
+
+### FP Encoding Summary
+
+| Size | Layout | Instructions |
+|------|--------|-------------|
+| 1 byte | `[opcode]` | FCLR |
+| 2 bytes | `[opcode, fpm]` | FABS, FNEG, FSQRT |
+| 2 bytes | `[opcode, gpr]` | FSTAT, FCFG, FSCFG |
+| 3 bytes | `[opcode, fpm, addr/regaddr]` | FMOV, FADD, FSUB, FMUL, FDIV, FCMP (mem) |
+| 3 bytes | `[opcode, dst_fpm, src_fpm]` | FCVT, FADD, FSUB, FMUL, FDIV, FCMP (reg-reg) |
+| 3 bytes | `[opcode, fpm, gpr]` | FITOF, FFTOI, FCLASS |
+| 4 bytes | `[opcode, dst_fpm, src_fpm, addr/regaddr]` | FMADD |
+
+**Encoding order exception:** For FFTOI and FCLASS, the assembly operand order is `gpr, FP` (destination GPR first), but the encoding is `[opcode, fpm, gpr]` (FPM byte first). This is the only case where encoding byte order differs from assembly operand order — it keeps all FP↔integer conversion encodings uniform (`[opcode, fpm, gpr]` for FITOF, FFTOI, and FCLASS).
+
+## 1.10 Error Codes
 
 Error code definitions are in [Error Codes](errors.md).
