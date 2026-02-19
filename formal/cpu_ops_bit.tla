@@ -8,7 +8,7 @@ ExecAND_70 == memory[IP] = OP_AND_RR
        IF d \notin 0..3 \/ s \notin 0..3 THEN Fault(ERR_INVALID_REG)
        ELSE LET r == BitAnd(RegValue(d), RegValue(s)) IN
             SetRegNoSP(d, r) /\ Z' = (r = 0) /\ C_flag' = FALSE /\ IP' = IP + 3
-            /\ UNCHANGED <<SP,DP,F,memory,state>>
+            /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FPCR_reg,FPSR_reg>>
 
 ExecAND_71 == memory[IP] = OP_AND_RI
     /\ LET d == Mem(IP+1) dec == DecodeIndirect(Mem(IP+2)) IN
@@ -16,21 +16,21 @@ ExecAND_71 == memory[IP] = OP_AND_RI
        ELSE IF ~dec[2] THEN Fault(dec[3])
        ELSE LET r == BitAnd(RegValue(d), Mem(dec[1])) IN
             SetRegNoSP(d, r) /\ Z' = (r = 0) /\ C_flag' = FALSE /\ IP' = IP + 3
-            /\ UNCHANGED <<SP,DP,F,memory,state>>
+            /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FPCR_reg,FPSR_reg>>
 
 ExecAND_72 == memory[IP] = OP_AND_RA
     /\ LET d == Mem(IP+1) a == DirectAddr(Mem(IP+2)) IN
        IF d \notin 0..3 THEN Fault(ERR_INVALID_REG)
        ELSE LET r == BitAnd(RegValue(d), Mem(a)) IN
             SetRegNoSP(d, r) /\ Z' = (r = 0) /\ C_flag' = FALSE /\ IP' = IP + 3
-            /\ UNCHANGED <<SP,DP,F,memory,state>>
+            /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FPCR_reg,FPSR_reg>>
 
 ExecAND_73 == memory[IP] = OP_AND_RC
     /\ LET d == Mem(IP+1) v == Mem(IP+2) IN
        IF d \notin 0..3 THEN Fault(ERR_INVALID_REG)
        ELSE LET r == BitAnd(RegValue(d), v) IN
             SetRegNoSP(d, r) /\ Z' = (r = 0) /\ C_flag' = FALSE /\ IP' = IP + 3
-            /\ UNCHANGED <<SP,DP,F,memory,state>>
+            /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FPCR_reg,FPSR_reg>>
 
 \* OR (74-77)
 ExecOR_74 == memory[IP] = OP_OR_RR
@@ -38,7 +38,7 @@ ExecOR_74 == memory[IP] = OP_OR_RR
        IF d \notin 0..3 \/ s \notin 0..3 THEN Fault(ERR_INVALID_REG)
        ELSE LET r == BitOr(RegValue(d), RegValue(s)) IN
             SetRegNoSP(d, r) /\ Z' = (r = 0) /\ C_flag' = FALSE /\ IP' = IP + 3
-            /\ UNCHANGED <<SP,DP,F,memory,state>>
+            /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FPCR_reg,FPSR_reg>>
 
 ExecOR_75 == memory[IP] = OP_OR_RI
     /\ LET d == Mem(IP+1) dec == DecodeIndirect(Mem(IP+2)) IN
@@ -46,21 +46,21 @@ ExecOR_75 == memory[IP] = OP_OR_RI
        ELSE IF ~dec[2] THEN Fault(dec[3])
        ELSE LET r == BitOr(RegValue(d), Mem(dec[1])) IN
             SetRegNoSP(d, r) /\ Z' = (r = 0) /\ C_flag' = FALSE /\ IP' = IP + 3
-            /\ UNCHANGED <<SP,DP,F,memory,state>>
+            /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FPCR_reg,FPSR_reg>>
 
 ExecOR_76 == memory[IP] = OP_OR_RA
     /\ LET d == Mem(IP+1) a == DirectAddr(Mem(IP+2)) IN
        IF d \notin 0..3 THEN Fault(ERR_INVALID_REG)
        ELSE LET r == BitOr(RegValue(d), Mem(a)) IN
             SetRegNoSP(d, r) /\ Z' = (r = 0) /\ C_flag' = FALSE /\ IP' = IP + 3
-            /\ UNCHANGED <<SP,DP,F,memory,state>>
+            /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FPCR_reg,FPSR_reg>>
 
 ExecOR_77 == memory[IP] = OP_OR_RC
     /\ LET d == Mem(IP+1) v == Mem(IP+2) IN
        IF d \notin 0..3 THEN Fault(ERR_INVALID_REG)
        ELSE LET r == BitOr(RegValue(d), v) IN
             SetRegNoSP(d, r) /\ Z' = (r = 0) /\ C_flag' = FALSE /\ IP' = IP + 3
-            /\ UNCHANGED <<SP,DP,F,memory,state>>
+            /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FPCR_reg,FPSR_reg>>
 
 \* XOR (78-81)
 ExecXOR_78 == memory[IP] = OP_XOR_RR
@@ -68,7 +68,7 @@ ExecXOR_78 == memory[IP] = OP_XOR_RR
        IF d \notin 0..3 \/ s \notin 0..3 THEN Fault(ERR_INVALID_REG)
        ELSE LET r == BitXor(RegValue(d), RegValue(s)) IN
             SetRegNoSP(d, r) /\ Z' = (r = 0) /\ C_flag' = FALSE /\ IP' = IP + 3
-            /\ UNCHANGED <<SP,DP,F,memory,state>>
+            /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FPCR_reg,FPSR_reg>>
 
 ExecXOR_79 == memory[IP] = OP_XOR_RI
     /\ LET d == Mem(IP+1) dec == DecodeIndirect(Mem(IP+2)) IN
@@ -76,21 +76,21 @@ ExecXOR_79 == memory[IP] = OP_XOR_RI
        ELSE IF ~dec[2] THEN Fault(dec[3])
        ELSE LET r == BitXor(RegValue(d), Mem(dec[1])) IN
             SetRegNoSP(d, r) /\ Z' = (r = 0) /\ C_flag' = FALSE /\ IP' = IP + 3
-            /\ UNCHANGED <<SP,DP,F,memory,state>>
+            /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FPCR_reg,FPSR_reg>>
 
 ExecXOR_80 == memory[IP] = OP_XOR_RA
     /\ LET d == Mem(IP+1) a == DirectAddr(Mem(IP+2)) IN
        IF d \notin 0..3 THEN Fault(ERR_INVALID_REG)
        ELSE LET r == BitXor(RegValue(d), Mem(a)) IN
             SetRegNoSP(d, r) /\ Z' = (r = 0) /\ C_flag' = FALSE /\ IP' = IP + 3
-            /\ UNCHANGED <<SP,DP,F,memory,state>>
+            /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FPCR_reg,FPSR_reg>>
 
 ExecXOR_81 == memory[IP] = OP_XOR_RC
     /\ LET d == Mem(IP+1) v == Mem(IP+2) IN
        IF d \notin 0..3 THEN Fault(ERR_INVALID_REG)
        ELSE LET r == BitXor(RegValue(d), v) IN
             SetRegNoSP(d, r) /\ Z' = (r = 0) /\ C_flag' = FALSE /\ IP' = IP + 3
-            /\ UNCHANGED <<SP,DP,F,memory,state>>
+            /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FPCR_reg,FPSR_reg>>
 
 \* NOT (82)
 ExecNOT_82 == memory[IP] = OP_NOT
@@ -98,7 +98,7 @@ ExecNOT_82 == memory[IP] = OP_NOT
        IF reg \notin 0..3 THEN Fault(ERR_INVALID_REG)
        ELSE LET r == BitNot(RegValue(reg)) IN
             SetRegNoSP(reg, r) /\ C_flag' = FALSE /\ Z' = (r = 0) /\ IP' = IP + 2
-            /\ UNCHANGED <<SP,DP,F,memory,state>>
+            /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FPCR_reg,FPSR_reg>>
 
 \* SHL (90-93) - shift left (ARM-style carry)
 ExecSHL_90 == memory[IP] = OP_SHL_RR
@@ -106,7 +106,7 @@ ExecSHL_90 == memory[IP] = OP_SHL_RR
        IF d \notin 0..3 \/ s \notin 0..3 THEN Fault(ERR_INVALID_REG)
        ELSE LET cnt == RegValue(s) r == CheckSHL(RegValue(d), cnt) IN
             SetRegNoSP(d, r[1]) /\ C_flag' = (IF cnt = 0 THEN C_flag ELSE r[2]) /\ Z' = r[3] /\ IP' = IP + 3
-            /\ UNCHANGED <<SP,DP,F,memory,state>>
+            /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FPCR_reg,FPSR_reg>>
 
 ExecSHL_91 == memory[IP] = OP_SHL_RI
     /\ LET d == Mem(IP+1) dec == DecodeIndirect(Mem(IP+2)) IN
@@ -114,21 +114,21 @@ ExecSHL_91 == memory[IP] = OP_SHL_RI
        ELSE IF ~dec[2] THEN Fault(dec[3])
        ELSE LET cnt == Mem(dec[1]) r == CheckSHL(RegValue(d), cnt) IN
             SetRegNoSP(d, r[1]) /\ C_flag' = (IF cnt = 0 THEN C_flag ELSE r[2]) /\ Z' = r[3] /\ IP' = IP + 3
-            /\ UNCHANGED <<SP,DP,F,memory,state>>
+            /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FPCR_reg,FPSR_reg>>
 
 ExecSHL_92 == memory[IP] = OP_SHL_RA
     /\ LET d == Mem(IP+1) a == DirectAddr(Mem(IP+2)) IN
        IF d \notin 0..3 THEN Fault(ERR_INVALID_REG)
        ELSE LET cnt == Mem(a) r == CheckSHL(RegValue(d), cnt) IN
             SetRegNoSP(d, r[1]) /\ C_flag' = (IF cnt = 0 THEN C_flag ELSE r[2]) /\ Z' = r[3] /\ IP' = IP + 3
-            /\ UNCHANGED <<SP,DP,F,memory,state>>
+            /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FPCR_reg,FPSR_reg>>
 
 ExecSHL_93 == memory[IP] = OP_SHL_RC
     /\ LET d == Mem(IP+1) cnt == Mem(IP+2) IN
        IF d \notin 0..3 THEN Fault(ERR_INVALID_REG)
        ELSE LET r == CheckSHL(RegValue(d), cnt) IN
             SetRegNoSP(d, r[1]) /\ C_flag' = (IF cnt = 0 THEN C_flag ELSE r[2]) /\ Z' = r[3] /\ IP' = IP + 3
-            /\ UNCHANGED <<SP,DP,F,memory,state>>
+            /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FPCR_reg,FPSR_reg>>
 
 \* SHR (94-97) - shift right (ARM-style carry: C=1 if bits shifted out)
 ExecSHR_94 == memory[IP] = OP_SHR_RR
@@ -136,7 +136,7 @@ ExecSHR_94 == memory[IP] = OP_SHR_RR
        IF d \notin 0..3 \/ s \notin 0..3 THEN Fault(ERR_INVALID_REG)
        ELSE LET cnt == RegValue(s) r == CheckSHR(RegValue(d), cnt) IN
             SetRegNoSP(d, r[1]) /\ C_flag' = (IF cnt = 0 THEN C_flag ELSE r[2]) /\ Z' = r[3] /\ IP' = IP + 3
-            /\ UNCHANGED <<SP,DP,F,memory,state>>
+            /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FPCR_reg,FPSR_reg>>
 
 ExecSHR_95 == memory[IP] = OP_SHR_RI
     /\ LET d == Mem(IP+1) dec == DecodeIndirect(Mem(IP+2)) IN
@@ -144,20 +144,20 @@ ExecSHR_95 == memory[IP] = OP_SHR_RI
        ELSE IF ~dec[2] THEN Fault(dec[3])
        ELSE LET cnt == Mem(dec[1]) r == CheckSHR(RegValue(d), cnt) IN
             SetRegNoSP(d, r[1]) /\ C_flag' = (IF cnt = 0 THEN C_flag ELSE r[2]) /\ Z' = r[3] /\ IP' = IP + 3
-            /\ UNCHANGED <<SP,DP,F,memory,state>>
+            /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FPCR_reg,FPSR_reg>>
 
 ExecSHR_96 == memory[IP] = OP_SHR_RA
     /\ LET d == Mem(IP+1) a == DirectAddr(Mem(IP+2)) IN
        IF d \notin 0..3 THEN Fault(ERR_INVALID_REG)
        ELSE LET cnt == Mem(a) r == CheckSHR(RegValue(d), cnt) IN
             SetRegNoSP(d, r[1]) /\ C_flag' = (IF cnt = 0 THEN C_flag ELSE r[2]) /\ Z' = r[3] /\ IP' = IP + 3
-            /\ UNCHANGED <<SP,DP,F,memory,state>>
+            /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FPCR_reg,FPSR_reg>>
 
 ExecSHR_97 == memory[IP] = OP_SHR_RC
     /\ LET d == Mem(IP+1) cnt == Mem(IP+2) IN
        IF d \notin 0..3 THEN Fault(ERR_INVALID_REG)
        ELSE LET r == CheckSHR(RegValue(d), cnt) IN
             SetRegNoSP(d, r[1]) /\ C_flag' = (IF cnt = 0 THEN C_flag ELSE r[2]) /\ Z' = r[3] /\ IP' = IP + 3
-            /\ UNCHANGED <<SP,DP,F,memory,state>>
+            /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FPCR_reg,FPSR_reg>>
 
 =============================================================================

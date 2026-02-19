@@ -1,5 +1,5 @@
 --------------------------- MODULE cpu_core ---------------------------
-EXTENDS cpu_base, cpu_ops_mov, cpu_ops_alu, cpu_ops_jump, cpu_ops_stack, cpu_ops_mul, cpu_ops_bit
+EXTENDS cpu_base, cpu_ops_mov, cpu_ops_alu, cpu_ops_jump, cpu_ops_stack, cpu_ops_mul, cpu_ops_bit, cpu_ops_fp
 
 (*
    State Machine:
@@ -33,6 +33,7 @@ TypeInvariant ==
     /\ Z \in BOOLEAN /\ C_flag \in BOOLEAN /\ F \in BOOLEAN
     /\ state \in {"IDLE", "RUNNING", "HALTED", "FAULT"}
     /\ cycles \in Nat
+    /\ FA_reg \in Nat /\ FPCR_reg \in BYTE /\ FPSR_reg \in BYTE
 
 -----------------------------------------------------------------------------
 (* State Machine Invariants *)
@@ -43,7 +44,8 @@ FaultConsistency == (state = "FAULT") <=> (F = TRUE)
 \* Fault must have valid error code in A
 FaultCodeValid == state = "FAULT" =>
     A \in {ERR_DIV_ZERO, ERR_STACK_OVERFLOW, ERR_STACK_UNDERFLOW,
-           ERR_INVALID_REG, ERR_PAGE_BOUNDARY, ERR_INVALID_OPCODE}
+           ERR_INVALID_REG, ERR_PAGE_BOUNDARY, ERR_INVALID_OPCODE,
+           ERR_FP_FORMAT}
 
 \* Non-fault states have F=FALSE
 RunningNotFaulted == state = "RUNNING" => F = FALSE
@@ -62,8 +64,8 @@ MemoryInByte == \A i \in DOMAIN memory: memory[i] \in BYTE
 \* Step counter bounded
 StepsBounded == step_count <= MAX_STEPS
 
-\* Cycles bounded: max cost per instruction is 4 (MUL/DIV + memory)
-CyclesBounded == cycles <= MAX_STEPS * 4
+\* Cycles bounded: max cost per instruction is 6 (FMADD)
+CyclesBounded == cycles <= MAX_STEPS * 6
 
 \* Cycles are monotonically non-negative
 CyclesNonNeg == cycles >= 0
@@ -77,7 +79,7 @@ Safety == TypeInvariant /\ FaultConsistency /\ FaultCodeValid /\ DPInPageRange
 \* HLT - Halt execution
 ExecHLT == memory[IP] = OP_HLT
     /\ state' = "HALTED" /\ IP' = IP
-    /\ UNCHANGED <<SP, DP, A, B, C, D, Z, C_flag, F, memory>>
+    /\ UNCHANGED <<SP, DP, A, B, C, D, Z, C_flag, F, memory, FA_reg, FPCR_reg, FPSR_reg>>
 
 \* Invalid opcode - FAULT
 ExecInvalid == memory[IP] \notin OPCODES
@@ -101,12 +103,13 @@ Init ==
     /\ state = "IDLE"
     /\ step_count = 0
     /\ cycles = 0
+    /\ FA_reg = 0 /\ FPCR_reg = 0 /\ FPSR_reg = 0
 
 \* First step transitions IDLE -> RUNNING
 FirstStep ==
     /\ state = "IDLE"
     /\ state' = "RUNNING"
-    /\ UNCHANGED <<IP, SP, DP, A, B, C, D, Z, C_flag, F, memory, step_count, cycles>>
+    /\ UNCHANGED <<IP, SP, DP, A, B, C, D, Z, C_flag, F, memory, step_count, cycles, FA_reg, FPCR_reg, FPSR_reg>>
 
 \* Execute one instruction (state must be RUNNING)
 \* IP overflow is checked first to ensure mutual exclusion with handlers
@@ -137,6 +140,19 @@ Step ==
             \/ ExecNOT_82
             \/ ExecSHL_90 \/ ExecSHL_91 \/ ExecSHL_92 \/ ExecSHL_93
             \/ ExecSHR_94 \/ ExecSHR_95 \/ ExecSHR_96 \/ ExecSHR_97
+            \/ ExecFMOV_128 \/ ExecFMOV_129 \/ ExecFMOV_130 \/ ExecFMOV_131
+            \/ ExecFADD_132 \/ ExecFADD_133
+            \/ ExecFSUB_134 \/ ExecFSUB_135
+            \/ ExecFMUL_136 \/ ExecFMUL_137
+            \/ ExecFDIV_138 \/ ExecFDIV_139
+            \/ ExecFCMP_140 \/ ExecFCMP_141
+            \/ ExecFABS_142 \/ ExecFNEG_143 \/ ExecFSQRT_144
+            \/ ExecFCVT_146 \/ ExecFITOF_147 \/ ExecFFTOI_148
+            \/ ExecFSTAT_149 \/ ExecFCFG_150 \/ ExecFSCFG_151 \/ ExecFCLR_152
+            \/ ExecFADD_RR_153 \/ ExecFSUB_RR_154 \/ ExecFMUL_RR_155
+            \/ ExecFDIV_RR_156 \/ ExecFCMP_RR_157
+            \/ ExecFCLASS_158
+            \/ ExecFMADD_A_159 \/ ExecFMADD_I_160
             \/ ExecInvalid
     /\ cycles' = IF state' = "RUNNING" THEN cycles + Cost(memory[IP]) ELSE cycles
 
@@ -150,6 +166,7 @@ Reset ==
     /\ state' = "IDLE"
     /\ step_count' = 0
     /\ cycles' = 0
+    /\ FA_reg' = 0 /\ FPCR_reg' = 0 /\ FPSR_reg' = 0
 
 \* Stutter in terminal states (no Reset action taken)
 Stutter == state \in {"HALTED", "FAULT"} /\ UNCHANGED vars
