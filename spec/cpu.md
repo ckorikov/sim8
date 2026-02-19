@@ -1,12 +1,12 @@
 # 3. CPU Architecture
 
-> Architecture v1 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Memory Model & Addressing](mem.md), [Microarchitecture](uarch.md)
+> Architecture v2 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Memory Model & Addressing](mem.md), [Microarchitecture](uarch.md), [FPU](fp.md)
 
 ## 3.1 Processor States
 
 | State | Description |
 |-------|-------------|
-| IDLE | Initial state; IP=0, SP=0xE7, DP=0, F=0, Z=0, C=0, regs=0 |
+| IDLE | Initial state; IP=0, SP=0xE7, DP=0, F=0, Z=0, C=0, regs=0, FA=0, FPCR=0, FPSR=0 |
 | RUNNING | Executing instructions |
 | HALTED | Opcode 0 encountered |
 | FAULT | F=1, error code in A; see [Error Codes](errors.md) |
@@ -38,5 +38,7 @@ IDLE ──step()──► RUNNING ──HLT──► HALTED
 5. **Writeback:** Store result, update IP/SP
 
 **Important:** Validation occurs before any state modification. For example, PUSH faults when `SP == 0` before writing to memory. If validation fails, CPU enters FAULT without modifying memory or registers (except F and A for error code; see [Error Codes](errors.md)).
+
+**FP instruction validation:** FP instructions (opcodes 128-160, except 145) additionally validate the FPM byte during the Decode/Validate phase. An invalid FPM byte triggers FAULT(`ERR_FP_FORMAT`) before any FP register or memory modification. FP arithmetic exceptions (Invalid, DivZero, Overflow, Underflow, Inexact) are checked during Execute and always set the corresponding FPSR sticky flag — they never cause FAULT. See [FPU Exception Model](fp.md#77-fp-exception-model).
 
 For implementation pseudocode, see [Microarchitecture](uarch.md#41-execution-loop).
