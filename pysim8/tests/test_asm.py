@@ -653,7 +653,8 @@ class TestDbEdgeCases:
         assert asm_bytes('DB "Hello"') == [72, 101, 108, 108, 111]
 
     def test_db_empty_string(self) -> None:
-        assert asm_bytes('DB ""') == []
+        err = asm_error('DB ""')
+        assert "empty" in err.message.lower()
 
     def test_db_with_label(self) -> None:
         result = assemble("data: DB 42\nHLT")
