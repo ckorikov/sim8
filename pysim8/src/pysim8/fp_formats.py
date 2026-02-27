@@ -341,13 +341,6 @@ def encode_ofp8_e5m2(
     if value == 0.0:
         return bytes([sign << 7]), NO_EXC
 
-    # Overflow: value exceeds max finite -> Inf
-    if value > _E5M2_MAX_FINITE:
-        byte_val = (sign << 7) | (_E5M2_MAX_EXP << _E5M2_MANT_BITS)
-        return bytes([byte_val]), FpExceptions(
-            overflow=True, inexact=True,
-        )
-
     result_byte, exc = _encode_mini_float(
         value, sign, _E5M2_EXP_BITS, _E5M2_MANT_BITS, _E5M2_BIAS,
         has_inf=True, nan_pattern=None, rm=rm,
