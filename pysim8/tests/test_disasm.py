@@ -4,22 +4,22 @@ import pytest
 
 from pysim8.asm import assemble
 from pysim8.disasm import disasm, disasm_insn
-from pysim8.isa import ISA, InsnDef, Ot
+from pysim8.isa import ISA, InsnDef, OpType
 
 # Sample operand values per (position, operand_type).
-_SAMPLES: dict[tuple[int, Ot], int] = {
-    (0, Ot.REG): 2,        # C
-    (0, Ot.REG_STACK): 0,  # A
-    (0, Ot.REG_GPR): 1,    # B
-    (0, Ot.IMM): 42,
-    (0, Ot.MEM): 100,
-    (0, Ot.REGADDR): (3 << 3) | 2,  # [C+3]
-    (1, Ot.REG): 3,                  # D
-    (1, Ot.REG_STACK): 4,            # SP
-    (1, Ot.REG_GPR): 3,              # D
-    (1, Ot.IMM): 99,
-    (1, Ot.MEM): 200,
-    (1, Ot.REGADDR): (5 << 3) | 1,  # [B+5]
+_SAMPLES: dict[tuple[int, OpType], int] = {
+    (0, OpType.REG): 2,        # C
+    (0, OpType.REG_STACK): 0,  # A
+    (0, OpType.REG_GPR): 1,    # B
+    (0, OpType.IMM): 42,
+    (0, OpType.MEM): 100,
+    (0, OpType.REGADDR): (3 << 3) | 2,  # [C+3]
+    (1, OpType.REG): 3,                  # D
+    (1, OpType.REG_STACK): 4,            # SP
+    (1, OpType.REG_GPR): 3,              # D
+    (1, OpType.IMM): 99,
+    (1, OpType.MEM): 200,
+    (1, OpType.REGADDR): (5 << 3) | 1,  # [B+5]
 }
 
 

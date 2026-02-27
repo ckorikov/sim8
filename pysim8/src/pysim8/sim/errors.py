@@ -14,6 +14,7 @@ class ErrorCode(IntEnum):
     INVALID_REG = 4
     PAGE_BOUNDARY = 5
     INVALID_OPCODE = 6
+    FP_FORMAT = 12
 
 
 class CpuFault(Exception):

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pysim8.isa import BY_CODE, Ot, Reg, decode_regaddr
+from pysim8.isa import BY_CODE, OpType, Reg, decode_regaddr
 
 __all__ = ["disasm_insn", "disasm"]
 
@@ -20,15 +20,15 @@ def _fmt_regaddr(val: int) -> str:
     return f"[{name}]"
 
 
-def _fmt_operand(ot: Ot, val: int) -> str:
+def _fmt_operand(ot: OpType, val: int) -> str:
     match ot:
-        case Ot.REG | Ot.REG_STACK | Ot.REG_GPR:
+        case OpType.REG | OpType.REG_STACK | OpType.REG_GPR:
             return _REG_NAMES.get(val, f"?{val}")
-        case Ot.IMM:
+        case OpType.IMM:
             return str(val)
-        case Ot.MEM:
+        case OpType.MEM:
             return f"[{val}]"
-        case Ot.REGADDR:
+        case OpType.REGADDR:
             return _fmt_regaddr(val)
         case _:
             raise ValueError(f"unknown operand type: {ot}")
