@@ -15,7 +15,11 @@ pysim8-asm = "pysim8.asm.cli:main"
 pysim8-disasm = "pysim8.disasm.cli:main"
 
 [dependency-groups]
-dev = ["pytest"]
+dev = [
+    "ml-dtypes>=0.5.4",
+    "numpy>=2.4.2",
+    "pytest",
+]
 
 [build-system]
 requires = ["uv_build>=0.8.0,<0.9"]
