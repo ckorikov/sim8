@@ -5,8 +5,14 @@ from enum import Enum, IntEnum
 
 __all__ = [
     "Op", "Reg", "REGISTERS", "GPR_CODES", "STACK_CODES", "MNEMONIC_ALIASES",
-    "Ot", "InsnDef", "ISA", "BY_CODE", "BY_MNEMONIC", "MNEMONICS",
+    "OpType", "InsnDef", "ISA", "BY_CODE", "BY_MNEMONIC", "MNEMONICS",
     "encode_regaddr", "decode_regaddr",
+    "ISA_FP", "BY_CODE_FP", "BY_MNEMONIC_FP", "MNEMONICS_FP",
+    "FP_CONTROL_MNEMONICS", "FP_REGISTERS", "FP_SUFFIX_TO_FMT",
+    "FP_DB_SUFFIX_TO_FMT", "FP_FMT_F", "FP_FMT_H", "FP_FMT_BF",
+    "FP_FMT_O3", "FP_FMT_O2", "FP_FMT_N1", "FP_FMT_N2",
+    "FP_FMT_WIDTH", "FP_FMT_MAX_POS", "FP_WIDTH_REGS",
+    "encode_fpm", "decode_fpm", "validate_fpm",
 ]
 
 
@@ -136,6 +142,53 @@ class Op(IntEnum):
     SHR_REG_ADDR = 96
     SHR_REG_CONST = 97
 
+    # FP -- FMOV (128-131)
+    FMOV_FP_ADDR = 128
+    FMOV_FP_REGADDR = 129
+    FMOV_ADDR_FP = 130
+    FMOV_REGADDR_FP = 131
+    # FP -- FADD (132-133)
+    FADD_FP_ADDR = 132
+    FADD_FP_REGADDR = 133
+    # FP -- FSUB (134-135)
+    FSUB_FP_ADDR = 134
+    FSUB_FP_REGADDR = 135
+    # FP -- FMUL (136-137)
+    FMUL_FP_ADDR = 136
+    FMUL_FP_REGADDR = 137
+    # FP -- FDIV (138-139)
+    FDIV_FP_ADDR = 138
+    FDIV_FP_REGADDR = 139
+    # FP -- FCMP (140-141)
+    FCMP_FP_ADDR = 140
+    FCMP_FP_REGADDR = 141
+    # FP -- FABS/FNEG/FSQRT (142-144)
+    FABS_FP = 142
+    FNEG_FP = 143
+    FSQRT_FP = 144
+    # 145 reserved
+    # FP -- FCVT (146)
+    FCVT_FP_FP = 146
+    # FP -- FITOF/FFTOI (147-148)
+    FITOF_FP_GPR = 147
+    FFTOI_GPR_FP = 148
+    # FP -- Control (149-152)
+    FSTAT_GPR = 149
+    FCFG_GPR = 150
+    FSCFG_GPR = 151
+    FCLR = 152
+    # FP -- Reg-Reg arithmetic (153-157)
+    FADD_RR = 153
+    FSUB_RR = 154
+    FMUL_RR = 155
+    FDIV_RR = 156
+    FCMP_RR = 157
+    # FP -- FCLASS (158)
+    FCLASS_GPR_FP = 158
+    # FP -- FMADD (159-160)
+    FMADD_FP_FP_ADDR = 159
+    FMADD_FP_FP_REGADDR = 160
+
 
 class Reg(IntEnum):
     """Register codes."""
@@ -181,6 +234,10 @@ _RA_OFF_MAX = _RA_OFF_RANGE // 2 - 1     # 15
 
 def encode_regaddr(reg_code: int, offset: int) -> int:
     """Encode [reg±offset] into a single byte."""
+    if reg_code < 0 or reg_code > 5:
+        raise ValueError(f"Invalid register code: {reg_code}")
+    if offset < -16 or offset > 15:
+        raise ValueError(f"Offset out of range -16..+15: {offset}")
     offset_u = offset if offset >= 0 else _RA_OFF_RANGE + offset
     return (offset_u << _RA_REG_BITS) | reg_code
 
@@ -208,11 +265,103 @@ MNEMONIC_ALIASES: dict[str, str] = {
     "SAR": "SHR",
 }
 
+# ── FP format constants ──────────────────────────────────────────────
+FP_FMT_F = 0    # float32 (E8M23), 32-bit
+FP_FMT_H = 1    # float16 (E5M10), 16-bit
+FP_FMT_BF = 2   # bfloat16 (E8M7), 16-bit
+FP_FMT_O3 = 3   # OFP8 E4M3, 8-bit
+FP_FMT_O2 = 4   # OFP8 E5M2, 8-bit
+FP_FMT_N1 = 5   # 4-bit E2M1 (reserved in v2)
+FP_FMT_N2 = 6   # 4-bit E1M2 (reserved in v2)
+
+FP_FMT_WIDTH: dict[int, int] = {
+    FP_FMT_F: 32, FP_FMT_H: 16, FP_FMT_BF: 16,
+    FP_FMT_O3: 8, FP_FMT_O2: 8, FP_FMT_N1: 4, FP_FMT_N2: 4,
+}
+
+FP_FMT_MAX_POS: dict[int, int] = {
+    FP_FMT_F: 0, FP_FMT_H: 1, FP_FMT_BF: 1,
+    FP_FMT_O3: 3, FP_FMT_O2: 3, FP_FMT_N1: 7, FP_FMT_N2: 7,
+}
+
+# Short suffix -> fmt code (case-insensitive matching done by caller)
+FP_SUFFIX_TO_FMT: dict[str, int] = {
+    "F": FP_FMT_F, "E8M23": FP_FMT_F,
+    "H": FP_FMT_H, "E5M10": FP_FMT_H,
+    "BF": FP_FMT_BF, "E8M7": FP_FMT_BF,
+    "O3": FP_FMT_O3, "E4M3": FP_FMT_O3,
+    "O2": FP_FMT_O2, "E5M2": FP_FMT_O2,
+    "N1": FP_FMT_N1, "E2M1": FP_FMT_N1,
+    "N2": FP_FMT_N2, "E1M2": FP_FMT_N2,
+}
+
+# DB literal suffix -> fmt code (case-insensitive, underscore-prefixed)
+FP_DB_SUFFIX_TO_FMT: dict[str, int] = {
+    "F": FP_FMT_F, "E8M23": FP_FMT_F,
+    "H": FP_FMT_H, "E5M10": FP_FMT_H,
+    "BF": FP_FMT_BF, "E8M7": FP_FMT_BF,
+    "O3": FP_FMT_O3, "E4M3": FP_FMT_O3,
+    "O2": FP_FMT_O2, "E5M2": FP_FMT_O2,
+    "N1": FP_FMT_N1, "E2M1": FP_FMT_N1,
+    "N2": FP_FMT_N2, "E1M2": FP_FMT_N2,
+}
+
+# FP register table: name -> (pos, canonical_fmt, width_bits)
+FP_REGISTERS: dict[str, tuple[int, int, int]] = {
+    "FA":  (0, FP_FMT_F, 32),
+    "FHA": (0, FP_FMT_H, 16),
+    "FHB": (1, FP_FMT_H, 16),
+    "FQA": (0, FP_FMT_O3, 8),
+    "FQB": (1, FP_FMT_O3, 8),
+    "FQC": (2, FP_FMT_O3, 8),
+    "FQD": (3, FP_FMT_O3, 8),
+    "FOA": (0, FP_FMT_N1, 4),
+    "FOB": (1, FP_FMT_N1, 4),
+    "FOC": (2, FP_FMT_N1, 4),
+    "FOD": (3, FP_FMT_N1, 4),
+    "FOE": (4, FP_FMT_N1, 4),
+    "FOF": (5, FP_FMT_N1, 4),
+    "FOG": (6, FP_FMT_N1, 4),
+    "FOH": (7, FP_FMT_N1, 4),
+}
+
+# Width class -> allowed FP register names
+FP_WIDTH_REGS: dict[int, frozenset[str]] = {
+    32: frozenset({"FA"}),
+    16: frozenset({"FHA", "FHB"}),
+    8: frozenset({"FQA", "FQB", "FQC", "FQD"}),
+    4: frozenset({"FOA", "FOB", "FOC", "FOD",
+                  "FOE", "FOF", "FOG", "FOH"}),
+}
+
+
+def encode_fpm(phys: int, pos: int, fmt: int) -> int:
+    """Encode FPM byte: (phys << 6) | (pos << 3) | fmt."""
+    return (phys << 6) | (pos << 3) | fmt
+
+
+def decode_fpm(fpm: int) -> tuple[int, int, int]:
+    """Decode FPM byte -> (phys, pos, fmt)."""
+    return (fpm >> 6) & 0x03, (fpm >> 3) & 0x07, fpm & 0x07
+
+
+def validate_fpm(fpm: int) -> bool:
+    """Check if FPM byte is valid for v2."""
+    phys, pos, fmt = decode_fpm(fpm)
+    if phys != 0:
+        return False
+    if fmt >= 5:
+        return False
+    max_pos = FP_FMT_MAX_POS.get(fmt)
+    if max_pos is None:
+        return False
+    return pos <= max_pos
+
 
 # ── Instruction definitions ────────────────────────────────────────
 
 
-class Ot(Enum):
+class OpType(Enum):
     """Operand type for instruction matching."""
 
     REG = "reg"              # any register (0-5)
@@ -221,6 +370,7 @@ class Ot(Enum):
     IMM = "imm"          # number or label (no brackets)
     MEM = "mem"          # [addr] — direct address in brackets
     REGADDR = "regaddr"  # [reg±offset] — register indirect
+    FP_REG = "fp_reg"    # FP register operand
 
 
 @dataclass(frozen=True, slots=True)
@@ -229,7 +379,7 @@ class InsnDef:
 
     op: Op
     mnemonic: str
-    sig: tuple[Ot, ...]
+    sig: tuple[OpType, ...]
     cost: int = 1  # cost in clock cycles
 
     @property
@@ -237,8 +387,8 @@ class InsnDef:
         return 1 + len(self.sig)
 
 
-_REG, _STK, _GPR = Ot.REG, Ot.REG_STACK, Ot.REG_GPR
-_IMM, _MEM, _IADDR = Ot.IMM, Ot.MEM, Ot.REGADDR
+_REG, _STK, _GPR = OpType.REG, OpType.REG_STACK, OpType.REG_GPR
+_IMM, _MEM, _IADDR = OpType.IMM, OpType.MEM, OpType.REGADDR
 
 ISA: tuple[InsnDef, ...] = (
     # HLT (0)
@@ -352,6 +502,84 @@ for _insn in ISA:
 BY_MNEMONIC: dict[str, tuple[InsnDef, ...]] = {
     k: tuple(v) for k, v in _by_mn.items()
 }
-del _by_mn, _insn, _REG, _STK, _GPR, _IMM, _MEM, _IADDR
+del _by_mn, _insn
 
 MNEMONICS: frozenset[str] = frozenset(BY_MNEMONIC) | {"DB"}
+
+# ── FP ISA ────────────────────────────────────────────────────────
+
+_FP = OpType.FP_REG
+
+ISA_FP: tuple[InsnDef, ...] = (
+    # FMOV (128-131) — mem(2)
+    InsnDef(Op.FMOV_FP_ADDR, "FMOV", (_FP, _MEM), cost=2),
+    InsnDef(Op.FMOV_FP_REGADDR, "FMOV", (_FP, _IADDR), cost=2),
+    InsnDef(Op.FMOV_ADDR_FP, "FMOV", (_MEM, _FP), cost=2),
+    InsnDef(Op.FMOV_REGADDR_FP, "FMOV", (_IADDR, _FP), cost=2),
+    # FADD (132-133) — mem(2) + fpu(3) = 5
+    InsnDef(Op.FADD_FP_ADDR, "FADD", (_FP, _MEM), cost=5),
+    InsnDef(Op.FADD_FP_REGADDR, "FADD", (_FP, _IADDR), cost=5),
+    # FSUB (134-135) — mem(2) + fpu(3) = 5
+    InsnDef(Op.FSUB_FP_ADDR, "FSUB", (_FP, _MEM), cost=5),
+    InsnDef(Op.FSUB_FP_REGADDR, "FSUB", (_FP, _IADDR), cost=5),
+    # FMUL (136-137) — mem(2) + fpu(3) = 5
+    InsnDef(Op.FMUL_FP_ADDR, "FMUL", (_FP, _MEM), cost=5),
+    InsnDef(Op.FMUL_FP_REGADDR, "FMUL", (_FP, _IADDR), cost=5),
+    # FDIV (138-139) — mem(2) + fpu(3) = 5
+    InsnDef(Op.FDIV_FP_ADDR, "FDIV", (_FP, _MEM), cost=5),
+    InsnDef(Op.FDIV_FP_REGADDR, "FDIV", (_FP, _IADDR), cost=5),
+    # FCMP (140-141) — mem(2) + fpu(3) = 5
+    InsnDef(Op.FCMP_FP_ADDR, "FCMP", (_FP, _MEM), cost=5),
+    InsnDef(Op.FCMP_FP_REGADDR, "FCMP", (_FP, _IADDR), cost=5),
+    # Unary (142-144) — fpu(3), fpu(3), fpu(4)
+    InsnDef(Op.FABS_FP, "FABS", (_FP,), cost=3),
+    InsnDef(Op.FNEG_FP, "FNEG", (_FP,), cost=3),
+    InsnDef(Op.FSQRT_FP, "FSQRT", (_FP,), cost=4),
+    # FCVT (146) -- dual suffix
+    InsnDef(Op.FCVT_FP_FP, "FCVT", (_FP, _FP), cost=3),
+    # FITOF (147)
+    InsnDef(Op.FITOF_FP_GPR, "FITOF", (_FP, _GPR), cost=3),
+    # FFTOI (148) -- assembly order: GPR, FP; encoding: [148, fpm, gpr]
+    InsnDef(Op.FFTOI_GPR_FP, "FFTOI", (_GPR, _FP), cost=3),
+    # Control (149-152)
+    InsnDef(Op.FSTAT_GPR, "FSTAT", (_GPR,), cost=1),
+    InsnDef(Op.FCFG_GPR, "FCFG", (_GPR,), cost=1),
+    InsnDef(Op.FSCFG_GPR, "FSCFG", (_GPR,), cost=1),
+    InsnDef(Op.FCLR, "FCLR", (), cost=1),
+    # Reg-reg (153-157)
+    InsnDef(Op.FADD_RR, "FADD", (_FP, _FP), cost=3),
+    InsnDef(Op.FSUB_RR, "FSUB", (_FP, _FP), cost=3),
+    InsnDef(Op.FMUL_RR, "FMUL", (_FP, _FP), cost=3),
+    InsnDef(Op.FDIV_RR, "FDIV", (_FP, _FP), cost=3),
+    InsnDef(Op.FCMP_RR, "FCMP", (_FP, _FP), cost=3),
+    # FCLASS (158)
+    InsnDef(Op.FCLASS_GPR_FP, "FCLASS", (_GPR, _FP), cost=2),
+    # FMADD (159-160) -- 4-byte
+    InsnDef(Op.FMADD_FP_FP_ADDR, "FMADD", (_FP, _FP, _MEM), cost=6),
+    InsnDef(
+        Op.FMADD_FP_FP_REGADDR, "FMADD", (_FP, _FP, _IADDR), cost=6,
+    ),
+)
+
+# ── FP derived lookups ────────────────────────────────────────────
+
+BY_CODE_FP: dict[int, InsnDef] = {int(insn.op): insn for insn in ISA_FP}
+
+_by_mn_fp: dict[str, list[InsnDef]] = {}
+for _insn_fp in ISA_FP:
+    _by_mn_fp.setdefault(_insn_fp.mnemonic, []).append(_insn_fp)
+BY_MNEMONIC_FP: dict[str, tuple[InsnDef, ...]] = {
+    k: tuple(v) for k, v in _by_mn_fp.items()
+}
+
+MNEMONICS_FP: frozenset[str] = frozenset(BY_MNEMONIC_FP)
+
+# FP control mnemonics (no format suffix needed)
+FP_CONTROL_MNEMONICS: frozenset[str] = frozenset(
+    {"FSTAT", "FCFG", "FSCFG", "FCLR"}
+)
+
+del (
+    _by_mn_fp, _insn_fp, _FP,
+    _REG, _STK, _GPR, _IMM, _MEM, _IADDR,
+)

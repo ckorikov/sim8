@@ -10,7 +10,7 @@ import pytest
 from pysim8.asm import assemble, AssemblerError
 from pysim8.asm.parser import Operand
 from pysim8.asm.codegen import _operand_matches, _encode_operand
-from pysim8.isa import Ot
+from pysim8.isa import OpType
 
 
 # ── helpers ──────────────────────────────────────────────────────────
@@ -683,19 +683,21 @@ class TestExhaustiveness:
 
     def test_operand_matches_covers_all_ot_variants(self) -> None:
         from pysim8.asm.parser import OpReg, OpConst, OpAddr, OpRegAddr, OpLabel
-        # Every Ot variant must be reachable in _operand_matches
+        # Every OpType variant must be reachable in _operand_matches
         test_operands = {
-            Ot.REG: OpReg(0),
-            Ot.REG_STACK: OpReg(0),
-            Ot.REG_GPR: OpReg(0),
-            Ot.IMM: OpConst(0),
-            Ot.MEM: OpAddr(0),
-            Ot.REGADDR: OpRegAddr(0, 0),
+            OpType.REG: OpReg(0),
+            OpType.REG_STACK: OpReg(0),
+            OpType.REG_GPR: OpReg(0),
+            OpType.IMM: OpConst(0),
+            OpType.MEM: OpAddr(0),
+            OpType.REGADDR: OpRegAddr(0, 0),
         }
         covered = set(test_operands.keys())
-        all_variants = set(Ot)
+        # FP_REG uses a separate encoding path (FPM bytes);
+        # covered in test_asm_fp.py.
+        all_variants = set(OpType) - {OpType.FP_REG}
         assert covered == all_variants, (
-            f"Uncovered Ot variants: {all_variants - covered}"
+            f"Uncovered OpType variants: {all_variants - covered}"
         )
         for ot, op in test_operands.items():
             assert _operand_matches(op, ot) is True, (

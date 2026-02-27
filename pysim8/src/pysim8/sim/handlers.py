@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from pysim8.isa import Op, Reg, decode_regaddr
+from pysim8.isa import Op, Reg, decode_regaddr, BY_CODE_FP
 
 from .alu import ALU
 from .decoder import DecodedInsn
@@ -228,8 +228,12 @@ class HandlersMixin:
             d[Op(base + 2)] = self._make_shift_2op(alu_fn, self._src_addr)
             d[Op(base + 3)] = self._make_shift_2op(alu_fn, self._src_const)
 
-        # Completeness check: every Op except HLT must have a handler
-        missing = {op for op in Op if op != Op.HLT} - set(d)
+        # Completeness check: every integer Op except HLT must have a
+        # handler.  FP opcodes (BY_CODE_FP) are handled separately.
+        _fp_ops = {Op(c) for c in BY_CODE_FP}
+        missing = (
+            {op for op in Op if op != Op.HLT} - _fp_ops - set(d)
+        )
         if missing:
             names = ", ".join(sorted(op.name for op in missing))
             raise RuntimeError(f"Dispatch table missing handlers: {names}")

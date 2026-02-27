@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pysim8.isa import BY_CODE, ISA, Op
+from pysim8.isa import BY_CODE, BY_CODE_FP, ISA, ISA_FP, Op
 
 from .decoder import Decoder
 from .errors import CpuFault, ErrorCode
 from .handlers import HandlersMixin
+from .handlers_fp import HandlersFpMixin
 from .memory import Memory
 from .registers import CpuState, RegisterFile
 from .tracing import TraceCallback, TraceEvent
@@ -19,37 +20,44 @@ if TYPE_CHECKING:
 __all__ = ["CPU"]
 
 
-class CPU(HandlersMixin):
+class CPU(HandlersMixin, HandlersFpMixin):
     """8-bit CPU simulator (control unit)."""
 
     __slots__ = (
         "mem", "regs", "state", "_dispatch", "_tracer",
-        "_steps", "_cycles", "_op_cost",
+        "_steps", "_cycles", "_op_cost", "_arch",
     )
 
     def __init__(
         self,
         *,
+        arch: int = 1,
         tracer: TraceCallback | None = None,
         costs: dict[str, int] | None = None,
     ) -> None:
         self.mem = Memory()
-        self.regs = RegisterFile()
+        self.regs = RegisterFile(arch=arch)
         self.state = CpuState.IDLE
         self._tracer = tracer
         self._steps = 0
         self._cycles = 0
+        self._arch = arch
         self._dispatch: dict[Op, Handler] = {}
         self._build_dispatch()
+        if arch >= 2:
+            self._build_fp_dispatch()
 
         overrides = costs or {}
-        valid = {d.mnemonic for d in ISA}
+        all_isa = ISA if arch < 2 else ISA + ISA_FP
+        valid = {d.mnemonic for d in all_isa}
         unknown = overrides.keys() - valid
         if unknown:
-            raise ValueError(f"Unknown mnemonics in costs: {sorted(unknown)}")
+            raise ValueError(
+                f"Unknown mnemonics in costs: {sorted(unknown)}"
+            )
         self._op_cost: dict[int, int] = {
             int(d.op): overrides.get(d.mnemonic, d.cost)
-            for d in ISA
+            for d in all_isa
         }
 
     # ── Public API ─────────────────────────────────────────────────────
@@ -70,12 +78,16 @@ class CPU(HandlersMixin):
         ip_before = self.regs.ip
 
         try:
-            insn = Decoder.fetch(self.mem, self.regs.ip)
+            insn = Decoder.fetch(
+                self.mem, self.regs.ip, arch=self._arch,
+            )
         except CpuFault as fault:
             self._enter_fault(fault.code)
             if self._tracer is not None:
                 opcode = self.mem[ip_before]
                 defn = BY_CODE.get(opcode)
+                if defn is None and self._arch >= 2:
+                    defn = BY_CODE_FP.get(opcode)
                 size = defn.size if defn is not None else 1
                 self._trace(ip_before, opcode, (), size,
                             {"FF": True, "A": int(fault.code)},
@@ -126,7 +138,7 @@ class CPU(HandlersMixin):
     def reset(self) -> None:
         """Reset CPU to IDLE state."""
         self.mem.reset()
-        self.regs.reset()
+        self.regs.reset(arch=self._arch)
         self.state = CpuState.IDLE
         self._steps = 0
         self._cycles = 0
@@ -232,11 +244,16 @@ class CPU(HandlersMixin):
 
     def _snapshot(self) -> dict[str, int | bool]:
         r = self.regs
-        return {
+        snap: dict[str, int | bool] = {
             "A": r.a, "B": r.b, "C": r.c, "D": r.d,
             "SP": r.sp, "DP": r.dp, "IP": r.ip,
             "ZF": r.flags.z, "CF": r.flags.c, "FF": r.flags.f,
         }
+        if r.fpu is not None:
+            snap["FP32"] = r.fpu._fp32
+            snap["FPCR"] = r.fpu.fpcr
+            snap["FPSR"] = r.fpu.fpsr
+        return snap
 
     def _diff(self, before: dict[str, int | bool]) -> dict[str, int | bool]:
         after = self._snapshot()

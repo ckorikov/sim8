@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from pysim8.isa import BY_CODE, Op
+from pysim8.isa import BY_CODE, BY_CODE_FP, Op
 
 from .errors import CpuFault, ErrorCode
 from .memory import PAGE_SIZE, Memory
@@ -23,13 +23,15 @@ class Decoder:
     """Stateless instruction decoder."""
 
     @staticmethod
-    def fetch(mem: Memory, ip: int) -> DecodedInsn:
+    def fetch(mem: Memory, ip: int, arch: int = 1) -> DecodedInsn:
         """Fetch and decode one instruction at the given IP.
 
         Raises CpuFault for invalid opcode or page boundary violation.
         """
         opcode = mem[ip]
         defn = BY_CODE.get(opcode)
+        if defn is None and arch >= 2:
+            defn = BY_CODE_FP.get(opcode)
         if defn is None:
             raise CpuFault(ErrorCode.INVALID_OPCODE, ip)
 

@@ -132,10 +132,34 @@ def _make_status(cpu: CPU, filename: str, paused: bool = False) -> Panel:
         else:
             row2.append(ch, style="bold cyan")
 
+    # FPU register row (arch=2)
+    row_fp: Text | None = None
+    if cpu.regs.fpu is not None:
+        fpu = cpu.regs.fpu
+        row_fp = Text()
+        row_fp.append(" FP32 ", style="dim")
+        row_fp.append(
+            f"{fpu._fp32:08X}",
+            style="bold" if fpu._fp32 else "dim",
+        )
+        row_fp.append("  ┊", style="dim")
+        row_fp.append(" FPCR ", style="dim")
+        row_fp.append(
+            f"{fpu.fpcr:02X}",
+            style="bold" if fpu.fpcr else "dim",
+        )
+        row_fp.append(" FPSR ", style="dim")
+        row_fp.append(
+            f"{fpu.fpsr:02X}",
+            style="bold" if fpu.fpsr else "dim",
+        )
+
     # Stack rows vertically
     tbl = Table.grid()
     tbl.add_column()
     tbl.add_row(row1)
+    if row_fp is not None:
+        tbl.add_row(row_fp)
     tbl.add_row(row2)
 
     title = Text.assemble(
@@ -195,13 +219,14 @@ def run_tui(
     filename: str = "<stdin>",
     speed: int = 25,
     paused: bool = False,
+    arch: int = 1,
 ) -> None:
     """Run a program with scrolling trace log and live status bar.
 
     Space = run/pause, n = single step, q = quit.
     """
     console = Console()
-    cpu = CPU()
+    cpu = CPU(arch=arch)
     cpu.load(code)
 
     pending: list[TraceEvent] = []
@@ -264,7 +289,17 @@ def run_tui(
 @click.argument("program", type=click.Path(exists=True))
 @click.option("--speed", "-s", default=25, help="Steps per second (0 = max).")
 @click.option("--paused", is_flag=True, help="Start paused (use Space to run).")
-def main(program: str, speed: int, paused: bool) -> None:
+@click.option(
+    "--arch", type=int, default=1,
+    help="Architecture version (1=integer, 2=FPU).",
+)
+def main(program: str, speed: int, paused: bool, arch: int) -> None:
     """Run a .bin binary in the TUI simulator."""
     path = Path(program)
-    run_tui(list(path.read_bytes()), filename=path.name, speed=speed, paused=paused)
+    run_tui(
+        list(path.read_bytes()),
+        filename=path.name,
+        speed=speed,
+        paused=paused,
+        arch=arch,
+    )
