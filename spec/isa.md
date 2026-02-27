@@ -138,7 +138,7 @@ For a single-page summary of effective address rules and the page-boundary fault
 |------|--------|---------|-------------------|
 | Register | `reg` | `A`, `B`, `SP` | Direct register reference |
 | Immediate | `const` | `42`, `0xFF` | Numeric constant (0-255) |
-| Direct | `[addr]` | `[0x50]`, `[232]` | `DP × 256 + addr` |
+| Direct | `[addr]` or `[label]` | `[0x50]`, `[232]`, `[data]` | `DP × 256 + addr` |
 | Register Indirect | `[reg±offset]` | `[B+4]`, `[C-2]` | `DP × 256 + reg + offset` |
 | SP-Relative | `[SP±offset]` | `[SP-2]` | `SP + offset` (always page 0) |
 
@@ -485,6 +485,7 @@ The tables below cover integer instructions (opcodes 0-97). For FP instruction e
 | `MOV A, 42` | `6, 0, 42` | opcode=6, dest=A(0), value=42 |
 | `MOV [232], A` | `4, 232, 0` | opcode=4, addr=232, src=A(0) |
 | `MOV A, [B+2]` | `3, 0, 17` | opcode=3, dest=A(0), regaddr=(2\*8+1)=17 |
+| `MOV A, [data]` | `2, 0, addr` | opcode=2, dest=A(0), addr from label resolution |
 | `ADD A, 1` | `13, 0, 1` | opcode=13, dest=A(0), value=1 |
 | `INC C` | `18, 2` | opcode=18, reg=C(2) |
 | `CMP A, 0` | `23, 0, 0` | opcode=23, reg=A(0), value=0 |
