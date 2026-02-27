@@ -636,6 +636,50 @@ class TestLabelEdgeCases:
         assert result.code == [6, 1, 3, 0]
         assert result.labels["end"] == 3
 
+    def test_label_in_brackets_mov(self) -> None:
+        # MOV A, [data] → load from direct address (label)
+        result = assemble("JMP start\ndata: DB 42\nstart: MOV A, [data]\nHLT")
+        # JMP start = [31, 3], DB 42 = [42], MOV A, [data] = [2, 0, 1], HLT = [0]
+        assert result.labels["data"] == 2
+        assert result.labels["start"] == 3
+        assert result.code == [31, 3, 42, 2, 0, 2, 0]
+
+    def test_label_in_brackets_store(self) -> None:
+        # MOV [data], B → store to direct address (label)
+        result = assemble("JMP start\ndata: DB 0\nstart: MOV [data], B\nHLT")
+        assert result.labels["data"] == 2
+        assert result.code == [31, 3, 0, 4, 2, 1, 0]
+
+    def test_label_in_brackets_add(self) -> None:
+        # ADD A, [x] → arithmetic with memory label
+        result = assemble("JMP s\nx: DB 10\ns: ADD A, [x]\nHLT")
+        assert result.labels["x"] == 2
+        # JMP s=[31,3], DB 10=[10], ADD A,[x]=[12,0,2], HLT=[0]
+        assert result.code == [31, 3, 10, 12, 0, 2, 0]
+
+    def test_label_in_brackets_push(self) -> None:
+        # PUSH [data] → stack op with label
+        result = assemble("JMP s\ndata: DB 99\ns: PUSH [data]\nHLT")
+        assert result.labels["data"] == 2
+        assert result.code == [31, 3, 99, 52, 2, 0]
+
+    def test_label_in_brackets_undefined(self) -> None:
+        err = asm_error("MOV A, [missing]")
+        assert "undefined label" in err.message.lower()
+
+    def test_label_in_brackets_forward_ref(self) -> None:
+        # Forward reference: [data] used before data is defined
+        result = assemble("MOV A, [data]\nHLT\ndata: DB 55")
+        assert result.labels["data"] == 4
+        assert result.code == [2, 0, 4, 0, 55]
+
+    def test_label_in_brackets_matches_numeric(self) -> None:
+        # [label] should produce same bytes as [numeric_addr]
+        r1 = assemble("JMP s\nx: DB 7\ns: MOV A, [x]\nHLT")
+        # x is at addr 2 → equivalent to MOV A, [2]
+        r2 = assemble("JMP s\nx: DB 7\ns: MOV A, [2]\nHLT")
+        assert r1.code == r2.code
+
 
 # ── DB edge cases ────────────────────────────────────────────────────
 

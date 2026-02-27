@@ -362,3 +362,26 @@ class TestRegressionArch1:
         assert asm_bytes("ADD A, B\nHLT", arch=1) == [
             10, 0, 1, 0,
         ]
+
+
+# ── Label in brackets with FP instructions ──────────────────────────
+
+
+class TestFpLabelInBrackets:
+    """[label] syntax with FP instructions."""
+
+    def test_fmov_load_label(self) -> None:
+        """FMOV.F FA, [data] → same as FMOV.F FA, [addr]."""
+        src = "JMP s\ndata: DB 0, 0, 0, 0\ns: FMOV.F FA, [data]\nHLT"
+        result = assemble(src, arch=2)
+        assert result.labels["data"] == 2
+        # FMOV.F FA, [2] → [128, 0x00, 2]
+        assert result.code[6:9] == [128, 0x00, 2]
+
+    def test_fadd_label(self) -> None:
+        """FADD.F FA, [x] with label."""
+        src = "JMP s\nx: DB 0, 0, 0, 0\ns: FADD.F FA, [x]\nHLT"
+        result = assemble(src, arch=2)
+        assert result.labels["x"] == 2
+        # FADD.F FA, [2] → [132, 0x00, 2]
+        assert result.code[6:9] == [132, 0x00, 2]

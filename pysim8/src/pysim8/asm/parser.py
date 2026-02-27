@@ -24,6 +24,7 @@ __all__ = [
     "OpRegAddr",
     "OpString",
     "OpLabel",
+    "OpAddrLabel",
     "OpFpReg",
     "OpFloat",
     "parse_lines",
@@ -95,6 +96,13 @@ class OpLabel:
 
 
 @dataclass(frozen=True, slots=True)
+class OpAddrLabel:
+    """Unresolved label inside brackets: [label] → direct address in pass 2."""
+
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
 class OpFpReg:
     """FP register operand: FA, FHA, FHB, FQA-FQD, FOA-FOH."""
 
@@ -114,7 +122,7 @@ class OpFloat:
 
 Operand = (
     OpReg | OpConst | OpAddr | OpRegAddr | OpString | OpLabel
-    | OpFpReg | OpFloat
+    | OpAddrLabel | OpFpReg | OpFloat
 )
 
 
@@ -227,10 +235,15 @@ def _parse_bracket_operand(inner: str, line: int) -> OpAddr | OpRegAddr:
 
     # [number] → direct address
     val = _try_parse_number(inner)
-    if val is None:
-        raise ParseError(f"Invalid address: {inner}", line)
-    _check_byte_range(val, line)
-    return OpAddr(val)
+    if val is not None:
+        _check_byte_range(val, line)
+        return OpAddr(val)
+
+    # [label] → direct address resolved in pass 2
+    if _RE_LABEL.match(inner):
+        return OpAddrLabel(inner.lower())
+
+    raise ParseError(f"Invalid address: {inner}", line)
 
 
 # ── Operand parsing ─────────────────────────────────────────────────

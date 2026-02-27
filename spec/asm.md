@@ -37,6 +37,7 @@ The assembler produces:
 - Case-insensitive duplicate detection (`Start` and `start` are the same label)
 - Forbidden names: `A`, `B`, `C`, `D`, `SP`, `DP`, `FA`, `FHA`, `FHB`, `FQA`, `FQB`, `FQC`, `FQD`, `FOA`, `FOB`, `FOC`, `FOD`, `FOE`, `FOF`, `FOG`, `FOH` (conflict with register names)
 - Forward references allowed — a label can be used before its definition
+- Labels can be used inside brackets: `[label]` is equivalent to `[addr]` where addr is the label's resolved address. Uses the same direct addressing opcode as `[number]`
 - Dot-prefix labels supported for local scope convention: `.loop`, `.end`
 
 ## 5.4 Comments

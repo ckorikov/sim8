@@ -15,6 +15,7 @@ from pysim8.asm.parser import (
     OpReg,
     OpConst,
     OpAddr,
+    OpAddrLabel,
     OpRegAddr,
     OpString,
     OpLabel,
@@ -56,7 +57,7 @@ def _operand_matches(op: Operand, ot: OpType) -> bool:
         case OpType.IMM:
             return isinstance(op, (OpConst, OpLabel))
         case OpType.MEM:
-            return isinstance(op, OpAddr)
+            return isinstance(op, (OpAddr, OpAddrLabel))
         case OpType.REGADDR:
             return isinstance(op, OpRegAddr)
         case OpType.FP_REG:
@@ -80,6 +81,8 @@ def _encode_operand(op: Operand) -> int:
         case OpRegAddr() as ra:
             return _encode_regaddr(ra)
         case OpLabel():
+            return 0  # placeholder for pass 2
+        case OpAddrLabel():
             return 0  # placeholder for pass 2
     raise AssertionError(f"unexpected operand: {op!r}")  # pragma: no cover
 
@@ -336,7 +339,7 @@ def assemble(source: str, arch: int = 1) -> AssembleResult:
 
         if operands:
             for i, op in enumerate(operands):
-                if isinstance(op, OpLabel):
+                if isinstance(op, (OpLabel, OpAddrLabel)):
                     # For FP data instructions, FPM bytes are
                     # reordered before non-FP bytes. Calculate
                     # the correct position of the label byte.
