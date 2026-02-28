@@ -9,7 +9,7 @@
 | Word Size | 8 bits |
 | Address Space | 64 KB (256 pages × 256 bytes) |
 | General Purpose Registers | 4 (A, B, C, D) |
-| FP Registers | 1 physical × 32-bit (15 named sub-register views); see [FPU](fp.md) |
+| FP Registers | 4 physical × 32-bit (44 named sub-register views); see [FPU](fp.md) |
 | Instruction Encoding | 1-4 bytes per instruction |
 
 ## 1.2 Registers
@@ -63,14 +63,14 @@
 
 ### Floating-Point Registers
 
-The FPU provides one 32-bit physical register with 15 named sub-register views at 4 granularity levels:
+The FPU provides four 32-bit physical registers (FA phys=0, FB phys=1, FC phys=2, FD phys=3), each with named sub-register views at multiple granularity levels:
 
 | Register(s) | Width | Count | Description |
 |-------------|-------|-------|-------------|
-| FA | 32-bit | 1 | Full register |
-| FHA, FHB | 16-bit | 2 | Half views (low, high) |
-| FQA-FQD | 8-bit | 4 | Quarter views |
-| FOA-FOH | 4-bit | 8 | Octet views |
+| FA, FB, FC, FD | 32-bit | 4 | Full registers (phys=0–3) |
+| FHA-FHH | 16-bit | 8 | Half views (A/B on phys=0, C/D on phys=1, E/F on phys=2, G/H on phys=3) |
+| FQA-FQP | 8-bit | 16 | Quarter views (A-D on phys=0, E-H on phys=1, I-L on phys=2, M-P on phys=3) |
+| FOA-FOP | 4-bit | 16 | Octet views (A-H on phys=0, I-P on phys=1; phys=2/3 have no 4-bit views) |
 
 **FP Control Registers:**
 
@@ -504,7 +504,7 @@ The FPU adds 32 opcodes (128-160, except 145) for IEEE 754 floating-point operat
 
 | Opcodes | Mnemonic | Category | Description |
 |---------|----------|----------|-------------|
-| 128-131 | FMOV | Data movement | Load/store between FP register and memory |
+| 128-131, 161-162 | FMOV | Data movement | Load/store between FP register and memory; FP immediate load |
 | 132-133 | FADD | Arithmetic | FP addition |
 | 134-135 | FSUB | Arithmetic | FP subtraction |
 | 136-137 | FMUL | Arithmetic | FP multiplication |
@@ -538,8 +538,10 @@ The FPU adds 32 opcodes (128-160, except 145) for IEEE 754 floating-point operat
 | 2 bytes | `[opcode, fpm]` | FABS, FNEG, FSQRT |
 | 2 bytes | `[opcode, gpr]` | FSTAT, FCFG, FSCFG |
 | 3 bytes | `[opcode, fpm, addr/regaddr]` | FMOV, FADD, FSUB, FMUL, FDIV, FCMP (mem) |
+| 3 bytes | `[opcode, fpm, imm8]` | FMOV (161, OFP8 immediate) |
 | 3 bytes | `[opcode, dst_fpm, src_fpm]` | FCVT, FADD, FSUB, FMUL, FDIV, FCMP (reg-reg) |
 | 3 bytes | `[opcode, fpm, gpr]` | FITOF, FFTOI, FCLASS |
+| 4 bytes | `[opcode, fpm, imm16_lo, imm16_hi]` | FMOV (162, float16/bfloat16 immediate) |
 | 4 bytes | `[opcode, dst_fpm, src_fpm, addr/regaddr]` | FMADD |
 
 **Encoding order exception:** For FFTOI and FCLASS, the assembly operand order is `gpr, FP` (destination GPR first), but the encoding is `[opcode, fpm, gpr]` (FPM byte first). This is the only case where encoding byte order differs from assembly operand order — it keeps all FP↔integer conversion encodings uniform (`[opcode, fpm, gpr]` for FITOF, FFTOI, and FCLASS).

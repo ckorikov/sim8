@@ -8,58 +8,83 @@ The FPU is a coprocessor extension that adds IEEE 754 floating-point support to 
 
 | Property | Value |
 |----------|-------|
-| Physical FP registers | 1 (v2); encoding reserves up to 4 |
+| Physical FP registers | 2 (FA, FB) |
 | Register width | 32 bits |
-| Named sub-register views | 15 (FA, FHA/FHB, FQA-FQD, FOA-FOH) |
+| Named sub-register views | 30 (FA-FB, FHA-FHD, FQA-FQH, FOA-FOP) |
 | Active formats (v2) | float32 (E8M23), float16 (E5M10), bfloat16 (E8M7), OFP8 (E4M3, E5M2) |
 | Reserved formats | 4-bit (E2M1, E1M2) — sub-byte, incompatible with byte-addressable memory |
 | Control registers | FPCR (rounding mode), FPSR (sticky exception flags) |
-| FP opcodes | 32 (opcodes 128-160 except 145) |
+| FP opcodes | 33 (opcodes 128-162 except 163+) |
 | FP fault codes | 1 (ERR_FP_FORMAT, code 12) |
 | Memory byte order | Little-endian |
 
 ## 7.2 FP Register Model
 
-### Physical Register
+### Physical Registers
 
-One 32-bit physical FP register with named views at 4 granularity levels. Naming convention: **F + width prefix + position letter** (A-H).
+Two 32-bit physical FP registers (phys=0: FA, phys=1: FB), each with named views at multiple granularity levels. Naming convention: **F + width prefix + position letter**.
 
 ```
-FA  = bits[31:0]                              — full 32-bit
-┌───────────────────┬───────────────────┐
-│       FHB         │       FHA         │     — 2 × 16-bit halves
-│     [31:16]       │     [15:0]        │
-├─────────┬─────────┼─────────┬─────────┤
-│   FQD   │   FQC   │   FQB   │   FQA   │     — 4 × 8-bit quarters
-│ [31:24] │ [23:16] │  [15:8] │  [7:0]  │
-├────┬────┼────┬────┼────┬────┼────┬────┤
-│FOH │FOG │FOF │FOE │FOD │FOC │FOB │FOA │     — 8 × 4-bit octets
-└────┴────┴────┴────┴────┴────┴────┴────┘
+FA (phys=0)                                    FB (phys=1)
+bits[31:0]                                     bits[31:0]
+┌───────────────────┬───────────────────┐      ┌───────────────────┬───────────────────┐
+│       FHB         │       FHA         │      │       FHD         │       FHC         │
+│     [31:16]       │     [15:0]        │      │     [31:16]       │     [15:0]        │
+├─────────┬─────────┼─────────┬─────────┤      ├─────────┬─────────┼─────────┬─────────┤
+│   FQD   │   FQC   │   FQB   │   FQA   │      │   FQH   │   FQG   │   FQF   │   FQE   │
+│ [31:24] │ [23:16] │  [15:8] │  [7:0]  │      │ [31:24] │ [23:16] │  [15:8] │  [7:0]  │
+├────┬────┼────┬────┼────┬────┼────┬────┤      ├────┬────┼────┬────┼────┬────┼────┬────┤
+│FOH │FOG │FOF │FOE │FOD │FOC │FOB │FOA │      │FOP │FOO │FON │FOM │FOL │FOK │FOJ │FOI │
+└────┴────┴────┴────┴────┴────┴────┴────┘      └────┴────┴────┴────┴────┴────┴────┴────┘
 ```
 
 ### Sub-Register Table
 
-| Name | Bits     | Width | Position | Naming         |
-|------|----------|-------|----------|----------------|
-| FA   | [31:0]   | 32    | 0        | Full           |
-| FHA  | [15:0]   | 16    | 0        | Half A         |
-| FHB  | [31:16]  | 16    | 1        | Half B         |
-| FQA  | [7:0]    | 8     | 0        | Quarter A      |
-| FQB  | [15:8]   | 8     | 1        | Quarter B      |
-| FQC  | [23:16]  | 8     | 2        | Quarter C      |
-| FQD  | [31:24]  | 8     | 3        | Quarter D      |
-| FOA  | [3:0]    | 4     | 0        | Octet A        |
-| FOB  | [7:4]    | 4     | 1        | Octet B        |
-| FOC  | [11:8]   | 4     | 2        | Octet C        |
-| FOD  | [15:12]  | 4     | 3        | Octet D        |
-| FOE  | [19:16]  | 4     | 4        | Octet E        |
-| FOF  | [23:20]  | 4     | 5        | Octet F        |
-| FOG  | [27:24]  | 4     | 6        | Octet G        |
-| FOH  | [31:28]  | 4     | 7        | Octet H        |
+**Physical register 0 (FA):**
+
+| Name | Bits     | Width | Position | Phys | Naming         |
+|------|----------|-------|----------|------|----------------|
+| FA   | [31:0]   | 32    | 0        | 0    | Full           |
+| FHA  | [15:0]   | 16    | 0        | 0    | Half A         |
+| FHB  | [31:16]  | 16    | 1        | 0    | Half B         |
+| FQA  | [7:0]    | 8     | 0        | 0    | Quarter A      |
+| FQB  | [15:8]   | 8     | 1        | 0    | Quarter B      |
+| FQC  | [23:16]  | 8     | 2        | 0    | Quarter C      |
+| FQD  | [31:24]  | 8     | 3        | 0    | Quarter D      |
+| FOA  | [3:0]    | 4     | 0        | 0    | Octet A        |
+| FOB  | [7:4]    | 4     | 1        | 0    | Octet B        |
+| FOC  | [11:8]   | 4     | 2        | 0    | Octet C        |
+| FOD  | [15:12]  | 4     | 3        | 0    | Octet D        |
+| FOE  | [19:16]  | 4     | 4        | 0    | Octet E        |
+| FOF  | [23:20]  | 4     | 5        | 0    | Octet F        |
+| FOG  | [27:24]  | 4     | 6        | 0    | Octet G        |
+| FOH  | [31:28]  | 4     | 7        | 0    | Octet H        |
+
+**Physical register 1 (FB):**
+
+| Name | Bits     | Width | Position | Phys | Naming         |
+|------|----------|-------|----------|------|----------------|
+| FB   | [31:0]   | 32    | 0        | 1    | Full           |
+| FHC  | [15:0]   | 16    | 0        | 1    | Half C         |
+| FHD  | [31:16]  | 16    | 1        | 1    | Half D         |
+| FQE  | [7:0]    | 8     | 0        | 1    | Quarter E      |
+| FQF  | [15:8]   | 8     | 1        | 1    | Quarter F      |
+| FQG  | [23:16]  | 8     | 2        | 1    | Quarter G      |
+| FQH  | [31:24]  | 8     | 3        | 1    | Quarter H      |
+| FOI  | [3:0]    | 4     | 0        | 1    | Octet I        |
+| FOJ  | [7:4]    | 4     | 1        | 1    | Octet J        |
+| FOK  | [11:8]   | 4     | 2        | 1    | Octet K        |
+| FOL  | [15:12]  | 4     | 3        | 1    | Octet L        |
+| FOM  | [19:16]  | 4     | 4        | 1    | Octet M        |
+| FON  | [23:20]  | 4     | 5        | 1    | Octet N        |
+| FOO  | [27:24]  | 4     | 6        | 1    | Octet O        |
+| FOP  | [31:28]  | 4     | 7        | 1    | Octet P        |
 
 ### Aliasing Rules
 
-Writing to a wider view overwrites all narrower views it contains:
+Writing to a wider view overwrites all narrower views it contains. Each physical register is independent — writing to FA does not affect FB, and vice versa.
+
+**Physical register 0 (FA):**
 
 - Writing to **FA** overwrites FHA, FHB, FQA-FQD, FOA-FOH.
 - Writing to **FHA** overwrites FQA, FQB, FOA-FOD.
@@ -70,13 +95,15 @@ Writing to a wider view overwrites all narrower views it contains:
 - Writing to **FQD** overwrites FOG, FOH.
 - Writing to an **FO\*** register overwrites only those 4 bits.
 
+**Physical register 1 (FB):** Same aliasing pattern with corresponding names (FB ↔ FHC/FHD ↔ FQE-FQH ↔ FOI-FOP).
+
 No automatic format conversion occurs on aliased reads. Reading FHA after writing FA returns the raw low 16 bits, not a float16 conversion of the float32 value.
 
 ### v2 Scope and Future Expansion
 
-**v2 scope:** FA, FHA, FHB are fully operational (float32, float16, bfloat16). FQA-FQD are fully operational (OFP8 E4M3, E5M2). FOA-FOH are defined in encoding but FP operations on 4-bit formats are permanently reserved — executing them triggers FAULT(`ERR_FP_FORMAT`). The 4-bit formats (E2M1, E1M2) are sub-byte and fundamentally incompatible with the byte-addressable memory model (the smallest memory unit is 8 bits). FOA-FOH sub-register views remain accessible through aliasing (writing to a wider view that contains them).
+**v2 scope:** Two physical registers (FA, FB) and their named sub-register views are fully operational. FA/FB, FHA-FHD are fully operational (float32, float16, bfloat16). FQA-FQH are fully operational (OFP8 E4M3, E5M2). FOA-FOP are defined in encoding but FP operations on 4-bit formats are permanently reserved — executing them triggers FAULT(`ERR_FP_FORMAT`). The 4-bit formats (E2M1, E1M2) are sub-byte and fundamentally incompatible with the byte-addressable memory model (the smallest memory unit is 8 bits). FOA-FOP sub-register views remain accessible through aliasing (writing to a wider view that contains them).
 
-**Future expansion:** The FPM byte encoding reserves 2 bits for a physical register selector (up to 4 total physical FP registers). In v2, only physical register 0 is valid; referencing registers 1-3 triggers FAULT(`ERR_FP_FORMAT`). Naming convention for additional registers is TBD in future versions.
+**FPM encoding:** The FPM byte uses 2 bits for physical register selection (phys 0-3). Only phys 0 (FA) and phys 1 (FB) are valid in v2; phys 2-3 are reserved for future expansion.
 
 ## 7.3 FP Formats
 
@@ -88,13 +115,13 @@ Every FP format is described using **EXMY notation**: E = exponent bits, M = man
 
 | EXMY   | Name     | Bits | Sign | Exp | Mantissa | Bias | Short suffix | Registers   | v2 status |
 |--------|----------|------|------|-----|----------|------|--------------|-------------|-----------|
-| E8M23  | float32  | 32   | 1    | 8   | 23       | 127  | `.F`         | FA          | Active    |
-| E5M10  | float16  | 16   | 1    | 5   | 10       | 15   | `.H`         | FHA, FHB    | Active    |
-| E8M7   | bfloat16 | 16   | 1    | 8   | 7        | 127  | `.BF`        | FHA, FHB    | Active    |
-| E4M3   | OFP8     | 8    | 1    | 4   | 3        | 7    | `.O3`        | FQA-FQD     | Active    |
-| E5M2   | OFP8     | 8    | 1    | 5   | 2        | 15   | `.O2`        | FQA-FQD     | Active    |
-| E2M1   | (4-bit)  | 4    | 1    | 2   | 1        | 1    | `.N1`        | FOA-FOH     | Reserved  |
-| E1M2   | (4-bit)  | 4    | 1    | 1   | 2        | 1    | `.N2`        | FOA-FOH     | Reserved  |
+| E8M23  | float32  | 32   | 1    | 8   | 23       | 127  | `.F`         | FA, FB      | Active    |
+| E5M10  | float16  | 16   | 1    | 5   | 10       | 15   | `.H`         | FHA-FHD     | Active    |
+| E8M7   | bfloat16 | 16   | 1    | 8   | 7        | 127  | `.BF`        | FHA-FHD     | Active    |
+| E4M3   | OFP8     | 8    | 1    | 4   | 3        | 7    | `.O3`        | FQA-FQH     | Active    |
+| E5M2   | OFP8     | 8    | 1    | 5   | 2        | 15   | `.O2`        | FQA-FQH     | Active    |
+| E2M1   | (4-bit)  | 4    | 1    | 2   | 1        | 1    | `.N1`        | FOA-FOP         | Reserved  |
+| E1M2   | (4-bit)  | 4    | 1    | 1   | 2        | 1    | `.N2`        | FOA-FOP         | Reserved  |
 
 ### Special Values
 
@@ -175,7 +202,7 @@ All FP instructions that touch FP data use a 1-byte **FP Modifier (FPM)** to enc
 |--------|-------|-------------|
 | [2:0]  | fmt   | Format code (0-7) |
 | [5:3]  | pos   | Position within width class (0-7) |
-| [7:6]  | phys  | Physical register selector (0-3; v2: only 0) |
+| [7:6]  | phys  | Physical register selector (0-3; v2: 0-1 only) |
 
 ### Format Codes
 
@@ -194,7 +221,7 @@ All FP instructions that touch FP data use a 1-byte **FP Modifier (FPM)** to enc
 
 The CPU validates the FPM byte on decode. Any of the following conditions triggers FAULT(`ERR_FP_FORMAT`):
 
-- `phys ≠ 0` (v2: only physical register 0 exists)
+- `phys > 1` (v2: only physical registers 0 and 1 exist)
 - `fmt == 7` (reserved format code)
 - `fmt ≥ 5` (reserved 4-bit formats in v2 — sub-byte, not memory-addressable)
 - `pos` out of range for the given `fmt` (e.g., `pos > 0` for fmt=0, `pos > 3` for fmt=3/4)
@@ -232,7 +259,7 @@ phys = (FPM >> 6) & 0x03
 
 ## 7.6 Instruction Reference
 
-All FP instructions use opcodes 128-160 (except 145, which is reserved). For the master opcode table, see [Opcodes](opcodes.md).
+All FP instructions use opcodes 128-162. For the master opcode table, see [Opcodes](opcodes.md).
 
 ### Instruction Encoding
 
@@ -243,7 +270,8 @@ FP instructions follow the general sim8 encoding model (1-4 bytes):
 | 1 byte | `[opcode]` | FCLR (152) |
 | 2 bytes | `[opcode, fpm]` | FABS (142), FNEG (143), FSQRT (144) |
 | 2 bytes | `[opcode, gpr]` | FSTAT (149), FCFG (150), FSCFG (151) |
-| 3 bytes | `[opcode, fpm, addr/reg/fpm2/gpr]` | FMOV (128-131), FADD (132-133), FSUB (134-135), FMUL (136-137), FDIV (138-139), FCMP (140-141), FCVT (146), FITOF (147), FFTOI (148), FADD_RR-FCMP_RR (153-157), FCLASS (158) |
+| 3 bytes | `[opcode, fpm, addr/reg/fpm2/gpr/imm8]` | FMOV (128-131, 145, 161), FADD (132-133), FSUB (134-135), FMUL (136-137), FDIV (138-139), FCMP (140-141), FCVT (146), FITOF (147), FFTOI (148), FADD_RR-FCMP_RR (153-157), FCLASS (158) |
+| 4 bytes | `[opcode, fpm, imm16_lo, imm16_hi]` | FMOV (162) |
 | 4 bytes | `[opcode, dst_fpm, src_fpm, addr/regaddr]` | FMADD (159-160) |
 
 **Note on 2-byte control instructions:** FSTAT (149), FCFG (150), and FSCFG (151) use the second byte as a GPR code (0-3), not an FPM byte.
@@ -273,6 +301,30 @@ Per-instruction exception lists below document only **IEEE 754 arithmetic except
 **Flags:** No flags affected (like integer MOV).
 
 **IEEE 754 exceptions:** None (FMOV is a data transfer, not an arithmetic operation).
+
+### FMOV — FP Immediate Load (Opcodes 161-162)
+
+| Opcode | Operands    | Bytes | Encoding                          | Description |
+|--------|-------------|-------|-----------------------------------|-------------|
+| 161    | FP, imm8    | 3     | `[161, fpm, imm8]`               | Load 8-bit FP immediate (OFP8) |
+| 162    | FP, imm16   | 4     | `[162, fpm, imm16_lo, imm16_hi]` | Load 16-bit FP immediate (float16/bfloat16) |
+
+**Semantics:** Write the raw FP bits from the immediate operand to the sub-register identified by FPM. This is a raw bit write (like FMOV load from memory), not an arithmetic operation. The assembler encodes the float literal into the instruction bytes at assembly time; the CPU stores the raw bits verbatim.
+
+**Format validation (decode-time):**
+- Opcode 161: fmt must be 3 or 4 (8-bit formats: OFP8 E4M3, E5M2). If fmt is not 3 or 4 → FAULT(`ERR_FP_FORMAT`).
+- Opcode 162: fmt must be 1 or 2 (16-bit formats: float16, bfloat16). If fmt is not 1 or 2 → FAULT(`ERR_FP_FORMAT`).
+- Standard FPM validation also applies (phys ≤ 1, pos in range for fmt).
+
+**Float32 restriction:** float32 immediate is not supported because it would require 6 bytes (opcode + FPM + 4 immediate bytes), exceeding the 4-byte maximum instruction length. Use FMOV from memory instead.
+
+**Byte order:** imm16 is little-endian (low byte first), consistent with FMOV memory byte order.
+
+**Flags:** No flags affected.
+
+**IEEE 754 exceptions:** None (raw bit transfer).
+
+**Cost:** 1 tick.
 
 ### FADD — FP Addition (Opcodes 132-133)
 
@@ -378,6 +430,24 @@ Per-instruction exception lists below document only **IEEE 754 arithmetic except
 
 **IEEE 754 exceptions:** Invalid (sqrt of negative number, sNaN), Inexact. sqrt(±0) = ±0, sqrt(+Inf) = +Inf.
 
+### FMOV — FP Register-to-Register Copy (Opcode 145)
+
+| Opcode | Operands       | Bytes | Encoding                    | Description |
+|--------|----------------|-------|-----------------------------|-------------|
+| 145    | dst_FP, src_FP | 3     | `[145, dst_fpm, src_fpm]`   | Raw bit copy src → dst |
+
+**Semantics:** Read the raw bits from the source FP sub-register, write them verbatim to the destination FP sub-register. No rounding, no IEEE 754 exceptions, no format conversion — this is a pure bit copy.
+
+**Format constraint:** The format (fmt field) of dst_fpm and src_fpm must be identical. If `dst_fmt != src_fmt`, the CPU raises FAULT(`ERR_FP_FORMAT`). The position (pos field) and physical register (phys field) may differ — for example, `FMOV.H FHA, FHB` is valid (both fmt=1, but different positions).
+
+**Assembly syntax:** `FMOV.fmt dst_reg, src_reg` (single suffix, two FP register operands, no brackets). Example: `FMOV.H FHA, FHB`.
+
+**Flags:** No flags affected.
+
+**IEEE 754 exceptions:** None (raw bit transfer).
+
+**Cost:** 1 tick.
+
 ### FCVT — FP Format Conversion (Opcode 146)
 
 | Opcode | Operands       | Bytes | Encoding              | Description |
@@ -387,6 +457,8 @@ Per-instruction exception lists below document only **IEEE 754 arithmetic except
 **Semantics:** Read the value from the source FP sub-register (interpreted in source format), convert to the destination format, store in the destination FP sub-register.
 
 **Assembly syntax:** `FCVT.dst_fmt.src_fmt dst_reg, src_reg` (dual suffix). Example: `FCVT.H.F FHA, FA` converts float32 in FA to float16 in FHA.
+
+**Same-format restriction (assembler):** The assembler rejects `FCVT` when the destination and source formats are identical (e.g., `FCVT.H.H FHA, FHB`). Use `FMOV` for same-format register copies instead. This is an assembler-level restriction only — the CPU does not fault on same-format FCVT in bytecode.
 
 **Flags:** No flags affected.
 

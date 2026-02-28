@@ -1095,7 +1095,51 @@ Tests that OFP8 8-bit formats work correctly. E4M3 has unique behavior: no Infin
 
 ---
 
-## 8.16 Test Summary
+## 8.16 FMOV Register-to-Register (Opcode 145)
+
+Tests raw bit copy between FP registers.
+
+### 8.16.1 Basic FMOV_RR
+
+| # | Source | Verify | Description |
+|---|--------|--------|-------------|
+| 161 | `FMOV.H FHA, [d]` | | Load 1.5 float16 into FHA |
+|     | `FMOV.H FHB, FHA` | FHB = 0x3E00 | Raw bit copy FHA → FHB |
+|     | `HLT` | FPSR=0 | No exceptions |
+|     | `d: DB 1.5_h` | | |
+| 162 | `FMOV.F FA, [d]` | | Load 2.0 float32 |
+|     | `FMOV.F FB, FA` | FB = 0x40000000 | Cross-physical raw bit copy |
+|     | `HLT` | | |
+|     | `d: DB 2.0` | | |
+| 163 | `FMOV.O3 FQA, [d]` | | Load E4M3 1.0 |
+|     | `FMOV.O3 FQB, FQA` | FQB = 0x38 | OFP8 reg-reg copy |
+|     | `HLT` | | |
+|     | `d: DB 1.0_o3` | | |
+
+### 8.16.2 FMOV_RR Format Mismatch
+
+| # | Source | Verify | Description |
+|---|--------|--------|-------------|
+| 164 | *(bytecode)* `[145, 0x01, 0x00]` | F=true, A=12 | dst=float16, src=float32 → FAULT(ERR_FP_FORMAT) |
+
+### 8.16.3 FMOV_RR Cost
+
+| # | Source | Verify | Description |
+|---|--------|--------|-------------|
+| 165 | `FMOV.H FHA, [d]` | cost(FMOV_RR)=1 | FMOV_RR costs 1 tick |
+|     | `FMOV.H FHB, FHA` | | |
+|     | `HLT` | | |
+|     | `d: DB 1.5_h` | | |
+
+### 8.16.4 FMOV_RR Encoding
+
+| # | Source | Expected bytes | Description |
+|---|--------|--------------------|-------------|
+| 166 | `FMOV.H FHA, FHB` | `[145, 0x01, 0x09]` | Opcode 145, dst_fpm, src_fpm |
+
+---
+
+## 8.17 Test Summary
 
 | Group | Tests | Coverage |
 |-------|-------|----------|
@@ -1113,5 +1157,6 @@ Tests that OFP8 8-bit formats work correctly. E4M3 has unique behavior: no Infin
 | [FP Assembler Encoding](#813-fp-assembler-encoding-verification) | 97-121, 148-151 | FPM encoding, instruction bytes, EXMY aliases, reg-reg/FCLASS/FMADD encoding, errors |
 | [IEEE 754 Vectors](#814-ieee-754-arithmetic-validation) | (parametric) | Methodology + mapping spec for `.fptest` vector suites |
 | [OFP8 (E4M3, E5M2)](#815-ofp8-e4m3-e5m2-tests) | 152-160 | OFP8 load/store, arithmetic, E4M3 overflow saturation, conversion, classification, reg-reg, encoding |
-| **Spec tests total** | **160** | **160 functional FP tests (sections 8.2-8.15)** |
+| [FMOV_RR](#816-fmov-register-to-register-opcode-145) | 161-166 | FMOV_RR basic, cross-phys, OFP8, format mismatch fault, cost, encoding |
+| **Spec tests total** | **166** | **166 functional FP tests (sections 8.2-8.16)** |
 | **Parametric (pysim8)** | **~1700+** | **Full `.fptest` b32 vector coverage via automated test runner** |

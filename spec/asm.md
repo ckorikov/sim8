@@ -35,7 +35,7 @@ The assembler produces:
 - Defined with trailing colon: `start:`, `.loop:`
 - Must start with a letter or dot, followed by word characters: `/^[.A-Za-z]\w*$/`
 - Case-insensitive duplicate detection (`Start` and `start` are the same label)
-- Forbidden names: `A`, `B`, `C`, `D`, `SP`, `DP`, `FA`, `FHA`, `FHB`, `FQA`, `FQB`, `FQC`, `FQD`, `FOA`, `FOB`, `FOC`, `FOD`, `FOE`, `FOF`, `FOG`, `FOH` (conflict with register names)
+- Forbidden names: `A`, `B`, `C`, `D`, `SP`, `DP`, `FA`, `FB`, `FC`, `FD`, `FHA`, `FHB`, `FHC`, `FHD`, `FHE`, `FHF`, `FHG`, `FHH`, `FQA`, `FQB`, `FQC`, `FQD`, `FQE`, `FQF`, `FQG`, `FQH`, `FQI`, `FQJ`, `FQK`, `FQL`, `FQM`, `FQN`, `FQO`, `FQP`, `FOA`, `FOB`, `FOC`, `FOD`, `FOE`, `FOF`, `FOG`, `FOH`, `FOI`, `FOJ`, `FOK`, `FOL`, `FOM`, `FON`, `FOO`, `FOP` (conflict with register names)
 - Forward references allowed — a label can be used before its definition
 - Labels can be used inside brackets: `[label]` is equivalent to `[addr]` where addr is the label's resolved address. Uses the same direct addressing opcode as `[number]`
 - Dot-prefix labels supported for local scope convention: `.loop`, `.end`
@@ -64,7 +64,7 @@ The assembler produces:
 | FQA, FQB, FQC, FQD | 8-bit | Quarter views |
 | FOA-FOH | 4-bit | Octet views |
 
-FP registers are used with FP instructions only (opcodes 128-160, except 145). FP register names are case-insensitive: `FA` = `fa` = `Fa`.
+FP registers are used with FP instructions only (opcodes 128-162). FP register names are case-insensitive: `FA` = `fa` = `Fa`.
 
 See [FPU](fp.md) for the full register model and aliasing rules.
 
@@ -107,11 +107,24 @@ The assembler validates that the suffix width matches the register width:
 
 A mismatch is an assembler error (e.g., `FADD.F FHA, [0]` → error).
 
+### FMOV Register-to-Register
+
+FMOV with two FP register operands (no brackets) is a raw bit copy (opcode 145):
+
+```
+FMOV.H FHA, FHB      ; raw bit copy FHB → FHA
+FMOV.F FA, FB         ; raw bit copy FB → FA
+```
+
+Both operands must have the same format suffix. Position and physical register may differ. This is distinct from memory-variant FMOV (brackets = memory) and should be used instead of same-format FCVT.
+
 ### FCVT Dual Suffix
 
 FCVT uses two suffixes: `FCVT.dst_fmt.src_fmt dst_reg, src_reg`.
 
 Example: `FCVT.H.F FHA, FA` — convert float32 in FA to float16 in FHA.
+
+**Same-format restriction:** The assembler rejects `FCVT` when both suffixes specify the same format (e.g., `FCVT.H.H FHA, FHB`). Use `FMOV` for same-format register copies instead.
 
 ### Register-to-Register Arithmetic
 
@@ -148,6 +161,30 @@ FMADD.F FA, FA, [B]          ; indirect: FA = FA × mem[DP:B] + FA
 ```
 
 Three operands: `dst_FP, src_FP, [mem]`. Both FP operands must have the same format suffix.
+
+### FMOV with FP Immediate
+
+FMOV supports loading an FP literal directly into a sub-register for OFP8 and 16-bit formats:
+
+```asm
+FMOV.O3 FQA, 1.5        ; OFP8 E4M3 immediate (3 bytes)
+FMOV.O2 FQB, -0.5       ; OFP8 E5M2 immediate (3 bytes)
+FMOV.H  FHA, 3.14       ; float16 immediate (4 bytes)
+FMOV.BF FHB, 2.0        ; bfloat16 immediate (4 bytes)
+```
+
+The literal uses the same syntax as DB float literals. An optional suffix on the literal must match the instruction suffix:
+
+```asm
+FMOV.O3 FQA, 1.5_o3     ; OK (explicit suffix matches)
+FMOV.O3 FQA, 1.5_h      ; ERROR: FP immediate suffix mismatch
+```
+
+Float32 immediate is not supported — it would exceed the 4-byte maximum instruction length. Use `DB` + `[label]` instead:
+
+```asm
+FMOV.F FA, 1.0           ; ERROR: FP immediate not supported for float32
+```
 
 ### Control Instructions
 
@@ -250,3 +287,6 @@ All errors include the source line number (1-based: first line is 1).
 | `Unsupported float format for DB: X` | 4-bit format suffix (`_n1`, `_n2`, `_e2m1`, `_e1m2`) used in DB |
 | `Float value out of range for format X` | Value not representable (overflow for OFP8 E4M3) |
 | `Invalid float literal` | Malformed float syntax in DB |
+| `FP immediate not supported for float32` | FMOV.F with immediate operand |
+| `FP immediate suffix mismatch` | Literal suffix does not match instruction suffix |
+| `FCVT with identical formats (use FMOV)` | FCVT dst and src formats are the same |

@@ -96,7 +96,7 @@
 | 142 | FABS | FP | 2 |
 | 143 | FNEG | FP | 2 |
 | 144 | FSQRT | FP | 2 |
-| 145 | *(reserved)* | — | — |
+| 145 | FMOV | FP, FP | 3 |
 | 146 | FCVT | dst_FP, src_FP | 3 |
 | 147 | FITOF | FP, gpr | 3 |
 | 148 | FFTOI | gpr, FP | 3 |
@@ -113,6 +113,9 @@
 | 158 | FCLASS | gpr, FP | 3 |
 | 159 | FMADD | FP, FP, [addr] | 4 |
 | 160 | FMADD | FP, FP, [reg] | 4 |
+| | **FP Immediate** | | |
+| 161 | FMOV | FP, imm8 | 3 |
+| 162 | FMOV | FP, imm16 | 4 |
 
-**Total: 106 opcodes** (74 integer + 32 FP)
-**Unused (reserved):** 9, 24-29, 44-49, 58-59, 68-69, 83-89, 98-127, 145, 161-255. These ranges are reserved for future architecture versions. Executing a reserved opcode triggers FAULT (`ERR_INVALID_OPCODE`, A=6).
+**Total: 109 opcodes** (74 integer + 35 FP)
+**Unused (reserved):** 9, 24-29, 44-49, 58-59, 68-69, 83-89, 98-127, 163-255. These ranges are reserved for future architecture versions. Executing a reserved opcode triggers FAULT (`ERR_INVALID_OPCODE`, A=6).
