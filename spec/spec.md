@@ -144,4 +144,4 @@ IEEE 754 floating-point coprocessor extension. Key additions from v1:
 - FP binary + mem: 5 ticks, FP reg-reg: 3 ticks, FMADD: 6 ticks
 - FP conversion: 3 ticks, FP control: 1 tick
 
-**Totals:** 106 opcodes assigned (74 integer + 32 FP), 150 free, 7 error codes
+**Totals:** 108 opcodes assigned (74 integer + 34 FP), 148 free, 7 error codes

@@ -39,6 +39,6 @@ IDLE ──step()──► RUNNING ──HLT──► HALTED
 
 **Important:** Validation occurs before any state modification. For example, PUSH faults when `SP == 0` before writing to memory. If validation fails, CPU enters FAULT without modifying memory or registers (except F and A for error code; see [Error Codes](errors.md)).
 
-**FP instruction validation:** FP instructions (opcodes 128-160, except 145) additionally validate the FPM byte during the Decode/Validate phase. An invalid FPM byte triggers FAULT(`ERR_FP_FORMAT`) before any FP register or memory modification. FP arithmetic exceptions (Invalid, DivZero, Overflow, Underflow, Inexact) are checked during Execute and always set the corresponding FPSR sticky flag — they never cause FAULT. See [FPU Exception Model](fp.md#77-fp-exception-model).
+**FP instruction validation:** FP instructions (opcodes 128-162) additionally validate the FPM byte during the Decode/Validate phase. An invalid FPM byte triggers FAULT(`ERR_FP_FORMAT`) before any FP register or memory modification. FP arithmetic exceptions (Invalid, DivZero, Overflow, Underflow, Inexact) are checked during Execute and always set the corresponding FPSR sticky flag — they never cause FAULT. See [FPU Exception Model](fp.md#77-fp-exception-model).
 
 For implementation pseudocode, see [Microarchitecture](uarch.md#41-execution-loop).
