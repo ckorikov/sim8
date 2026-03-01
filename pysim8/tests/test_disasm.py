@@ -12,18 +12,18 @@ from pysim8.isa import (
 
 # Sample operand values per (position, operand_type).
 _SAMPLES: dict[tuple[int, OpType], int] = {
-    (0, OpType.REG): 2,        # C
-    (0, OpType.REG_STACK): 0,  # A
-    (0, OpType.REG_GPR): 1,    # B
+    (0, OpType.REG): 2,
+    (0, OpType.REG_STACK): 0,
+    (0, OpType.REG_GPR): 1,
     (0, OpType.IMM): 42,
     (0, OpType.MEM): 100,
-    (0, OpType.REGADDR): (3 << 3) | 2,  # [C+3]
-    (1, OpType.REG): 3,                  # D
-    (1, OpType.REG_STACK): 4,            # SP
-    (1, OpType.REG_GPR): 3,              # D
+    (0, OpType.REGADDR): (3 << 3) | 2,
+    (1, OpType.REG): 3,
+    (1, OpType.REG_STACK): 4,
+    (1, OpType.REG_GPR): 3,
     (1, OpType.IMM): 99,
     (1, OpType.MEM): 200,
-    (1, OpType.REGADDR): (5 << 3) | 1,  # [B+5]
+    (1, OpType.REGADDR): (5 << 3) | 1,
 }
 
 
@@ -52,19 +52,18 @@ def test_roundtrip(defn: InsnDef) -> None:
 
 
 def test_unknown_opcode() -> None:
-    code = [9, 42]  # 9 is not a valid opcode
+    code = [9, 42]
     items = disasm(code)
     assert items == [(0, "DB 9", 1), (1, "DB 42", 1)]
 
 
 def test_truncated_instruction() -> None:
-    code = [6, 0]  # MOV_REG_CONST needs 3 bytes, only 2 given
+    code = [6, 0]
     items = disasm(code)
     assert items[0] == (0, "DB 6", 1)
 
 
 def test_full_stream() -> None:
-    # MOV A, 42 (3b) + INC A (2b) + HLT (1b)
     code = [6, 0, 42, 18, 0, 0]
     items = disasm(code)
 
@@ -73,7 +72,6 @@ def test_full_stream() -> None:
     assert items[1] == (3, "INC A", 2)
     assert items[2] == (5, "HLT", 1)
 
-    # No gaps: total coverage
     assert sum(sz for _, _, sz in items) == len(code)
 
 
@@ -100,7 +98,6 @@ def test_fmt_operand_unknown_type() -> None:
 def test_regaddr_disasm(reg: int, offset: int, expected: str) -> None:
     offset_u = offset if offset >= 0 else 32 + offset
     encoded = (offset_u << 3) | reg
-    # MOV_REG_REGADDR (opcode 3): MOV dest, [src±off]
     text = disasm_insn(3, (0, encoded))
     assert expected in text
 
@@ -112,7 +109,6 @@ def test_regaddr_roundtrip(offset: int) -> None:
     suffix = sign if offset != 0 else ""
     source = f"MOV A, [B{suffix}]\nHLT"
     code = assemble(source).code
-    # Disassemble and reassemble
     text = disasm_insn(code[0], (code[1], code[2]))
     reassembled = assemble(text + "\nHLT").code[:3]
     assert reassembled == code[:3]
@@ -127,7 +123,7 @@ def test_disasm_cli(tmp_path: pytest.TempPathFactory) -> None:
     from pysim8.disasm.cli import main
 
     bin_file = tmp_path / "test.bin"  # type: ignore[operator]
-    bin_file.write_bytes(bytes([6, 0, 42, 0]))  # MOV A, 42; HLT
+    bin_file.write_bytes(bytes([6, 0, 42, 0]))
     runner = CliRunner()
     result = runner.invoke(main, [str(bin_file)])
     assert result.exit_code == 0
@@ -209,7 +205,6 @@ class TestFpDisasm:
 
     def test_fmov_imm16(self) -> None:
         fpm = encode_fpm(0, 0, FP_FMT_H)
-        # 1.0 in f16 = 0x3C00 → lo=0x00, hi=0x3C
         text = disasm_insn(int(Op.FMOV_FP_IMM16), (fpm, 0x00, 0x3C))
         assert text == "FMOV.H FHA, 15360"
 
@@ -221,7 +216,7 @@ class TestFpDisasm:
 
     def test_fadd_regaddr(self) -> None:
         fpm = encode_fpm(0, 0, FP_FMT_BF)
-        ra = (3 << 3) | 1  # [B+3]
+        ra = (3 << 3) | 1
         text = disasm_insn(int(Op.FADD_FP_REGADDR), (fpm, ra))
         assert "FADD.BF" in text
         assert "[B+3]" in text
@@ -229,7 +224,7 @@ class TestFpDisasm:
     def test_fp_in_disasm_stream(self) -> None:
         """FP opcodes in a byte stream are decoded, not treated as DB."""
         fpm = encode_fpm(0, 0, FP_FMT_F)
-        code = [int(Op.FABS_FP), fpm, 0]  # FABS.F FA + HLT
+        code = [int(Op.FABS_FP), fpm, 0]
         items = disasm(code)
         assert len(items) == 2
         assert items[0] == (0, "FABS.F FA", 2)
@@ -237,7 +232,7 @@ class TestFpDisasm:
 
     def test_fp_truncated_in_stream(self) -> None:
         """Truncated FP instruction → DB fallback."""
-        code = [int(Op.FADD_FP_ADDR)]  # needs 3 bytes, only 1
+        code = [int(Op.FADD_FP_ADDR)]
         items = disasm(code)
         assert items[0][1].startswith("DB")
 
@@ -278,7 +273,6 @@ class TestBuildFpmToReg:
             "BB": (0, 0, 1, 16),
         }
         result = _build_fpm_to_reg(regs)
-        # Same length → first one kept (not shorter)
         assert result[(0, 0, 1)] == "AA"
 
     def test_unique_keys(self) -> None:
@@ -299,7 +293,6 @@ class TestDisasmFpEdgeCoverage:
         """FP data insn with zero FP_REG operands → label without suffix."""
         from pysim8.disasm.core import _disasm_fp_insn
         from pysim8.isa import BY_CODE_FP, InsnDef, Op, OpType
-        # Temporarily inject a fake FP insn with only MEM operand
         fake = InsnDef(Op.FCLR, "FTEST", (OpType.MEM,), cost=1)
         saved = BY_CODE_FP.get(int(Op.FCLR))
         BY_CODE_FP[int(Op.FCLR)] = fake

@@ -68,11 +68,9 @@ class TestBytecodeVerification:
         assert asm_bytes("PUSH 255") == [53, 255]
 
     def test_117_add_reg_regaddr(self) -> None:
-        # regaddr: (2 << 3) | 1 = 17
         assert asm_bytes("ADD A, [B+2]") == [11, 0, 17]
 
     def test_118_mov_reg_sp_minus_1(self) -> None:
-        # regaddr: offset=-1 → offset_u = 32 + (-1) = 31; (31 << 3) | 4 = 252
         assert asm_bytes("MOV A, [SP-1]") == [3, 0, 252]
 
     def test_119_db_zero(self) -> None:
@@ -300,29 +298,24 @@ class TestDbList:
 class TestAllOpcodeEncoding:
     """Verify opcode encoding for every instruction category."""
 
-    # MOV variants
     def test_mov_reg_addr(self) -> None:
         assert asm_bytes("MOV A, [0x50]") == [2, 0, 0x50]
 
     def test_mov_reg_regaddr(self) -> None:
-        # [B] → offset=0, reg=1 → (0<<3)|1 = 1
         assert asm_bytes("MOV A, [B]") == [3, 0, 1]
 
     def test_mov_addr_reg(self) -> None:
         assert asm_bytes("MOV [0x50], A") == [4, 0x50, 0]
 
     def test_mov_regaddr_reg(self) -> None:
-        # [B] → 1
         assert asm_bytes("MOV [B], A") == [5, 1, 0]
 
     def test_mov_addr_const(self) -> None:
         assert asm_bytes("MOV [232], 72") == [7, 232, 72]
 
     def test_mov_regaddr_const(self) -> None:
-        # [B+2] → (2<<3)|1 = 17
         assert asm_bytes("MOV [B+2], 88") == [8, 17, 88]
 
-    # ADD variants
     def test_add_reg_reg(self) -> None:
         assert asm_bytes("ADD A, B") == [10, 0, 1]
 
@@ -332,32 +325,27 @@ class TestAllOpcodeEncoding:
     def test_add_reg_const(self) -> None:
         assert asm_bytes("ADD A, 1") == [13, 0, 1]
 
-    # SUB variants
     def test_sub_reg_reg(self) -> None:
         assert asm_bytes("SUB A, B") == [14, 0, 1]
 
     def test_sub_reg_const(self) -> None:
         assert asm_bytes("SUB A, 20") == [17, 0, 20]
 
-    # INC / DEC
     def test_dec_reg(self) -> None:
         assert asm_bytes("DEC A") == [19, 0]
 
     def test_inc_sp(self) -> None:
         assert asm_bytes("INC SP") == [18, 4]
 
-    # CMP
     def test_cmp_reg_reg(self) -> None:
         assert asm_bytes("CMP A, B") == [20, 0, 1]
 
     def test_cmp_reg_const(self) -> None:
         assert asm_bytes("CMP A, 0") == [23, 0, 0]
 
-    # JMP
     def test_jmp_reg(self) -> None:
         assert asm_bytes("JMP A") == [30, 0]
 
-    # Conditional jumps (address form)
     def test_jc_addr(self) -> None:
         assert asm_bytes("JC 100") == [33, 100]
 
@@ -376,12 +364,10 @@ class TestAllOpcodeEncoding:
     def test_jna_addr(self) -> None:
         assert asm_bytes("JNA 10") == [43, 10]
 
-    # Stack
     def test_push_reg(self) -> None:
         assert asm_bytes("PUSH A") == [50, 0]
 
     def test_push_regaddr(self) -> None:
-        # [B] → 1
         assert asm_bytes("PUSH [B]") == [51, 1]
 
     def test_push_addr(self) -> None:
@@ -390,14 +376,12 @@ class TestAllOpcodeEncoding:
     def test_pop_reg(self) -> None:
         assert asm_bytes("POP A") == [54, 0]
 
-    # CALL
     def test_call_reg(self) -> None:
         assert asm_bytes("CALL A") == [55, 0]
 
     def test_call_addr(self) -> None:
         assert asm_bytes("CALL 100") == [56, 100]
 
-    # MUL / DIV
     def test_mul_reg(self) -> None:
         assert asm_bytes("MUL B") == [60, 1]
 
@@ -416,7 +400,6 @@ class TestAllOpcodeEncoding:
     def test_div_const(self) -> None:
         assert asm_bytes("DIV 2") == [67, 2]
 
-    # Bitwise
     def test_and_reg_reg(self) -> None:
         assert asm_bytes("AND A, B") == [70, 0, 1]
 
@@ -438,7 +421,6 @@ class TestAllOpcodeEncoding:
     def test_not_reg(self) -> None:
         assert asm_bytes("NOT A") == [82, 0]
 
-    # Shift
     def test_shl_reg_reg(self) -> None:
         assert asm_bytes("SHL A, B") == [90, 0, 1]
 
@@ -451,28 +433,24 @@ class TestAllOpcodeEncoding:
     def test_shr_reg_const(self) -> None:
         assert asm_bytes("SHR A, 1") == [97, 0, 1]
 
-    # Shift aliases
     def test_sal_alias(self) -> None:
         assert asm_bytes("SAL A, 2") == asm_bytes("SHL A, 2")
 
     def test_sar_alias(self) -> None:
         assert asm_bytes("SAR A, 2") == asm_bytes("SHR A, 2")
 
-    # SP in MOV
     def test_mov_sp_const(self) -> None:
         assert asm_bytes("MOV SP, 100") == [6, 4, 100]
 
     def test_mov_reg_sp(self) -> None:
         assert asm_bytes("MOV A, SP") == [1, 0, 4]
 
-    # DP in MOV
     def test_mov_dp_const(self) -> None:
         assert asm_bytes("MOV DP, 5") == [6, 5, 5]
 
     def test_mov_reg_dp(self) -> None:
         assert asm_bytes("MOV A, DP") == [1, 0, 5]
 
-    # SP as destination in ADD/SUB/CMP
     def test_add_sp_const(self) -> None:
         assert asm_bytes("ADD SP, 10") == [13, 4, 10]
 
@@ -545,31 +523,24 @@ class TestRegaddrEncoding:
     """Detailed register indirect encoding tests."""
 
     def test_b_plus_0(self) -> None:
-        # [B+0] → (0<<3)|1 = 1  (same as [B])
         assert asm_bytes("MOV A, [B+0]") == [3, 0, 1]
 
     def test_b_plus_15(self) -> None:
-        # max positive: (15<<3)|1 = 121
         assert asm_bytes("MOV A, [B+15]") == [3, 0, 121]
 
     def test_b_minus_16(self) -> None:
-        # max negative: offset_u = 32 + (-16) = 16; (16<<3)|1 = 129
         assert asm_bytes("MOV A, [B-16]") == [3, 0, 129]
 
     def test_b_minus_1(self) -> None:
-        # offset=-1 → offset_u = 31; (31<<3)|1 = 249
         assert asm_bytes("MOV A, [B-1]") == [3, 0, 249]
 
     def test_sp_minus_2(self) -> None:
-        # SP=4, offset=-2 → offset_u = 30; (30<<3)|4 = 244
         assert asm_bytes("MOV A, [SP-2]") == [3, 0, 244]
 
     def test_a_no_offset(self) -> None:
-        # [A] → (0<<3)|0 = 0
         assert asm_bytes("MOV B, [A]") == [3, 1, 0]
 
     def test_d_plus_5(self) -> None:
-        # [D+5] → (5<<3)|3 = 43
         assert asm_bytes("MOV A, [D+5]") == [3, 0, 43]
 
 
@@ -633,34 +604,27 @@ class TestLabelEdgeCases:
         assert result.labels["func"] == 3
 
     def test_label_used_as_const(self) -> None:
-        # MOV B, end → loads address of 'end' as immediate
         result = assemble("MOV B, end\nend: HLT")
         assert result.code == [6, 1, 3, 0]
         assert result.labels["end"] == 3
 
     def test_label_in_brackets_mov(self) -> None:
-        # MOV A, [data] → load from direct address (label)
         result = assemble("JMP start\ndata: DB 42\nstart: MOV A, [data]\nHLT")
-        # JMP start = [31, 3], DB 42 = [42], MOV A, [data] = [2, 0, 1], HLT = [0]
         assert result.labels["data"] == 2
         assert result.labels["start"] == 3
         assert result.code == [31, 3, 42, 2, 0, 2, 0]
 
     def test_label_in_brackets_store(self) -> None:
-        # MOV [data], B → store to direct address (label)
         result = assemble("JMP start\ndata: DB 0\nstart: MOV [data], B\nHLT")
         assert result.labels["data"] == 2
         assert result.code == [31, 3, 0, 4, 2, 1, 0]
 
     def test_label_in_brackets_add(self) -> None:
-        # ADD A, [x] → arithmetic with memory label
         result = assemble("JMP s\nx: DB 10\ns: ADD A, [x]\nHLT")
         assert result.labels["x"] == 2
-        # JMP s=[31,3], DB 10=[10], ADD A,[x]=[12,0,2], HLT=[0]
         assert result.code == [31, 3, 10, 12, 0, 2, 0]
 
     def test_label_in_brackets_push(self) -> None:
-        # PUSH [data] → stack op with label
         result = assemble("JMP s\ndata: DB 99\ns: PUSH [data]\nHLT")
         assert result.labels["data"] == 2
         assert result.code == [31, 3, 99, 52, 2, 0]
@@ -670,15 +634,12 @@ class TestLabelEdgeCases:
         assert "undefined label" in err.message.lower()
 
     def test_label_in_brackets_forward_ref(self) -> None:
-        # Forward reference: [data] used before data is defined
         result = assemble("MOV A, [data]\nHLT\ndata: DB 55")
         assert result.labels["data"] == 4
         assert result.code == [2, 0, 4, 0, 55]
 
     def test_label_in_brackets_matches_numeric(self) -> None:
-        # [label] should produce same bytes as [numeric_addr]
         r1 = assemble("JMP s\nx: DB 7\ns: MOV A, [x]\nHLT")
-        # x is at addr 2 → equivalent to MOV A, [2]
         r2 = assemble("JMP s\nx: DB 7\ns: MOV A, [2]\nHLT")
         assert r1.code == r2.code
 
@@ -720,7 +681,6 @@ class TestExhaustiveness:
 
     def test_encode_covers_all_operand_types(self) -> None:
         operand_types = get_args(Operand)
-        # OpString is only for DB (handled separately), not encoded as instruction operand
         encoded_types = {t for t in operand_types if t.__name__ != "OpString"}
         for op_type in encoded_types:
             assert hasattr(op_type, "__dataclass_fields__"), (
@@ -732,7 +692,6 @@ class TestExhaustiveness:
             OpReg, OpConst, OpAddr, OpRegAddr, OpLabel,
             OpFpReg, OpFpImm,
         )
-        # Every OpType variant must be reachable in _operand_matches
         test_operands = {
             OpType.REG: OpReg(0),
             OpType.REG_STACK: OpReg(0),
@@ -775,8 +734,8 @@ class TestParserEdges:
 
     def test_string_operand(self) -> None:
         result = assemble('DB "AB"\nHLT')
-        assert 65 in result.code  # 'A'
-        assert 66 in result.code  # 'B'
+        assert 65 in result.code
+        assert 66 in result.code
 
     def test_hlt_with_args(self) -> None:
         with pytest.raises(AssemblerError):

@@ -249,8 +249,8 @@ class TestDbFloatLiterals:
         code = asm_bytes("DB nan_h")
         assert len(code) == 2
         raw = int.from_bytes(bytes(code), "little")
-        assert (raw & 0x7C00) == 0x7C00  # exponent all ones
-        assert (raw & 0x03FF) != 0       # non-zero payload
+        assert (raw & 0x7C00) == 0x7C00
+        assert (raw & 0x03FF) != 0
 
     def test_db_float_array(self) -> None:
         """DB 1.0, 2.0 -> 8 bytes (two float32)."""
@@ -339,9 +339,6 @@ class TestLabelWithFpInstructions:
         code = asm_bytes(
             "FABS.F FA\nJMP end\nend: HLT"
         )
-        # FABS.F FA -> [142, 0x00]
-        # JMP end -> [31, 4]
-        # end: HLT -> [0]
         assert code == [142, 0x00, 31, 4, 0]
 
     def test_label_before_fp_instruction(self) -> None:
@@ -381,7 +378,6 @@ class TestFpLabelInBrackets:
         src = "JMP s\ndata: DB 0, 0, 0, 0\ns: FMOV.F FA, [data]\nHLT"
         result = assemble(src, arch=2)
         assert result.labels["data"] == 2
-        # FMOV.F FA, [2] → [128, 0x00, 2]
         assert result.code[6:9] == [128, 0x00, 2]
 
     def test_fadd_label(self) -> None:
@@ -389,7 +385,6 @@ class TestFpLabelInBrackets:
         src = "JMP s\nx: DB 0, 0, 0, 0\ns: FADD.F FA, [x]\nHLT"
         result = assemble(src, arch=2)
         assert result.labels["x"] == 2
-        # FADD.F FA, [2] → [132, 0x00, 2]
         assert result.code[6:9] == [132, 0x00, 2]
 
 
@@ -453,7 +448,6 @@ class TestFmovImmEncoding:
         """FMOV.H FHA, -1.5."""
         code = asm_bytes("FMOV.H FHA, -1.5\nHLT")
         assert code == [162, 0x01, 0x00, 0xBE, 0]
-        # float16 -1.5: sign=1 → high byte has bit 7 set
         assert code[3] & 0x80 == 0x80
 
 
@@ -488,7 +482,6 @@ class TestFbRegisterEncoding:
     def test_fadd_rr_cross_phys(self) -> None:
         """FADD_RR FQA, FQE: phys=0+phys=1 registers."""
         code = asm_bytes("FADD.O3 FQA, FQE\nHLT")
-        # FADD_RR = 153, dst_fpm=0x03 (FQA), src_fpm=0x43 (FQE)
         assert code == [153, 0x03, 0x43, 0]
 
     def test_fmov_imm_fb(self) -> None:
@@ -770,7 +763,6 @@ class TestParserCoverage:
 
     def test_db_empty_part_between_commas(self) -> None:
         """DB 1,,2 with empty part between commas (line 460)."""
-        # The tokenizer strips whitespace; an empty part should be skipped.
         code = asm_bytes("DB 1, , 2")
         assert code == [1, 2]
 
@@ -915,7 +907,6 @@ class TestCodegenEdgeCoverage:
         """_operand_matches returns False for unrecognized operand type."""
         from pysim8.asm.codegen import _operand_matches
         from pysim8.asm.parser import OpReg
-        # Pass a sentinel that won't match any case branch
         assert _operand_matches(OpReg(0), "NOT_AN_OPTYPE") is False
 
     def test_encode_operand_unexpected_type(self) -> None:
