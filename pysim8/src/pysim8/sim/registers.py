@@ -3,8 +3,14 @@
 from __future__ import annotations
 
 from enum import Enum
+from typing import TYPE_CHECKING
+
+from pysim8.isa import FP_FMT_WIDTH as _FP_FMT_WIDTH
 
 from .memory import SP_INIT
+
+if TYPE_CHECKING:
+    from pysim8.fp_formats import FpExceptions
 
 __all__ = ["CpuState", "Flags", "FpuRegisters", "RegisterFile"]
 
@@ -45,67 +51,75 @@ class Flags:
 
 
 class FpuRegisters:
-    """FPU register state: one 32-bit physical register + FPCR + FPSR."""
+    """FPU register state: two 32-bit physical registers + FPCR + FPSR."""
 
     __slots__ = ("_fp32", "fpcr", "fpsr")
 
     def __init__(self) -> None:
-        self._fp32: int = 0  # 32-bit raw storage
+        self._fp32: list[int] = [0, 0]  # 2 × 32-bit raw storage
         self.fpcr: int = 0   # bits[1:0] = rounding mode
         self.fpsr: int = 0   # sticky exception flags
+
+    @property
+    def fa(self) -> int:
+        """Raw 32-bit value of physical register 0."""
+        return self._fp32[0]
+
+    @property
+    def fb(self) -> int:
+        """Raw 32-bit value of physical register 1."""
+        return self._fp32[1]
 
     @property
     def rounding_mode(self) -> int:
         """Return current rounding mode from FPCR bits [1:0]."""
         return self.fpcr & 0x03
 
-    def read_bits(self, pos: int, fmt: int) -> int:
-        """Read raw bits from sub-register at (pos, fmt).
+    def read_bits(self, pos: int, fmt: int, phys: int = 0) -> int:
+        """Read raw bits from sub-register at (phys, pos, fmt).
 
         Returns the integer value of the bits slice.
         Uses FP_FMT_WIDTH to determine width.
         """
-        from pysim8.isa import FP_FMT_WIDTH
-
-        width = FP_FMT_WIDTH[fmt]
+        width = _FP_FMT_WIDTH[fmt]
         bit_offset = pos * width
         mask = (1 << width) - 1
-        return (self._fp32 >> bit_offset) & mask
+        return (self._fp32[phys] >> bit_offset) & mask
 
-    def write_bits(self, pos: int, fmt: int, value: int) -> None:
-        """Write raw bits to sub-register at (pos, fmt)."""
-        from pysim8.isa import FP_FMT_WIDTH
-
-        width = FP_FMT_WIDTH[fmt]
+    def write_bits(
+        self, pos: int, fmt: int, value: int, phys: int = 0,
+    ) -> None:
+        """Write raw bits to sub-register at (phys, pos, fmt)."""
+        width = _FP_FMT_WIDTH[fmt]
         bit_offset = pos * width
         mask = (1 << width) - 1
-        self._fp32 = (
-            (self._fp32 & ~(mask << bit_offset))
+        self._fp32[phys] = (
+            (self._fp32[phys] & ~(mask << bit_offset))
             | ((value & mask) << bit_offset)
         )
 
-    def accumulate_exceptions(self, exc: object) -> None:
+    def accumulate_exceptions(self, exc: FpExceptions) -> None:
         """OR exception flags into FPSR (sticky)."""
-        if exc.invalid:  # type: ignore[union-attr]
+        if exc.invalid:
             self.fpsr |= 0x01
-        if exc.div_zero:  # type: ignore[union-attr]
+        if exc.div_zero:
             self.fpsr |= 0x02
-        if exc.overflow:  # type: ignore[union-attr]
+        if exc.overflow:
             self.fpsr |= 0x04
-        if exc.underflow:  # type: ignore[union-attr]
+        if exc.underflow:
             self.fpsr |= 0x08
-        if exc.inexact:  # type: ignore[union-attr]
+        if exc.inexact:
             self.fpsr |= 0x10
 
     def reset(self) -> None:
         """Reset all FPU state to zero."""
-        self._fp32 = 0
+        self._fp32[:] = [0, 0]
         self.fpcr = 0
         self.fpsr = 0
 
     def __repr__(self) -> str:
         return (
-            f"FPU(fp32=0x{self._fp32:08X}"
+            f"FPU(FA=0x{self._fp32[0]:08X} FB=0x{self._fp32[1]:08X}"
             f" FPCR={self.fpcr:02X} FPSR={self.fpsr:02X})"
         )
 
@@ -137,7 +151,7 @@ class RegisterFile:
 
     @a.setter
     def a(self, val: int) -> None:
-        self._regs[0] = val
+        self._regs[0] = val & 0xFF
 
     @property
     def b(self) -> int:
@@ -145,7 +159,7 @@ class RegisterFile:
 
     @b.setter
     def b(self, val: int) -> None:
-        self._regs[1] = val
+        self._regs[1] = val & 0xFF
 
     @property
     def c(self) -> int:
@@ -153,7 +167,7 @@ class RegisterFile:
 
     @c.setter
     def c(self, val: int) -> None:
-        self._regs[2] = val
+        self._regs[2] = val & 0xFF
 
     @property
     def d(self) -> int:
@@ -161,7 +175,7 @@ class RegisterFile:
 
     @d.setter
     def d(self, val: int) -> None:
-        self._regs[3] = val
+        self._regs[3] = val & 0xFF
 
     @property
     def sp(self) -> int:
@@ -169,7 +183,7 @@ class RegisterFile:
 
     @sp.setter
     def sp(self, val: int) -> None:
-        self._regs[4] = val
+        self._regs[4] = val & 0xFF
 
     @property
     def dp(self) -> int:
@@ -177,7 +191,7 @@ class RegisterFile:
 
     @dp.setter
     def dp(self, val: int) -> None:
-        self._regs[5] = val
+        self._regs[5] = val & 0xFF
 
     def reset(self, arch: int = 1) -> None:
         """Reset register file to initial state."""

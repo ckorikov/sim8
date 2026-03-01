@@ -228,8 +228,11 @@ class HandlersMixin:
             d[Op(base + 2)] = self._make_shift_2op(alu_fn, self._src_addr)
             d[Op(base + 3)] = self._make_shift_2op(alu_fn, self._src_const)
 
-        # Completeness check: every integer Op except HLT must have a
-        # handler.  FP opcodes (BY_CODE_FP) are handled separately.
+        self._check_dispatch_complete(d)
+
+    @staticmethod
+    def _check_dispatch_complete(d: dict[Op, Handler]) -> None:
+        """Verify every non-HLT, non-FP Op has a handler."""
         _fp_ops = {Op(c) for c in BY_CODE_FP}
         missing = (
             {op for op in Op if op != Op.HLT} - _fp_ops - set(d)

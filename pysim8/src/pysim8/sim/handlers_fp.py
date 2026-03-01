@@ -8,6 +8,10 @@ from typing import TYPE_CHECKING
 
 from pysim8.isa import (
     Op,
+    FP_FMT_H,
+    FP_FMT_BF,
+    FP_FMT_O3,
+    FP_FMT_O2,
     FP_FMT_WIDTH,
     decode_fpm,
     validate_fpm,
@@ -57,8 +61,10 @@ class HandlersFpMixin:
 
     @property
     def _fpu(self) -> FpuRegisters:
-        assert self.regs.fpu is not None
-        return self.regs.fpu
+        fpu = self.regs.fpu
+        if fpu is None:
+            raise RuntimeError("FPU not available (arch < 2)")
+        return fpu
 
     def _validate_fpm(self, fpm: int) -> tuple[int, int, int]:
         """Validate FPM byte, return (phys, pos, fmt).
@@ -99,27 +105,25 @@ class HandlersFpMixin:
 
     # ── Register helpers ───────────────────────────────────────────
 
-    def _fp_read_reg(self, pos: int, fmt: int) -> float:
+    def _fp_read_reg(
+        self, pos: int, fmt: int, phys: int = 0,
+    ) -> float:
         """Read FP register as float value."""
-        raw = self._fpu.read_bits(pos, fmt)
+        raw = self._fpu.read_bits(pos, fmt, phys)
         width = FP_FMT_WIDTH[fmt]
         data = raw.to_bytes(width // 8, "little")
         return bytes_to_float(data, fmt)
 
-    def _fp_write_reg(self, pos: int, fmt: int, value: float) -> None:
+    def _fp_write_reg(
+        self, pos: int, fmt: int, value: float, phys: int = 0,
+    ) -> None:
         """Write float value to FP register (with rounding)."""
         data, exc = float_to_bytes(
             value, fmt, self._fpu.rounding_mode,
         )
         self._fpu.accumulate_exceptions(exc)
         raw = int.from_bytes(data, "little")
-        self._fpu.write_bits(pos, fmt, raw)
-
-    # ── Address resolution ─────────────────────────────────────────
-
-    def _direct_addr_byte(self, byte_val: int) -> int:
-        """Compute absolute address: DP * PAGE_SIZE + byte."""
-        return self.regs.dp * Memory.PAGE_SIZE + byte_val
+        self._fpu.write_bits(pos, fmt, raw, phys)
 
     # ── Dispatch registration ──────────────────────────────────────
 
@@ -127,39 +131,41 @@ class HandlersFpMixin:
         """Register all FP instruction handlers."""
         d = self._dispatch
 
-        # FMOV (128-131)
+        # FMOV (128-131, 161-162)
         d[Op.FMOV_FP_ADDR] = self._h_fmov_load_addr
         d[Op.FMOV_FP_REGADDR] = self._h_fmov_load_regaddr
         d[Op.FMOV_ADDR_FP] = self._h_fmov_store_addr
         d[Op.FMOV_REGADDR_FP] = self._h_fmov_store_regaddr
+        d[Op.FMOV_FP_IMM8] = self._h_fmov_imm8
+        d[Op.FMOV_FP_IMM16] = self._h_fmov_imm16
 
         # Arithmetic mem variants (132-141)
         d[Op.FADD_FP_ADDR] = self._make_fp_arith_mem(
-            fp_add, self._direct_addr_byte,
+            fp_add, self._direct_addr,
         )
         d[Op.FADD_FP_REGADDR] = self._make_fp_arith_mem(
             fp_add, self._indirect_addr,
         )
         d[Op.FSUB_FP_ADDR] = self._make_fp_arith_mem(
-            fp_sub, self._direct_addr_byte,
+            fp_sub, self._direct_addr,
         )
         d[Op.FSUB_FP_REGADDR] = self._make_fp_arith_mem(
             fp_sub, self._indirect_addr,
         )
         d[Op.FMUL_FP_ADDR] = self._make_fp_arith_mem(
-            fp_mul, self._direct_addr_byte,
+            fp_mul, self._direct_addr,
         )
         d[Op.FMUL_FP_REGADDR] = self._make_fp_arith_mem(
             fp_mul, self._indirect_addr,
         )
         d[Op.FDIV_FP_ADDR] = self._make_fp_arith_mem(
-            fp_div, self._direct_addr_byte,
+            fp_div, self._direct_addr,
         )
         d[Op.FDIV_FP_REGADDR] = self._make_fp_arith_mem(
             fp_div, self._indirect_addr,
         )
         d[Op.FCMP_FP_ADDR] = self._make_fp_cmp_mem(
-            self._direct_addr_byte,
+            self._direct_addr,
         )
         d[Op.FCMP_FP_REGADDR] = self._make_fp_cmp_mem(
             self._indirect_addr,
@@ -169,6 +175,9 @@ class HandlersFpMixin:
         d[Op.FABS_FP] = self._h_fabs
         d[Op.FNEG_FP] = self._h_fneg
         d[Op.FSQRT_FP] = self._h_fsqrt
+
+        # FMOV reg-reg (145)
+        d[Op.FMOV_RR] = self._h_fmov_rr
 
         # FCVT (146)
         d[Op.FCVT_FP_FP] = self._h_fcvt
@@ -208,17 +217,17 @@ class HandlersFpMixin:
 
         def handler(insn: DecodedInsn) -> None:
             fpm = insn.operands[0]
-            _, pos, fmt = self._validate_fpm(fpm)
+            phys, pos, fmt = self._validate_fpm(fpm)
             addr = resolve_addr(insn.operands[1])
 
-            reg_val = self._fp_read_reg(pos, fmt)
+            reg_val = self._fp_read_reg(pos, fmt, phys)
             mem_val = self._fp_read_mem(addr, fmt)
 
             result, exc = arith_fn(
                 reg_val, mem_val, fmt, self._fpu.rounding_mode,
             )
             self._fpu.accumulate_exceptions(exc)
-            self._fp_write_reg(pos, fmt, result)
+            self._fp_write_reg(pos, fmt, result, phys)
             self.regs.ip += insn.size
 
         return handler
@@ -231,10 +240,10 @@ class HandlersFpMixin:
 
         def handler(insn: DecodedInsn) -> None:
             fpm = insn.operands[0]
-            _, pos, fmt = self._validate_fpm(fpm)
+            phys, pos, fmt = self._validate_fpm(fpm)
             addr = resolve_addr(insn.operands[1])
 
-            reg_val = self._fp_read_reg(pos, fmt)
+            reg_val = self._fp_read_reg(pos, fmt, phys)
             mem_val = self._fp_read_mem(addr, fmt)
 
             z, c, exc = fp_cmp(reg_val, mem_val)
@@ -254,20 +263,20 @@ class HandlersFpMixin:
         def handler(insn: DecodedInsn) -> None:
             dst_fpm = insn.operands[0]
             src_fpm = insn.operands[1]
-            _, dst_pos, dst_fmt = self._validate_fpm(dst_fpm)
-            _, src_pos, src_fmt = self._validate_fpm(src_fpm)
+            dst_phys, dst_pos, dst_fmt = self._validate_fpm(dst_fpm)
+            src_phys, src_pos, src_fmt = self._validate_fpm(src_fpm)
 
             if dst_fmt != src_fmt:
                 raise CpuFault(ErrorCode.FP_FORMAT, self.regs.ip)
 
-            dst_val = self._fp_read_reg(dst_pos, dst_fmt)
-            src_val = self._fp_read_reg(src_pos, src_fmt)
+            dst_val = self._fp_read_reg(dst_pos, dst_fmt, dst_phys)
+            src_val = self._fp_read_reg(src_pos, src_fmt, src_phys)
 
             result, exc = arith_fn(
                 dst_val, src_val, dst_fmt, self._fpu.rounding_mode,
             )
             self._fpu.accumulate_exceptions(exc)
-            self._fp_write_reg(dst_pos, dst_fmt, result)
+            self._fp_write_reg(dst_pos, dst_fmt, result, dst_phys)
             self.regs.ip += insn.size
 
         return handler
@@ -276,75 +285,95 @@ class HandlersFpMixin:
 
     # -- FMOV (128-131): raw data transfer, no rounding --
 
-    def _h_fmov_load_addr(self, insn: DecodedInsn) -> None:
+    def _fmov_load(self, insn: DecodedInsn, addr: int) -> None:
         fpm = insn.operands[0]
-        _, pos, fmt = self._validate_fpm(fpm)
-        addr = self._direct_addr_byte(insn.operands[1])
+        phys, pos, fmt = self._validate_fpm(fpm)
         data = self._fp_read_mem_raw(addr, fmt)
         raw = int.from_bytes(data, "little")
-        self._fpu.write_bits(pos, fmt, raw)
+        self._fpu.write_bits(pos, fmt, raw, phys)
         self.regs.ip += insn.size
 
+    def _h_fmov_load_addr(self, insn: DecodedInsn) -> None:
+        self._fmov_load(insn, self._direct_addr(insn.operands[1]))
+
     def _h_fmov_load_regaddr(self, insn: DecodedInsn) -> None:
+        self._fmov_load(insn, self._indirect_addr(insn.operands[1]))
+
+    def _fmov_store(self, insn: DecodedInsn, addr: int) -> None:
         fpm = insn.operands[0]
-        _, pos, fmt = self._validate_fpm(fpm)
-        addr = self._indirect_addr(insn.operands[1])
-        data = self._fp_read_mem_raw(addr, fmt)
-        raw = int.from_bytes(data, "little")
-        self._fpu.write_bits(pos, fmt, raw)
+        phys, pos, fmt = self._validate_fpm(fpm)
+        raw = self._fpu.read_bits(pos, fmt, phys)
+        data = raw.to_bytes(FP_FMT_WIDTH[fmt] // 8, "little")
+        self._fp_write_mem_raw(addr, fmt, data)
         self.regs.ip += insn.size
 
     def _h_fmov_store_addr(self, insn: DecodedInsn) -> None:
-        fpm = insn.operands[0]
-        _, pos, fmt = self._validate_fpm(fpm)
-        addr = self._direct_addr_byte(insn.operands[1])
-        raw = self._fpu.read_bits(pos, fmt)
-        width = FP_FMT_WIDTH[fmt]
-        data = raw.to_bytes(width // 8, "little")
-        self._fp_write_mem_raw(addr, fmt, data)
-        self.regs.ip += insn.size
+        self._fmov_store(insn, self._direct_addr(insn.operands[1]))
 
     def _h_fmov_store_regaddr(self, insn: DecodedInsn) -> None:
+        self._fmov_store(insn, self._indirect_addr(insn.operands[1]))
+
+    # -- FMOV immediate (161-162): raw bit write, no rounding --
+
+    def _h_fmov_imm8(self, insn: DecodedInsn) -> None:
         fpm = insn.operands[0]
-        _, pos, fmt = self._validate_fpm(fpm)
-        addr = self._indirect_addr(insn.operands[1])
-        raw = self._fpu.read_bits(pos, fmt)
-        width = FP_FMT_WIDTH[fmt]
-        data = raw.to_bytes(width // 8, "little")
-        self._fp_write_mem_raw(addr, fmt, data)
+        phys, pos, fmt = self._validate_fpm(fpm)
+        if fmt not in (FP_FMT_O3, FP_FMT_O2):
+            raise CpuFault(ErrorCode.FP_FORMAT, self.regs.ip)
+        imm8 = insn.operands[1]
+        self._fpu.write_bits(pos, fmt, imm8, phys)
         self.regs.ip += insn.size
 
-    # -- FABS (142) --
+    def _h_fmov_imm16(self, insn: DecodedInsn) -> None:
+        fpm = insn.operands[0]
+        phys, pos, fmt = self._validate_fpm(fpm)
+        if fmt not in (FP_FMT_H, FP_FMT_BF):
+            raise CpuFault(ErrorCode.FP_FORMAT, self.regs.ip)
+        imm16 = insn.operands[1] | (insn.operands[2] << 8)
+        self._fpu.write_bits(pos, fmt, imm16, phys)
+        self.regs.ip += insn.size
+
+    # -- FMOV reg-reg (145): [145, dst_fpm, src_fpm] --
+
+    def _h_fmov_rr(self, insn: DecodedInsn) -> None:
+        dst_fpm = insn.operands[0]
+        src_fpm = insn.operands[1]
+        dst_phys, dst_pos, dst_fmt = self._validate_fpm(dst_fpm)
+        src_phys, src_pos, src_fmt = self._validate_fpm(src_fpm)
+        if dst_fmt != src_fmt:
+            raise CpuFault(ErrorCode.FP_FORMAT, self.regs.ip)
+        raw = self._fpu.read_bits(src_pos, src_fmt, src_phys)
+        self._fpu.write_bits(dst_pos, dst_fmt, raw, dst_phys)
+        self.regs.ip += insn.size
+
+    # -- FABS (142) / FNEG (143) --
+
+    def _fp_unary_bitwise(
+        self, insn: DecodedInsn,
+        fn: Callable[[int, int], int],
+    ) -> None:
+        fpm = insn.operands[0]
+        phys, pos, fmt = self._validate_fpm(fpm)
+        raw = self._fpu.read_bits(pos, fmt, phys)
+        result = fn(raw, FP_FMT_WIDTH[fmt])
+        self._fpu.write_bits(pos, fmt, result, phys)
+        self.regs.ip += insn.size
 
     def _h_fabs(self, insn: DecodedInsn) -> None:
-        fpm = insn.operands[0]
-        _, pos, fmt = self._validate_fpm(fpm)
-        raw = self._fpu.read_bits(pos, fmt)
-        width = FP_FMT_WIDTH[fmt]
-        result = fp_abs(raw, width)
-        self._fpu.write_bits(pos, fmt, result)
-        self.regs.ip += insn.size
-
-    # -- FNEG (143) --
+        self._fp_unary_bitwise(insn, fp_abs)
 
     def _h_fneg(self, insn: DecodedInsn) -> None:
-        fpm = insn.operands[0]
-        _, pos, fmt = self._validate_fpm(fpm)
-        raw = self._fpu.read_bits(pos, fmt)
-        width = FP_FMT_WIDTH[fmt]
-        result = fp_neg(raw, width)
-        self._fpu.write_bits(pos, fmt, result)
-        self.regs.ip += insn.size
+        self._fp_unary_bitwise(insn, fp_neg)
 
     # -- FSQRT (144) --
 
     def _h_fsqrt(self, insn: DecodedInsn) -> None:
         fpm = insn.operands[0]
-        _, pos, fmt = self._validate_fpm(fpm)
-        val = self._fp_read_reg(pos, fmt)
+        phys, pos, fmt = self._validate_fpm(fpm)
+        val = self._fp_read_reg(pos, fmt, phys)
         result, exc = fp_sqrt(val, fmt, self._fpu.rounding_mode)
         self._fpu.accumulate_exceptions(exc)
-        self._fp_write_reg(pos, fmt, result)
+        self._fp_write_reg(pos, fmt, result, phys)
         self.regs.ip += insn.size
 
     # -- FCVT (146): [146, dst_fpm, src_fpm] --
@@ -352,10 +381,10 @@ class HandlersFpMixin:
     def _h_fcvt(self, insn: DecodedInsn) -> None:
         dst_fpm = insn.operands[0]
         src_fpm = insn.operands[1]
-        _, dst_pos, dst_fmt = self._validate_fpm(dst_fpm)
-        _, src_pos, src_fmt = self._validate_fpm(src_fpm)
-        src_val = self._fp_read_reg(src_pos, src_fmt)
-        self._fp_write_reg(dst_pos, dst_fmt, src_val)
+        dst_phys, dst_pos, dst_fmt = self._validate_fpm(dst_fpm)
+        src_phys, src_pos, src_fmt = self._validate_fpm(src_fpm)
+        src_val = self._fp_read_reg(src_pos, src_fmt, src_phys)
+        self._fp_write_reg(dst_pos, dst_fmt, src_val, dst_phys)
         self.regs.ip += insn.size
 
     # -- FITOF (147): [147, fpm, gpr] --
@@ -363,10 +392,10 @@ class HandlersFpMixin:
     def _h_fitof(self, insn: DecodedInsn) -> None:
         fpm = insn.operands[0]
         gpr_code = insn.operands[1]
-        _, pos, fmt = self._validate_fpm(fpm)
+        phys, pos, fmt = self._validate_fpm(fpm)
         gpr = self._decode_gpr(gpr_code)
         int_val = self.regs.read(gpr)
-        self._fp_write_reg(pos, fmt, float(int_val))
+        self._fp_write_reg(pos, fmt, float(int_val), phys)
         self.regs.ip += insn.size
 
     # -- FFTOI (148): [148, fpm, gpr] --
@@ -374,9 +403,9 @@ class HandlersFpMixin:
     def _h_fftoi(self, insn: DecodedInsn) -> None:
         fpm = insn.operands[0]
         gpr_code = insn.operands[1]
-        _, pos, fmt = self._validate_fpm(fpm)
+        phys, pos, fmt = self._validate_fpm(fpm)
         gpr = self._decode_gpr(gpr_code)
-        fp_val = self._fp_read_reg(pos, fmt)
+        fp_val = self._fp_read_reg(pos, fmt, phys)
 
         exc_invalid = False
         exc_inexact = False
@@ -448,13 +477,13 @@ class HandlersFpMixin:
     def _h_fcmp_rr(self, insn: DecodedInsn) -> None:
         dst_fpm = insn.operands[0]
         src_fpm = insn.operands[1]
-        _, dst_pos, dst_fmt = self._validate_fpm(dst_fpm)
-        _, src_pos, src_fmt = self._validate_fpm(src_fpm)
+        dst_phys, dst_pos, dst_fmt = self._validate_fpm(dst_fpm)
+        src_phys, src_pos, src_fmt = self._validate_fpm(src_fpm)
         if dst_fmt != src_fmt:
             raise CpuFault(ErrorCode.FP_FORMAT, self.regs.ip)
 
-        dst_val = self._fp_read_reg(dst_pos, dst_fmt)
-        src_val = self._fp_read_reg(src_pos, src_fmt)
+        dst_val = self._fp_read_reg(dst_pos, dst_fmt, dst_phys)
+        src_val = self._fp_read_reg(src_pos, src_fmt, src_phys)
 
         z, c, exc = fp_cmp(dst_val, src_val)
         self._fpu.accumulate_exceptions(exc)
@@ -467,10 +496,10 @@ class HandlersFpMixin:
     def _h_fclass(self, insn: DecodedInsn) -> None:
         fpm = insn.operands[0]
         gpr_code = insn.operands[1]
-        _, pos, fmt = self._validate_fpm(fpm)
+        phys, pos, fmt = self._validate_fpm(fpm)
         gpr = self._decode_gpr(gpr_code)
 
-        raw = self._fpu.read_bits(pos, fmt)
+        raw = self._fpu.read_bits(pos, fmt, phys)
         width = FP_FMT_WIDTH[fmt]
         data = raw.to_bytes(width // 8, "little")
         val = bytes_to_float(data, fmt)
@@ -479,10 +508,10 @@ class HandlersFpMixin:
         self.regs.write(gpr, mask)
         self.regs.ip += insn.size
 
-    # -- FMADD (159-160): dst = src * mem + dst --
+    # -- FMADD (159-160): dst = src * mem + dst (unfused: two roundings) --
 
     def _h_fmadd_addr(self, insn: DecodedInsn) -> None:
-        self._do_fmadd(insn, self._direct_addr_byte(insn.operands[2]))
+        self._do_fmadd(insn, self._direct_addr(insn.operands[2]))
 
     def _h_fmadd_regaddr(self, insn: DecodedInsn) -> None:
         self._do_fmadd(insn, self._indirect_addr(insn.operands[2]))
@@ -491,15 +520,15 @@ class HandlersFpMixin:
         """FMADD: dst = src * mem + dst."""
         dst_fpm = insn.operands[0]
         src_fpm = insn.operands[1]
-        _, dst_pos, dst_fmt = self._validate_fpm(dst_fpm)
-        _, src_pos, src_fmt = self._validate_fpm(src_fpm)
+        dst_phys, dst_pos, dst_fmt = self._validate_fpm(dst_fpm)
+        src_phys, src_pos, src_fmt = self._validate_fpm(src_fpm)
 
         if dst_fmt != src_fmt:
             raise CpuFault(ErrorCode.FP_FORMAT, self.regs.ip)
 
-        src_val = self._fp_read_reg(src_pos, src_fmt)
+        src_val = self._fp_read_reg(src_pos, src_fmt, src_phys)
         mem_val = self._fp_read_mem(addr, dst_fmt)
-        dst_val = self._fp_read_reg(dst_pos, dst_fmt)
+        dst_val = self._fp_read_reg(dst_pos, dst_fmt, dst_phys)
 
         mul_result, mul_exc = fp_mul(
             src_val, mem_val, dst_fmt, self._fpu.rounding_mode,
@@ -516,5 +545,5 @@ class HandlersFpMixin:
             inexact=mul_exc.inexact or add_exc.inexact,
         )
         self._fpu.accumulate_exceptions(combined)
-        self._fp_write_reg(dst_pos, dst_fmt, result)
+        self._fp_write_reg(dst_pos, dst_fmt, result, dst_phys)
         self.regs.ip += insn.size

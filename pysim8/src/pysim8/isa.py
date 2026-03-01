@@ -166,7 +166,8 @@ class Op(IntEnum):
     FABS_FP = 142
     FNEG_FP = 143
     FSQRT_FP = 144
-    # 145 reserved
+    # FP -- FMOV reg-reg (145)
+    FMOV_RR = 145
     # FP -- FCVT (146)
     FCVT_FP_FP = 146
     # FP -- FITOF/FFTOI (147-148)
@@ -188,6 +189,9 @@ class Op(IntEnum):
     # FP -- FMADD (159-160)
     FMADD_FP_FP_ADDR = 159
     FMADD_FP_FP_REGADDR = 160
+    # FP -- FMOV immediate (161-162)
+    FMOV_FP_IMM8 = 161
+    FMOV_FP_IMM16 = 162
 
 
 class Reg(IntEnum):
@@ -295,43 +299,55 @@ FP_SUFFIX_TO_FMT: dict[str, int] = {
     "N2": FP_FMT_N2, "E1M2": FP_FMT_N2,
 }
 
-# DB literal suffix -> fmt code (case-insensitive, underscore-prefixed)
-FP_DB_SUFFIX_TO_FMT: dict[str, int] = {
-    "F": FP_FMT_F, "E8M23": FP_FMT_F,
-    "H": FP_FMT_H, "E5M10": FP_FMT_H,
-    "BF": FP_FMT_BF, "E8M7": FP_FMT_BF,
-    "O3": FP_FMT_O3, "E4M3": FP_FMT_O3,
-    "O2": FP_FMT_O2, "E5M2": FP_FMT_O2,
-    "N1": FP_FMT_N1, "E2M1": FP_FMT_N1,
-    "N2": FP_FMT_N2, "E1M2": FP_FMT_N2,
-}
+# DB literal suffix -> fmt code (same mapping, kept as alias for clarity)
+FP_DB_SUFFIX_TO_FMT = FP_SUFFIX_TO_FMT
 
-# FP register table: name -> (pos, canonical_fmt, width_bits)
-FP_REGISTERS: dict[str, tuple[int, int, int]] = {
-    "FA":  (0, FP_FMT_F, 32),
-    "FHA": (0, FP_FMT_H, 16),
-    "FHB": (1, FP_FMT_H, 16),
-    "FQA": (0, FP_FMT_O3, 8),
-    "FQB": (1, FP_FMT_O3, 8),
-    "FQC": (2, FP_FMT_O3, 8),
-    "FQD": (3, FP_FMT_O3, 8),
-    "FOA": (0, FP_FMT_N1, 4),
-    "FOB": (1, FP_FMT_N1, 4),
-    "FOC": (2, FP_FMT_N1, 4),
-    "FOD": (3, FP_FMT_N1, 4),
-    "FOE": (4, FP_FMT_N1, 4),
-    "FOF": (5, FP_FMT_N1, 4),
-    "FOG": (6, FP_FMT_N1, 4),
-    "FOH": (7, FP_FMT_N1, 4),
+# FP register table: name -> (phys, pos, canonical_fmt, width_bits)
+FP_REGISTERS: dict[str, tuple[int, int, int, int]] = {
+    # Physical register 0 (FA family)
+    "FA":  (0, 0, FP_FMT_F, 32),
+    "FHA": (0, 0, FP_FMT_H, 16),
+    "FHB": (0, 1, FP_FMT_H, 16),
+    "FQA": (0, 0, FP_FMT_O3, 8),
+    "FQB": (0, 1, FP_FMT_O3, 8),
+    "FQC": (0, 2, FP_FMT_O3, 8),
+    "FQD": (0, 3, FP_FMT_O3, 8),
+    "FOA": (0, 0, FP_FMT_N1, 4),
+    "FOB": (0, 1, FP_FMT_N1, 4),
+    "FOC": (0, 2, FP_FMT_N1, 4),
+    "FOD": (0, 3, FP_FMT_N1, 4),
+    "FOE": (0, 4, FP_FMT_N1, 4),
+    "FOF": (0, 5, FP_FMT_N1, 4),
+    "FOG": (0, 6, FP_FMT_N1, 4),
+    "FOH": (0, 7, FP_FMT_N1, 4),
+    # Physical register 1 (FB family)
+    "FB":  (1, 0, FP_FMT_F, 32),
+    "FHC": (1, 0, FP_FMT_H, 16),
+    "FHD": (1, 1, FP_FMT_H, 16),
+    "FQE": (1, 0, FP_FMT_O3, 8),
+    "FQF": (1, 1, FP_FMT_O3, 8),
+    "FQG": (1, 2, FP_FMT_O3, 8),
+    "FQH": (1, 3, FP_FMT_O3, 8),
+    "FOI": (1, 0, FP_FMT_N1, 4),
+    "FOJ": (1, 1, FP_FMT_N1, 4),
+    "FOK": (1, 2, FP_FMT_N1, 4),
+    "FOL": (1, 3, FP_FMT_N1, 4),
+    "FOM": (1, 4, FP_FMT_N1, 4),
+    "FON": (1, 5, FP_FMT_N1, 4),
+    "FOO": (1, 6, FP_FMT_N1, 4),
+    "FOP": (1, 7, FP_FMT_N1, 4),
 }
 
 # Width class -> allowed FP register names
 FP_WIDTH_REGS: dict[int, frozenset[str]] = {
-    32: frozenset({"FA"}),
-    16: frozenset({"FHA", "FHB"}),
-    8: frozenset({"FQA", "FQB", "FQC", "FQD"}),
+    32: frozenset({"FA", "FB"}),
+    16: frozenset({"FHA", "FHB", "FHC", "FHD"}),
+    8: frozenset({"FQA", "FQB", "FQC", "FQD",
+                  "FQE", "FQF", "FQG", "FQH"}),
     4: frozenset({"FOA", "FOB", "FOC", "FOD",
-                  "FOE", "FOF", "FOG", "FOH"}),
+                  "FOE", "FOF", "FOG", "FOH",
+                  "FOI", "FOJ", "FOK", "FOL",
+                  "FOM", "FON", "FOO", "FOP"}),
 }
 
 
@@ -348,14 +364,11 @@ def decode_fpm(fpm: int) -> tuple[int, int, int]:
 def validate_fpm(fpm: int) -> bool:
     """Check if FPM byte is valid for v2."""
     phys, pos, fmt = decode_fpm(fpm)
-    if phys != 0:
+    if phys > 1:
         return False
     if fmt >= 5:
         return False
-    max_pos = FP_FMT_MAX_POS.get(fmt)
-    if max_pos is None:
-        return False
-    return pos <= max_pos
+    return pos <= FP_FMT_MAX_POS[fmt]
 
 
 # ── Instruction definitions ────────────────────────────────────────
@@ -371,6 +384,13 @@ class OpType(Enum):
     MEM = "mem"          # [addr] — direct address in brackets
     REGADDR = "regaddr"  # [reg±offset] — register indirect
     FP_REG = "fp_reg"    # FP register operand
+    FP_IMM8 = "fp_imm8"    # 8-bit FP immediate (1 byte)
+    FP_IMM16 = "fp_imm16"  # 16-bit FP immediate (2 bytes, LE)
+
+
+_OPTYPE_BYTES: dict[str, int] = {
+    OpType.FP_IMM16.value: 2,
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -384,7 +404,7 @@ class InsnDef:
 
     @property
     def size(self) -> int:
-        return 1 + len(self.sig)
+        return 1 + sum(_OPTYPE_BYTES.get(ot.value, 1) for ot in self.sig)
 
 
 _REG, _STK, _GPR = OpType.REG, OpType.REG_STACK, OpType.REG_GPR
@@ -535,6 +555,8 @@ ISA_FP: tuple[InsnDef, ...] = (
     InsnDef(Op.FABS_FP, "FABS", (_FP,), cost=3),
     InsnDef(Op.FNEG_FP, "FNEG", (_FP,), cost=3),
     InsnDef(Op.FSQRT_FP, "FSQRT", (_FP,), cost=4),
+    # FMOV reg-reg (145) -- raw bit copy
+    InsnDef(Op.FMOV_RR, "FMOV", (_FP, _FP), cost=1),
     # FCVT (146) -- dual suffix
     InsnDef(Op.FCVT_FP_FP, "FCVT", (_FP, _FP), cost=3),
     # FITOF (147)
@@ -559,6 +581,9 @@ ISA_FP: tuple[InsnDef, ...] = (
     InsnDef(
         Op.FMADD_FP_FP_REGADDR, "FMADD", (_FP, _FP, _IADDR), cost=6,
     ),
+    # FMOV immediate (161-162) — cost=1 (no memory access)
+    InsnDef(Op.FMOV_FP_IMM8, "FMOV", (_FP, OpType.FP_IMM8), cost=1),
+    InsnDef(Op.FMOV_FP_IMM16, "FMOV", (_FP, OpType.FP_IMM16), cost=1),
 )
 
 # ── FP derived lookups ────────────────────────────────────────────
