@@ -60,6 +60,7 @@ FPSR_DZ = 0x02  # div-by-zero
 FPSR_OF = 0x04  # overflow
 FPSR_UF = 0x08  # underflow
 FPSR_NX = 0x10  # inexact
+FPSR_KNOWN_MASK = FPSR_NV | FPSR_DZ | FPSR_OF | FPSR_UF | FPSR_NX
 
 FLAG_CHAR_TO_MASK: dict[str, int] = {
     "i": FPSR_NV,
@@ -434,19 +435,19 @@ def assert_fp_result(
 
 
 def assert_fp_flags(fpsr: int, expected_flags: str, context: str = "") -> None:
-    """Assert that all expected exception flags are set in fpsr.
+    """Assert IEEE754 exception flags match expected_flags.
 
-    Extra flags in fpsr beyond what's expected are tolerated.
+    If expected_flags is empty, tolerate implementation-defined extra flags.
+    If expected_flags is non-empty, require an exact match on known FPSR bits.
     """
     if not expected_flags:
         return
+
     mask = 0
     for ch in expected_flags:
         mask |= FLAG_CHAR_TO_MASK.get(ch, 0)
-    if mask == 0:
-        return
     ctx = f" [{context}]" if context else ""
-    assert (fpsr & mask) == mask, (
+    assert (fpsr & FPSR_KNOWN_MASK) == mask, (
         f"Expected flags {expected_flags!r} (mask={mask:#04x}), "
         f"fpsr={fpsr:#04x}{ctx}"
     )
