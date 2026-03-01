@@ -7,7 +7,11 @@ executes it on the CPU, and verifies the resulting state.
 import pytest
 
 from pysim8.asm import AssemblerError, assemble
+from pysim8.isa import Op
 from pysim8.sim import CPU, CpuState, ErrorCode, list_tracer
+from pysim8.sim.tracing import TraceEvent, print_tracer
+from pysim8.sim.registers import Flags, FpuRegisters, RegisterFile
+from pysim8.sim.memory import Memory, MEMORY_SIZE
 
 
 # ── helpers ──────────────────────────────────────────────────────────
@@ -1311,3 +1315,250 @@ class TestOpcodeCoverage:
     def test_228_initial_memory_zero(self) -> None:
         cpu = run("MOV A, [0x50]\nHLT")
         assert cpu.a == 0
+
+
+# ── print_tracer / list_tracer ────────────────────────────────────
+
+
+class TestPrintTracer:
+    """Tests for print_tracer output formatting."""
+
+    def test_basic(self, capsys: pytest.CaptureFixture[str]) -> None:
+        ev = TraceEvent(
+            ip=10, opcode=6, operands=(0, 42), size=3,
+            changes={"A": 42}, is_fault=False, cost=2,
+        )
+        print_tracer(ev)
+        out = capsys.readouterr().out
+        assert "IP= 10" in out
+        assert "op=  6" in out
+        assert "changes=" in out
+        assert "cost=2" in out
+
+    def test_fault(self, capsys: pytest.CaptureFixture[str]) -> None:
+        ev = TraceEvent(
+            ip=0, opcode=255, operands=(), size=1,
+            changes={}, is_fault=True, cost=0,
+        )
+        print_tracer(ev)
+        out = capsys.readouterr().out
+        assert "FAULT" in out
+        assert "changes=" not in out
+        assert "cost=" not in out
+        assert "operands=" not in out
+
+    def test_no_operands_no_changes(
+        self, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        ev = TraceEvent(
+            ip=5, opcode=0, operands=(), size=1,
+            changes={}, is_fault=False, cost=0,
+        )
+        print_tracer(ev)
+        out = capsys.readouterr().out
+        assert "IP=  5" in out
+        assert "operands=" not in out
+
+    def test_list_tracer_append(self) -> None:
+        events, cb = list_tracer()
+        assert events == []
+        ev = TraceEvent(
+            ip=0, opcode=0, operands=(), size=1,
+            changes={}, is_fault=False,
+        )
+        cb(ev)
+        assert len(events) == 1
+        assert events[0] is ev
+
+
+# ── Registers repr, masking, reset ────────────────────────────────
+
+
+class TestRegistersRepr:
+    def test_flags_repr_empty(self) -> None:
+        f = Flags()
+        assert repr(f) == "Flags()"
+
+    def test_flags_repr_all_set(self) -> None:
+        f = Flags()
+        f.z = True
+        f.c = True
+        f.f = True
+        assert "Z" in repr(f)
+        assert "C" in repr(f)
+        assert "F" in repr(f)
+
+    def test_fpu_repr(self) -> None:
+        fpu = FpuRegisters()
+        r = repr(fpu)
+        assert "FPU(" in r
+        assert "FA=" in r
+
+    def test_regfile_repr(self) -> None:
+        rf = RegisterFile(arch=1)
+        r = repr(rf)
+        assert "Regs(" in r
+        assert "A=" in r
+
+    def test_setter_masking(self) -> None:
+        rf = RegisterFile()
+        rf.b = 256
+        assert rf.b == 0
+        rf.c = 300
+        assert rf.c == 44
+        rf.d = -1
+        assert rf.d == 255
+        rf.sp = 0x1FF
+        assert rf.sp == 0xFF
+        rf.dp = 512
+        assert rf.dp == 0
+
+    def test_reset_arch2_creates_fpu(self) -> None:
+        rf = RegisterFile(arch=1)
+        assert rf.fpu is None
+        rf.reset(arch=2)
+        assert rf.fpu is not None
+
+    def test_reset_arch1_removes_fpu(self) -> None:
+        rf = RegisterFile(arch=2)
+        assert rf.fpu is not None
+        rf.reset(arch=1)
+        assert rf.fpu is None
+
+
+# ── Memory edge cases ─────────────────────────────────────────────
+
+
+class TestMemoryEdges:
+    def test_load_overflow(self) -> None:
+        mem = Memory()
+        with pytest.raises(ValueError, match="exceeds memory size"):
+            mem.load(bytes(MEMORY_SIZE + 1))
+
+
+# ── CPU tracer, snapshot, repr, reset ─────────────────────────────
+
+
+class TestCpuMisc:
+    def test_tracer_property(self) -> None:
+        cpu = CPU()
+        assert cpu.tracer is None
+        events, cb = list_tracer()
+        cpu.tracer = cb
+        assert cpu.tracer is cb
+        cpu.tracer = None
+        assert cpu.tracer is None
+
+    def test_trace_on_fault(self) -> None:
+        events, cb = list_tracer()
+        cpu = CPU(arch=2)
+        cpu.tracer = cb
+        cpu.load([255])
+        cpu.step()
+        assert len(events) == 1
+        assert events[0].is_fault
+
+    def test_trace_on_handler_fault(self) -> None:
+        events, cb = list_tracer()
+        cpu = CPU(arch=2)
+        cpu.tracer = cb
+        code = list(assemble("MOV B, 250\nMOV A, [B+15]\nHLT").code)
+        cpu.load(code)
+        cpu.run()
+        fault_events = [e for e in events if e.is_fault]
+        assert len(fault_events) == 1
+
+    def test_trace_normal_instruction(self) -> None:
+        events, cb = list_tracer()
+        cpu = CPU()
+        cpu.tracer = cb
+        cpu.load(list(assemble("MOV A, 42\nHLT").code))
+        cpu.run()
+        normal = [e for e in events if not e.is_fault]
+        assert len(normal) >= 1
+        assert normal[0].cost > 0
+
+    def test_snapshot_includes_fp_regs(self) -> None:
+        events, cb = list_tracer()
+        cpu = CPU(arch=2)
+        cpu.tracer = cb
+        code = list(assemble("FMOV.H FHA, 1.0\nHLT", arch=2).code)
+        cpu.load(code)
+        cpu.run()
+        fa_changes = [e for e in events if "FA" in e.changes]
+        assert len(fa_changes) >= 1
+
+    def test_cpu_repr(self) -> None:
+        cpu = CPU()
+        r = repr(cpu)
+        assert "CPU(" in r
+
+    def test_reset(self) -> None:
+        cpu = CPU()
+        cpu.load(list(assemble("MOV A, 42\nHLT").code))
+        cpu.run()
+        assert cpu.a == 42
+        cpu.reset()
+        assert cpu.a == 0
+        assert cpu.state == CpuState.IDLE
+
+
+# ── Handler edge cases ────────────────────────────────────────────
+
+
+class TestHandlerEdges:
+    def test_page_boundary_via_regaddr(self) -> None:
+        cpu = run("MOV B, 250\nMOV A, [B+15]\nHLT")
+        assert cpu.state == CpuState.FAULT
+        assert cpu.a == ErrorCode.PAGE_BOUNDARY
+
+    def test_dispatch_completeness(self) -> None:
+        cpu = CPU(arch=2)
+        assert cpu is not None
+
+    def test_hlt_at_page_end(self) -> None:
+        """HLT at address 255 must work (off-by-one regression)."""
+        cpu = CPU()
+        cpu.mem[255] = 0  # HLT opcode
+        cpu.regs.ip = 255
+        cpu.run()
+        assert cpu.state == CpuState.HALTED
+
+    def test_2byte_insn_at_page_end(self) -> None:
+        """2-byte INC B at 254 should execute (ends at 255)."""
+        cpu = CPU()
+        cpu.mem[254] = 18  # INC opcode
+        cpu.mem[255] = 1   # register B
+        cpu.regs.ip = 254
+        cpu.run()
+        # INC B executes, IP advances to 256 → page boundary fault on next fetch
+        assert cpu.state == CpuState.FAULT
+        assert cpu.a == ErrorCode.PAGE_BOUNDARY
+        # B was incremented before the fault
+        assert cpu.regs.read(1) == 1
+
+    def test_2byte_insn_crosses_page(self) -> None:
+        """2-byte instruction at 255 crosses page boundary → FAULT."""
+        cpu = CPU()
+        cpu.mem[255] = 18  # INC opcode (2 bytes)
+        cpu.regs.ip = 255
+        cpu.run()
+        assert cpu.state == CpuState.FAULT
+        assert cpu.a == ErrorCode.PAGE_BOUNDARY
+
+    def test_dispatch_missing_handler_raises(self) -> None:
+        """Missing handler in dispatch table triggers completeness error."""
+        from pysim8.sim.handlers import HandlersMixin
+        cpu = CPU()
+        # Remove one handler from a copy
+        incomplete = dict(cpu._dispatch)
+        del incomplete[Op.INC_REG]
+        with pytest.raises(RuntimeError, match="INC_REG"):
+            HandlersMixin._check_dispatch_complete(incomplete)
+
+    def test_fpu_not_available_on_arch1(self) -> None:
+        """Accessing _fpu on arch=1 (no FPU) raises RuntimeError."""
+        cpu = CPU(arch=1)
+        assert cpu.regs.fpu is None
+        with pytest.raises(RuntimeError, match="FPU not available"):
+            _ = cpu._fpu

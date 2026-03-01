@@ -6,9 +6,11 @@ Tests are assembler-only: assemble source → verify bytes / labels / mapping / 
 from typing import get_args
 
 import pytest
+from hypothesis import given, settings, assume
+from hypothesis import strategies as st
 
 from pysim8.asm import assemble, AssemblerError
-from pysim8.asm.parser import Operand
+from pysim8.asm.parser import Operand, parse_number, ParseError
 from pysim8.asm.codegen import _operand_matches, _encode_operand
 from pysim8.isa import OpType
 
@@ -726,7 +728,10 @@ class TestExhaustiveness:
             )
 
     def test_operand_matches_covers_all_ot_variants(self) -> None:
-        from pysim8.asm.parser import OpReg, OpConst, OpAddr, OpRegAddr, OpLabel
+        from pysim8.asm.parser import (
+            OpReg, OpConst, OpAddr, OpRegAddr, OpLabel,
+            OpFpReg, OpFpImm,
+        )
         # Every OpType variant must be reachable in _operand_matches
         test_operands = {
             OpType.REG: OpReg(0),
@@ -735,11 +740,12 @@ class TestExhaustiveness:
             OpType.IMM: OpConst(0),
             OpType.MEM: OpAddr(0),
             OpType.REGADDR: OpRegAddr(0, 0),
+            OpType.FP_REG: OpFpReg("FQA", 0, 3, 0),
+            OpType.FP_IMM8: OpFpImm(1.0, None),
+            OpType.FP_IMM16: OpFpImm(1.0, None),
         }
         covered = set(test_operands.keys())
-        # FP_REG uses a separate encoding path (FPM bytes);
-        # covered in test_asm_fp.py.
-        all_variants = set(OpType) - {OpType.FP_REG}
+        all_variants = set(OpType)
         assert covered == all_variants, (
             f"Uncovered OpType variants: {all_variants - covered}"
         )
@@ -747,3 +753,276 @@ class TestExhaustiveness:
             assert _operand_matches(op, ot) is True, (
                 f"_operand_matches({op!r}, {ot}) returned False"
             )
+
+
+# ── Parser edge cases ─────────────────────────────────────────────
+
+
+class TestParserEdges:
+    """Parser corner cases for coverage."""
+
+    def test_multi_char_literal_error(self) -> None:
+        with pytest.raises(AssemblerError):
+            assemble("MOV A, 'ab'\nHLT")
+
+    def test_invalid_number(self) -> None:
+        with pytest.raises(AssemblerError):
+            assemble("MOV A, xyz\nHLT")
+
+    def test_invalid_address(self) -> None:
+        with pytest.raises(AssemblerError):
+            assemble('MOV A, [+]\nHLT')
+
+    def test_string_operand(self) -> None:
+        result = assemble('DB "AB"\nHLT')
+        assert 65 in result.code  # 'A'
+        assert 66 in result.code  # 'B'
+
+    def test_hlt_with_args(self) -> None:
+        with pytest.raises(AssemblerError):
+            assemble("HLT 1")
+
+    def test_no_operands(self) -> None:
+        result = assemble("HLT")
+        assert result.code == [0]
+
+    def test_db_register_error(self) -> None:
+        with pytest.raises(AssemblerError):
+            assemble("DB A\nHLT")
+
+    def test_db_bracket_error(self) -> None:
+        with pytest.raises(AssemblerError):
+            assemble("DB [10]\nHLT")
+
+    def test_db_label_error(self) -> None:
+        with pytest.raises(AssemblerError):
+            assemble("DB hello\nHLT")
+
+    def test_char_literal(self) -> None:
+        from pysim8.sim import CPU
+        result = assemble("MOV A, 'X'\nHLT")
+        cpu = CPU()
+        cpu.load(result.code)
+        cpu.run()
+        assert cpu.a == ord('X')
+
+    def test_invalid_register_in_offset(self) -> None:
+        """[XYZ+5] where XYZ is not a register (parser line 230)."""
+        with pytest.raises(AssemblerError, match="Invalid register"):
+            assemble("MOV A, [XYZ+5]\nHLT")
+
+    def test_multi_char_literal_in_parse_number(self) -> None:
+        """parse_number with multi-char literal (parser line 193)."""
+        with pytest.raises(ParseError, match="one character"):
+            parse_number("'ab'", 1)
+
+    def test_parse_number_invalid_format(self) -> None:
+        """parse_number with non-numeric token (parser line 196)."""
+        with pytest.raises(ParseError, match="Invalid number"):
+            parse_number("$$$", 1)
+
+    def test_multi_char_in_try_parse_number(self) -> None:
+        """Multi-char literal returns None in _try_parse_number (line 181)."""
+        from pysim8.asm.parser import _try_parse_number
+        assert _try_parse_number("'abc'") is None
+
+    def test_string_with_comma_in_db(self) -> None:
+        """Comma inside string should not split operands (line 535)."""
+        result = assemble('DB "a,b"\nHLT')
+        assert result.code[:3] == [ord('a'), ord(','), ord('b')]
+
+    def test_empty_operands_no_arg_insn(self) -> None:
+        """No-arg instruction sets operands=[] (line 657)."""
+        result = assemble("HLT")
+        assert result.code == [0]
+
+
+# ── Parser property-based tests ────────────────────────────────────
+
+
+class TestPropParser:
+    """Property-based parser tests."""
+
+    @given(st.integers(min_value=0, max_value=255))
+    def test_number_roundtrip_decimal(self, n: int) -> None:
+        """Any 0-255 decimal assembles to that byte."""
+        code = assemble(f"MOV A, {n}\nHLT").code
+        assert code == [6, 0, n, 0]
+
+    @given(st.integers(min_value=0, max_value=255))
+    def test_number_roundtrip_hex(self, n: int) -> None:
+        """Any 0-255 hex assembles correctly."""
+        code = assemble(f"MOV A, 0x{n:02X}\nHLT").code
+        assert code == [6, 0, n, 0]
+
+    @given(st.integers(min_value=0, max_value=255))
+    def test_db_byte_value(self, n: int) -> None:
+        """DB with any 0-255 value produces that byte."""
+        code = assemble(f"DB {n}").code
+        assert code == [n]
+
+    @given(st.text(
+        alphabet=st.characters(whitelist_categories=('L',), min_codepoint=65, max_codepoint=90),
+        min_size=1, max_size=8,
+    ))
+    def test_random_label_name(self, name: str) -> None:
+        """Random uppercase labels work if not a keyword."""
+        from pysim8.isa import REGISTERS, FP_REGISTERS, MNEMONICS, MNEMONICS_FP
+        assume(name.upper() not in REGISTERS)
+        assume(name.upper() not in FP_REGISTERS)
+        assume(name.upper() not in MNEMONICS)
+        assume(name.upper() not in MNEMONICS_FP)
+        assume(name.upper() not in {"DB", "INF", "NAN"})
+        src = f"{name}: HLT\nJMP {name}"
+        result = assemble(src)
+        assert name.lower() in result.labels
+
+    @given(st.sampled_from([
+        "MOV A, 256", "MOV A, -1", "MOV A, 300",
+        "DB 256", "DB -1", "DB 999",
+    ]))
+    def test_out_of_range_constants(self, src: str) -> None:
+        """Values outside 0-255 are rejected."""
+        with pytest.raises(AssemblerError):
+            assemble(src + "\nHLT")
+
+
+# ── Crazy input tests ──────────────────────────────────────────────
+
+
+class TestCrazyInput:
+    """Adversarial and bizarre inputs that should not crash."""
+
+    def test_empty_source(self) -> None:
+        result = assemble("")
+        assert result.code == []
+
+    def test_only_whitespace(self) -> None:
+        result = assemble("   \n\n  \t \n")
+        assert result.code == []
+
+    def test_only_comments(self) -> None:
+        result = assemble("; this is a comment\n; another one\n")
+        assert result.code == []
+
+    def test_only_labels(self) -> None:
+        result = assemble("foo:\nbar:\nbaz:")
+        assert result.labels == {"foo": 0, "bar": 0, "baz": 0}
+
+    def test_label_on_hlt(self) -> None:
+        result = assemble("start: HLT")
+        assert result.labels["start"] == 0
+        assert result.code == [0]
+
+    def test_many_labels_same_address(self) -> None:
+        result = assemble("x1:\nx2:\nx3:\nx4:\nHLT")
+        assert result.labels == {"x1": 0, "x2": 0, "x3": 0, "x4": 0}
+        assert result.code == [0]
+
+    def test_max_db_line(self) -> None:
+        """DB with many comma-separated values."""
+        vals = ", ".join(str(i % 256) for i in range(100))
+        result = assemble(f"DB {vals}")
+        assert len(result.code) == 100
+
+    def test_very_long_string(self) -> None:
+        """DB with long string."""
+        s = "A" * 200
+        result = assemble(f'DB "{s}"')
+        assert len(result.code) == 200
+        assert all(b == 65 for b in result.code)
+
+    def test_register_as_label_error(self) -> None:
+        with pytest.raises(AssemblerError, match="keyword"):
+            assemble("A: HLT")
+
+    def test_sp_as_label_error(self) -> None:
+        with pytest.raises(AssemblerError, match="keyword"):
+            assemble("SP: HLT")
+
+    def test_duplicate_label_error(self) -> None:
+        with pytest.raises(AssemblerError):
+            assemble("x: HLT\nx: HLT")
+
+    def test_undefined_label_error(self) -> None:
+        with pytest.raises(AssemblerError, match="Undefined"):
+            assemble("JMP nowhere\nHLT")
+
+    def test_offset_out_of_range_positive(self) -> None:
+        with pytest.raises(AssemblerError, match="offset"):
+            assemble("MOV A, [B+16]\nHLT")
+
+    def test_offset_out_of_range_negative(self) -> None:
+        with pytest.raises(AssemblerError, match="offset"):
+            assemble("MOV A, [B-17]\nHLT")
+
+    def test_garbage_operand(self) -> None:
+        with pytest.raises(AssemblerError):
+            assemble("MOV A, @@@\nHLT")
+
+    def test_too_many_operands(self) -> None:
+        with pytest.raises(AssemblerError, match="too many"):
+            assemble("MOV A, B, C\nHLT")
+
+    def test_wrong_operand_type(self) -> None:
+        with pytest.raises(AssemblerError, match="operand"):
+            assemble("MOV 42, A\nHLT")
+
+    def test_unknown_mnemonic(self) -> None:
+        with pytest.raises(AssemblerError):
+            assemble("XYZZY A, B\nHLT")
+
+    def test_missing_label_colon(self) -> None:
+        """foo HLT — 'foo' is not a mnemonic and no colon → error."""
+        with pytest.raises(AssemblerError):
+            assemble("foo HLT")
+
+
+# ── Direct parser function tests ─────────────────────────────────
+
+
+class TestParserDirect:
+    """Direct unit tests for parser functions to reach uncovered lines."""
+
+    def test_try_string_in_operand_chain(self) -> None:
+        """_parse_operand with quoted string → OpString (line 282)."""
+        from pysim8.asm.parser import _parse_operand, OpString
+        result = _parse_operand('"hello"', 1)
+        assert isinstance(result, OpString)
+        assert result.text == "hello"
+
+    def test_try_fp_imm_malformed_float(self) -> None:
+        """_try_fp_imm with unparseable float → ParseError (lines 336-337)."""
+        from pysim8.asm.parser import _try_fp_imm
+        # The regex _RE_FLOAT matches "1.e999999999999999999" — valid regex
+        # but float() can't parse certain edge cases.
+        # Actually, we need something the regex matches but float() rejects.
+        # The regex is: ^([+-]?)(\d+\.\d*|\.\d+)([eE][+-]?\d+)?(_\w+)?$
+        # Python float() handles everything the regex accepts.
+        # So lines 336-337 are genuinely hard to reach via normal parsing.
+        # Let's just verify the error path works by calling directly.
+        import unittest.mock as mock
+        with mock.patch("builtins.float", side_effect=ValueError("bad")):
+            from pysim8.asm.parser import _try_fp_imm
+            with pytest.raises(ParseError, match="Invalid float"):
+                _try_fp_imm("1.0", 1)
+
+    def test_parse_float_literal_malformed(self) -> None:
+        """_parse_float_literal with unparseable float (lines 432-433)."""
+        import unittest.mock as mock
+        with mock.patch("builtins.float", side_effect=ValueError("bad")):
+            from pysim8.asm.parser import _parse_float_literal
+            with pytest.raises(ParseError, match="Invalid float"):
+                _parse_float_literal("1.0", 1)
+
+    def test_split_operands_with_string(self) -> None:
+        """_split_operands with quoted string containing comma (line 535)."""
+        from pysim8.asm.parser import _split_operands
+        result = _split_operands('"a,b"')
+        assert result == ['"a,b"']
+
+    def test_split_operands_empty_input(self) -> None:
+        """_split_operands with empty string (line 546→548)."""
+        from pysim8.asm.parser import _split_operands
+        result = _split_operands("")
+        assert result == []
