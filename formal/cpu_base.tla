@@ -12,9 +12,9 @@ VARIABLES
     A, B, C, D,
     Z, C_flag, F,
     memory, state, step_count, cycles,
-    FA_reg, FPCR_reg, FPSR_reg
+    FA_reg, FB_reg, FPCR_reg, FPSR_reg
 
-vars == <<IP, SP, DP, A, B, C, D, Z, C_flag, F, memory, state, step_count, cycles, FA_reg, FPCR_reg, FPSR_reg>>
+vars == <<IP, SP, DP, A, B, C, D, Z, C_flag, F, memory, state, step_count, cycles, FA_reg, FB_reg, FPCR_reg, FPSR_reg>>
 
 -----------------------------------------------------------------------------
 (* Constants *)
@@ -69,17 +69,19 @@ OP_FMUL_A == 136     OP_FMUL_I == 137
 OP_FDIV_A == 138     OP_FDIV_I == 139
 OP_FCMP_A == 140     OP_FCMP_I == 141
 OP_FABS == 142       OP_FNEG == 143       OP_FSQRT == 144
+OP_FMOV_RR == 145
 OP_FCVT == 146       OP_FITOF == 147      OP_FFTOI == 148
 OP_FSTAT == 149      OP_FCFG == 150       OP_FSCFG == 151     OP_FCLR == 152
 OP_FADD_RR == 153    OP_FSUB_RR == 154    OP_FMUL_RR == 155
 OP_FDIV_RR == 156    OP_FCMP_RR == 157
 OP_FCLASS == 158
 OP_FMADD_A == 159    OP_FMADD_I == 160
+OP_FMOV_FI8 == 161   OP_FMOV_FI16 == 162
 
 OPCODES == {0} \cup (1..8) \cup (10..19) \cup (20..23)
            \cup (30..43) \cup (50..57) \cup (60..67)
            \cup (70..82) \cup (90..97)
-           \cup (128..144) \cup (146..160)
+           \cup (128..162)
 
 -----------------------------------------------------------------------------
 (* Helpers *)
@@ -177,7 +179,7 @@ InstrSize(op) ==
                    \cup (60..67) THEN 2
     ELSE IF op \in {OP_FABS, OP_FNEG, OP_FSQRT,
                     OP_FSTAT, OP_FCFG, OP_FSCFG} THEN 2
-    ELSE IF op \in {OP_FMADD_A, OP_FMADD_I} THEN 4
+    ELSE IF op \in {OP_FMADD_A, OP_FMADD_I, OP_FMOV_FI16} THEN 4
     ELSE 3  \* MOV 1-8, ADD/SUB/CMP, AND/OR/XOR, SHL/SHR, FP 3-byte
 
 \* Instruction cost (pipeline model)
@@ -185,7 +187,7 @@ InstrSize(op) ==
 \* Independent: max.  Dependent (data dependency): sum.
 Cost(op) ==
     IF op = OP_HLT THEN 0
-    ELSE IF op \in {OP_FSTAT, OP_FCFG, OP_FSCFG, OP_FCLR} THEN 1
+    ELSE IF op \in {OP_FSTAT, OP_FCFG, OP_FSCFG, OP_FCLR, OP_FMOV_RR, OP_FMOV_FI8, OP_FMOV_FI16} THEN 1
     ELSE IF op \in {OP_FMOV_FA, OP_FMOV_FI, OP_FMOV_AF, OP_FMOV_IF} THEN 2
     ELSE IF op \in {OP_FABS, OP_FNEG, OP_FCVT, OP_FITOF, OP_FFTOI} THEN 3
     ELSE IF op = OP_FCLASS THEN 2
@@ -219,15 +221,15 @@ Cost(op) ==
     ELSE 2                                         \* mem(2) only
 
 \* Common UNCHANGED patterns
-unch_jump == <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FA_reg,FPCR_reg,FPSR_reg>>
-unch_cmp  == <<SP,DP,A,B,C,D,F,memory,state,FA_reg,FPCR_reg,FPSR_reg>>
-unch_alu  == <<F,memory,state,FA_reg,FPCR_reg,FPSR_reg>>
-unch_fp_all == <<SP,DP,A,B,C,D,Z,C_flag,F,state,FA_reg,FPCR_reg,FPSR_reg>>
+unch_jump == <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
+unch_cmp  == <<SP,DP,A,B,C,D,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
+unch_alu  == <<F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
+unch_fp_all == <<SP,DP,A,B,C,D,Z,C_flag,F,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
 
 \* FAULT helper
 Fault(err) ==
     /\ F' = TRUE /\ A' = err /\ state' = "FAULT"
-    /\ UNCHANGED <<IP, SP, DP, B, C, D, Z, C_flag, memory, FA_reg, FPCR_reg, FPSR_reg>>
+    /\ UNCHANGED <<IP, SP, DP, B, C, D, Z, C_flag, memory, FA_reg, FB_reg, FPCR_reg, FPSR_reg>>
 
 \* --- FP Helpers ---
 
@@ -241,7 +243,7 @@ ValidateFPM(fpm) ==
     LET fmt == FPM_fmt(fpm)
         pos == FPM_pos(fpm)
         phys == FPM_phys(fpm)
-    IN IF phys # 0 THEN ERR_FP_FORMAT
+    IN IF phys > 1 THEN ERR_FP_FORMAT
        ELSE IF fmt >= 5 THEN ERR_FP_FORMAT      \* fmt=5,6 reserved 4-bit; fmt=7 invalid
        ELSE IF fmt = 0 /\ pos # 0 THEN ERR_FP_FORMAT
        ELSE IF fmt \in {1, 2} /\ pos > 1 THEN ERR_FP_FORMAT
@@ -256,19 +258,29 @@ FPWidth(fmt) ==
 \* Format byte count
 FPBytes(fmt) == FPWidth(fmt) \div 8
 
-\* Read sub-register from FA_reg
-FPRead(fmt, pos) ==
-    LET width == FPWidth(fmt)
-        bit_off == pos * width
-    IN (FA_reg \div (2^bit_off)) % (2^width)
+\* Physical FP register selector
+FPGetReg(phys) == IF phys = 0 THEN FA_reg ELSE FB_reg
 
-\* Write sub-register: compute new FA_reg value
-FPWriteVal(fmt, pos, value) ==
+\* Read sub-register from FA_reg/FB_reg
+FPRead(phys, fmt, pos) ==
     LET width == FPWidth(fmt)
         bit_off == pos * width
-        old_bits == (FA_reg \div (2^bit_off)) % (2^width)
-        cleared == FA_reg - old_bits * (2^bit_off)
+        reg == FPGetReg(phys)
+    IN (reg \div (2^bit_off)) % (2^width)
+
+\* Write sub-register: compute new FA_reg/FB_reg value
+FPWriteVal(phys, fmt, pos, value) ==
+    LET width == FPWidth(fmt)
+        bit_off == pos * width
+        reg == FPGetReg(phys)
+        old_bits == (reg \div (2^bit_off)) % (2^width)
+        cleared == reg - old_bits * (2^bit_off)
     IN cleared + (value % (2^width)) * (2^bit_off)
+
+\* Set FA_reg'/FB_reg' after writing to physical register phys
+FPSetRegs(phys, new_val) ==
+    /\ FA_reg' = IF phys = 0 THEN new_val ELSE FA_reg
+    /\ FB_reg' = IF phys = 1 THEN new_val ELSE FB_reg
 
 \* Read multi-byte value from memory (little-endian)
 RECURSIVE FPMemReadRec(_, _, _)
