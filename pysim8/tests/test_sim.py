@@ -215,7 +215,7 @@ class TestCmp:
     def test_cmp_reg_reg(self) -> None:
         cpu = run("MOV A, 5\nMOV B, 5\nCMP A, B\nHLT")
         assert cpu.zero is True
-        assert cpu.a == 5  # CMP doesn't modify dest
+        assert cpu.a == 5
 
     def test_cmp_regaddr(self) -> None:
         cpu = run("MOV B, 0x50\nMOV [0x50], 5\nMOV A, 5\nCMP A, [B]\nHLT")
@@ -224,7 +224,7 @@ class TestCmp:
     def test_cmp_addr(self) -> None:
         cpu = run("MOV [0x50], 3\nMOV A, 10\nCMP A, [0x50]\nHLT")
         assert cpu.zero is False
-        assert cpu.carry is False  # A > [0x50]
+        assert cpu.carry is False
 
 
 # ── 5.6 JMP / Conditional Jumps (tests 30-38) ───────────────────────
@@ -298,11 +298,9 @@ class TestStack:
 
     def test_49_push_addr(self) -> None:
         cpu = run("PUSH [0x50]\nHLT")
-        # mem[0x50] is 0 initially; just test no crash + correct SP
         assert cpu.sp == 230
 
     def test_50_stack_overflow(self) -> None:
-        # SP=0 means no room to push → FAULT(2)
         run_fault("MOV SP, 0\nPUSH 1", ErrorCode.STACK_OVERFLOW)
 
     def test_51_stack_underflow(self) -> None:
@@ -470,7 +468,7 @@ class TestShift:
     def test_80_shift_by_zero(self) -> None:
         cpu = run("MOV A, 200\nADD A, 100\nSHL A, 0\nHLT")
         assert cpu.a == 44
-        assert cpu.carry is True  # C preserved from ADD
+        assert cpu.carry is True
 
 
 # ── 5.12 Addressing Modes (tests 81-84) ─────────────────────────────
@@ -623,8 +621,8 @@ class TestIO:
 
     def test_106_write_display(self) -> None:
         cpu = run("MOV [232], 72\nMOV [233], 105\nHLT")
-        assert cpu.mem[232] == 72  # 'H'
-        assert cpu.mem[233] == 105  # 'i'
+        assert cpu.mem[232] == 72
+        assert cpu.mem[233] == 105
         assert cpu.display() == "Hi"
 
     def test_107_write_last_cell(self) -> None:
@@ -638,7 +636,7 @@ class TestIO:
     def test_109_dp_not_zero(self) -> None:
         cpu = run("MOV DP, 5\nMOV [232], 72\nHLT")
         assert cpu.mem[5 * 256 + 232] == 72
-        assert cpu.display() == ""  # I/O region only on page 0
+        assert cpu.display() == ""
 
 
 # ── 5.19 Integration — End-to-End Programs (tests 152-156) ──────────
@@ -791,7 +789,6 @@ class TestRobustness:
         run_fault("POP A", ErrorCode.STACK_UNDERFLOW)
 
     def test_173_stack_overflow(self) -> None:
-        # SP=0 means no room to push → FAULT(2)
         run_fault("MOV SP, 0\nPUSH 1", ErrorCode.STACK_OVERFLOW)
 
     def test_174_invalid_opcode_9(self) -> None:
@@ -813,32 +810,29 @@ class TestRobustness:
         run_fault("DB 82, 5", ErrorCode.INVALID_REG)
 
     def test_180_code_overwrite_via_stack(self) -> None:
-        # PUSH writes HLT (0) to addr 10, overwriting MOV A, 99.
-        # MOV A, 42 executes, JMP 10 lands on the overwritten HLT.
         cpu = run(
-            "MOV SP, 10\n"   # SP points into code area
-            "PUSH 0\n"       # writes HLT (0) to addr 10
-            "MOV A, 42\n"    # addr 5-7, executes normally
-            "JMP 10\n"       # addr 8-9, jump to overwritten HLT
-            "MOV A, 99\n"    # addr 10-12, but addr 10 is now HLT
+            "MOV SP, 10\n"
+            "PUSH 0\n"
+            "MOV A, 42\n"
+            "JMP 10\n"
+            "MOV A, 99\n"
         )
         assert cpu.a == 42
 
     def test_181_exec_from_high_memory(self) -> None:
         cpu = run(
-            "MOV [200], 6\n"   # MOV opcode
-            "MOV [201], 0\n"   # reg A
-            "MOV [202], 77\n"  # value 77
-            "MOV [203], 0\n"   # HLT
+            "MOV [200], 6\n"
+            "MOV [201], 0\n"
+            "MOV [202], 77\n"
+            "MOV [203], 0\n"
             "JMP 200"
         )
         assert cpu.a == 77
         assert cpu.ip == 203
 
     def test_page_boundary_fault(self) -> None:
-        # 3-byte instruction (MOV REG, CONST = opcode 6) at addr 254 crosses page
         cpu = CPU()
-        code = [0] * 254 + [6, 0, 42]  # would need bytes 254,255,256
+        code = [0] * 254 + [6, 0, 42]
         cpu.load(code)
         cpu.regs.ip = 254
         cpu.run()
@@ -847,7 +841,7 @@ class TestRobustness:
 
     def test_display_nonprintable_filtered(self) -> None:
         cpu = run("MOV [232], 1\nMOV [233], 65\nHLT")
-        assert cpu.display() == " A"  # byte 1 → space, 65 → 'A'
+        assert cpu.display() == " A"
 
 
 # ── Lifecycle (reset, step-after-halt, max_steps) ────────────────────
@@ -856,12 +850,26 @@ class TestRobustness:
 class TestLifecycle:
     """CPU lifecycle: reset, re-run, step limits."""
 
+    def test_basic_mov_halt_arch1(self) -> None:
+        cpu = CPU(arch=1)
+        cpu.load(assemble("MOV A, 42\nHLT").code)
+        cpu.run()
+        assert cpu.state == CpuState.HALTED
+        assert cpu.steps == 1
+        assert cpu.a == 42
+
+    def test_all_zero_memory_halts_immediately(self) -> None:
+        cpu = CPU(arch=2)
+        cpu.load([0] * 256)
+        cpu.run()
+        assert cpu.state == CpuState.HALTED
+        assert cpu.steps == 0
+
     def test_reset_after_fault(self) -> None:
         cpu = CPU()
-        cpu.load(assemble("DB 9").code)  # invalid opcode → FAULT
+        cpu.load(assemble("DB 9").code)
         cpu.run()
         assert cpu.state == CpuState.FAULT
-        # Reset and run new code
         cpu.load(assemble("MOV A, 42\nHLT").code)
         cpu.run()
         assert cpu.state == CpuState.HALTED
@@ -943,7 +951,6 @@ class TestCostModel:
     def test_mul_reg_cost(self) -> None:
         cpu = run("MOV A, 2\nMUL 5\nHLT")
         assert cpu.steps == 2
-        # MOV A,const=1 + MUL const=2
         assert cpu.cycles == 3
 
     def test_push_const_cost(self) -> None:
@@ -954,25 +961,21 @@ class TestCostModel:
     def test_push_regaddr_cost(self) -> None:
         cpu = run("MOV B, 0x50\nPUSH [B]\nHLT")
         assert cpu.steps == 2
-        # MOV reg,const=1 + PUSH regaddr=4 (mem read + stack write, dependency)
         assert cpu.cycles == 5
 
     def test_push_addr_cost(self) -> None:
         cpu = run("PUSH [0x50]\nHLT")
         assert cpu.steps == 1
-        # mem read + stack write, dependency → 4
         assert cpu.cycles == 4
 
     def test_pop_cost(self) -> None:
         cpu = run("PUSH 1\nPOP A\nHLT")
         assert cpu.steps == 2
-        # PUSH const=2 + POP reg=2
         assert cpu.cycles == 4
 
     def test_call_ret_cost(self) -> None:
         cpu = run("CALL fn\nHLT\nfn: RET")
         assert cpu.steps == 2
-        # CALL addr=2 + RET=2
         assert cpu.cycles == 4
 
     def test_custom_cost_override(self) -> None:
@@ -980,26 +983,22 @@ class TestCostModel:
         cpu.load(assemble("MOV A, 2\nMUL 3\nHLT").code)
         cpu.run()
         assert cpu.steps == 2
-        # MOV=1 + MUL=8
         assert cpu.cycles == 9
 
     def test_custom_override_all_variants(self) -> None:
         """Override replaces ALL variants of a mnemonic."""
         cpu = CPU(costs={"MUL": 8})
-        # MUL reg (default 2), MUL [addr] (default 4) — both become 8
         cpu.load(assemble(
             "MOV A, 2\nMOV B, 3\nMUL B\n"
             "MOV A, 2\nMUL [0x50]\nHLT"
         ).code)
         cpu.mem[0x50] = 1
         cpu.run()
-        # MOV=1 + MOV=1 + MUL_REG=8 + MOV=1 + MUL_ADDR=8
         assert cpu.cycles == 19
 
     def test_multi_instruction_sum(self) -> None:
         cpu = run("MOV A, 1\nMOV B, 2\nADD A, B\nHLT")
         assert cpu.steps == 3
-        # 1+1+1 (all reg-reg/imm)
         assert cpu.cycles == 3
 
     def test_hlt_not_counted(self) -> None:
@@ -1041,10 +1040,10 @@ class TestCostModel:
         cpu = CPU(costs={"MUL": 10})
         cpu.load(assemble("MOV A, 2\nMUL 3\nHLT").code)
         cpu.run()
-        assert cpu.cycles == 11  # 1 + 10
+        assert cpu.cycles == 11
         cpu.load(assemble("MOV A, 2\nMUL 3\nHLT").code)
         cpu.run()
-        assert cpu.cycles == 11  # still 1 + 10
+        assert cpu.cycles == 11
 
 
 # ── 6.20 Fault Conditions and Edge Cases (tests 157-160) ─────────────
@@ -1079,8 +1078,8 @@ class TestCoverageCompleteness:
     def test_185_fetch_boundary(self) -> None:
         """3-byte opcode at IP=254 crosses page boundary."""
         cpu = run(
-            "MOV [254], 13\n"  # ADD opcode
-            "MOV [255], 0\n"   # reg A
+            "MOV [254], 13\n"
+            "MOV [255], 0\n"
             "JMP 254"
         )
         assert cpu.state == CpuState.FAULT
@@ -1120,14 +1119,14 @@ class TestCoverageCompleteness:
     def test_194_call_return_addr_wrapping(self) -> None:
         """CALL at IP=254: return_addr = 256 mod 256 = 0."""
         cpu = run(
-            "MOV [254], 56\n"  # CALL addr
-            "MOV [255], 20\n"  # target = 20
-            "MOV [20], 54\n"   # POP B
-            "MOV [21], 1\n"    # reg = B
-            "MOV [22], 0\n"    # HLT
+            "MOV [254], 56\n"
+            "MOV [255], 20\n"
+            "MOV [20], 54\n"
+            "MOV [21], 1\n"
+            "MOV [22], 0\n"
             "JMP 254"
         )
-        assert cpu.b == 0  # wrapped return address
+        assert cpu.b == 0
 
     def test_195_mul_carry_and_zero(self) -> None:
         """128*2=256 wraps to 0, carry set."""
@@ -1141,8 +1140,8 @@ class TestCoverageCompleteness:
         cpu = run(
             "MOV DP, 1\n"
             "MOV B, 0x50\n"
-            "MOV [B], 42\n"   # writes 42 to page 1, offset 0x50
-            "PUSH [B]\n"      # reads from page 1 via DP
+            "MOV [B], 42\n"
+            "PUSH [B]\n"
             "MOV DP, 0\n"
             "POP A\n"
             "HLT"
@@ -1152,10 +1151,10 @@ class TestCoverageCompleteness:
     def test_197_exec_from_io_region(self) -> None:
         """Code in I/O region (232-255) is executable."""
         cpu = run(
-            "MOV [232], 6\n"   # MOV opcode
-            "MOV [233], 0\n"   # reg A
-            "MOV [234], 99\n"  # value 99
-            "MOV [235], 0\n"   # HLT
+            "MOV [232], 6\n"
+            "MOV [233], 0\n"
+            "MOV [234], 99\n"
+            "MOV [235], 0\n"
             "JMP 232"
         )
         assert cpu.a == 99
@@ -1519,16 +1518,33 @@ class TestHandlerEdges:
     def test_hlt_at_page_end(self) -> None:
         """HLT at address 255 must work (off-by-one regression)."""
         cpu = CPU()
-        cpu.mem[255] = 0  # HLT opcode
+        cpu.mem[255] = 0
         cpu.regs.ip = 255
         cpu.run()
         assert cpu.state == CpuState.HALTED
 
+    def test_indirect_addr_invalid_reg(self) -> None:
+        encoded_regaddr = (0 << 3) | 6
+        cpu = CPU(arch=2)
+        cpu.load([
+            int(Op.MOV_REGADDR_REG), encoded_regaddr, 0, int(Op.HLT)
+        ])
+        cpu.run()
+        assert cpu.state == CpuState.FAULT
+        assert cpu.a == ErrorCode.INVALID_REG
+
+    def test_mov_reg_invalid_high_code(self) -> None:
+        cpu = CPU(arch=2)
+        cpu.load([int(Op.MOV_REG_REG), 6, 0, int(Op.HLT)])
+        cpu.run()
+        assert cpu.state == CpuState.FAULT
+        assert cpu.a == ErrorCode.INVALID_REG
+
     def test_2byte_insn_at_page_end(self) -> None:
         """2-byte INC B at 254 should execute (ends at 255)."""
         cpu = CPU()
-        cpu.mem[254] = 18  # INC opcode
-        cpu.mem[255] = 1   # register B
+        cpu.mem[254] = 18
+        cpu.mem[255] = 1
         cpu.regs.ip = 254
         cpu.run()
         # INC B executes, IP advances to 256 → page boundary fault on next fetch
@@ -1540,7 +1556,7 @@ class TestHandlerEdges:
     def test_2byte_insn_crosses_page(self) -> None:
         """2-byte instruction at 255 crosses page boundary → FAULT."""
         cpu = CPU()
-        cpu.mem[255] = 18  # INC opcode (2 bytes)
+        cpu.mem[255] = 18
         cpu.regs.ip = 255
         cpu.run()
         assert cpu.state == CpuState.FAULT
@@ -1550,7 +1566,6 @@ class TestHandlerEdges:
         """Missing handler in dispatch table triggers completeness error."""
         from pysim8.sim.handlers import HandlersMixin
         cpu = CPU()
-        # Remove one handler from a copy
         incomplete = dict(cpu._dispatch)
         del incomplete[Op.INC_REG]
         with pytest.raises(RuntimeError, match="INC_REG"):
@@ -1562,3 +1577,7 @@ class TestHandlerEdges:
         assert cpu.regs.fpu is None
         with pytest.raises(RuntimeError, match="FPU not available"):
             _ = cpu._fpu
+
+    def test_fpu_present_on_arch2(self) -> None:
+        cpu = CPU(arch=2)
+        assert cpu.regs.fpu is not None

@@ -74,7 +74,7 @@ class TestHeadless:
         runner = CliRunner()
         result = runner.invoke(sim_main, ["--headless", str(bin_path)])
         assert result.exit_code == 0
-        assert "H" in result.output  # chr(72) = 'H'
+        assert "H" in result.output
 
     def test_headless_fpu_output(self, tmp_path: Path) -> None:
         from pysim8.sim.tui import main as sim_main

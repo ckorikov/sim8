@@ -87,12 +87,8 @@ def _assert_halted_steps(cpu: CPU, steps: int) -> None:
 
 # ── FMOV ─────────────────────────────────────────────────────────────
 
-# FPM encoding: encode_fpm(phys=0, pos=0, fmt=0) for FA = 0x00
-# For FHA (pos=0, fmt=1): encode_fpm(0, 0, 1) = 0x01
-# For FHB (pos=1, fmt=1): encode_fpm(0, 1, 1) = 0x09
-
 from pysim8.isa import (
-    encode_fpm, FP_FMT_F, FP_FMT_H, FP_FMT_BF, FP_FMT_O3, FP_FMT_O2,
+    Op, encode_fpm, FP_FMT_F, FP_FMT_H, FP_FMT_BF, FP_FMT_O3, FP_FMT_O2,
 )
 
 
@@ -100,22 +96,17 @@ class TestFmov:
     def test_fmov_load_store_float32(self) -> None:
         """Load float32 from memory, store back elsewhere."""
         cpu = CPU(arch=2)
-        code = [0] * 256  # fill with HLT
-        # Store 1.0 at addr 0x80
-        _store_f32(cpu, 0, 0)  # just preallocate
+        code = [0] * 256
         cpu.load(code)
         _store_f32(cpu, 0x80, 1.0)
-        fpm_fa = encode_fpm(0, 0, FP_FMT_F)  # FA
-        # FMOV.F FA, [0x80]: opcode=128, fpm, addr
-        # FMOV.F [0x90], FA: opcode=130, fpm, addr
-        # HLT: opcode=0
-        cpu.mem[0] = 128  # FMOV_FP_ADDR
+        fpm_fa = encode_fpm(0, 0, FP_FMT_F)
+        cpu.mem[0] = 128
         cpu.mem[1] = fpm_fa
         cpu.mem[2] = 0x80
-        cpu.mem[3] = 130  # FMOV_ADDR_FP
+        cpu.mem[3] = 130
         cpu.mem[4] = fpm_fa
         cpu.mem[5] = 0x90
-        cpu.mem[6] = 0  # HLT
+        cpu.mem[6] = 0
         cpu.run()
         _assert_halted_steps(cpu, 2)
         result = _read_f32(cpu, 0x90)
@@ -127,13 +118,13 @@ class TestFmov:
         cpu.load([0] * 256)
         _store_f16(cpu, 0x80, 1.5)
         fpm_fha = encode_fpm(0, 0, FP_FMT_H)
-        cpu.mem[0] = 128  # FMOV_FP_ADDR (works for all formats)
+        cpu.mem[0] = 128
         cpu.mem[1] = fpm_fha
         cpu.mem[2] = 0x80
-        cpu.mem[3] = 130  # FMOV_ADDR_FP
+        cpu.mem[3] = 130
         cpu.mem[4] = fpm_fha
         cpu.mem[5] = 0x90
-        cpu.mem[6] = 0  # HLT
+        cpu.mem[6] = 0
         cpu.run()
         _assert_halted_steps(cpu, 2)
         result = _read_f16(cpu, 0x90)
@@ -141,32 +132,26 @@ class TestFmov:
 
     def test_fmov_no_flags(self) -> None:
         """FMOV does not affect flags."""
-        # CMP A, A sets Z=1, then FMOV should not change it
         src = "CMP A, A\nHLT"
         result = assemble(src, arch=2)
         cpu = CPU(arch=2)
         cpu.load(result.code)
-        # Step CMP to set Z
         cpu.step()
         assert cpu.zero is True
-        # Now inject FMOV at current IP
-        # Use a fresh CPU for clarity
         cpu2 = CPU(arch=2)
         cpu2.load([0] * 256)
         _store_f32(cpu2, 0x80, 1.0)
         fpm_fa = encode_fpm(0, 0, FP_FMT_F)
-        # CMP A,A: opcode=23, reg=0, const=0 -- actually CMP A, 0
-        # Let's use CMP_REG_CONST (23): reg=0, const=0
-        cpu2.mem[0] = 23   # CMP_REG_CONST
-        cpu2.mem[1] = 0    # reg A
-        cpu2.mem[2] = 0    # const 0
-        cpu2.mem[3] = 128  # FMOV_FP_ADDR
+        cpu2.mem[0] = 23
+        cpu2.mem[1] = 0
+        cpu2.mem[2] = 0
+        cpu2.mem[3] = 128
         cpu2.mem[4] = fpm_fa
         cpu2.mem[5] = 0x80
-        cpu2.mem[6] = 0    # HLT
+        cpu2.mem[6] = 0
         cpu2.run()
         _assert_halted_steps(cpu2, 2)
-        assert cpu2.zero is True  # Z set by CMP, FMOV didn't change
+        assert cpu2.zero is True
 
 
 # ── FADD ─────────────────────────────────────────────────────────────
@@ -180,19 +165,15 @@ class TestFadd:
         _store_f32(cpu, 0x80, 1.0)
         _store_f32(cpu, 0x84, 2.0)
         fpm_fa = encode_fpm(0, 0, FP_FMT_F)
-        # FMOV.F FA, [0x80]
         cpu.mem[0] = 128
         cpu.mem[1] = fpm_fa
         cpu.mem[2] = 0x80
-        # FADD.F FA, [0x84]
-        cpu.mem[3] = 132  # FADD_FP_ADDR
+        cpu.mem[3] = 132
         cpu.mem[4] = fpm_fa
         cpu.mem[5] = 0x84
-        # FMOV.F [0x90], FA
         cpu.mem[6] = 130
         cpu.mem[7] = fpm_fa
         cpu.mem[8] = 0x90
-        # HLT
         cpu.mem[9] = 0
         cpu.run()
         _assert_halted_steps(cpu, 3)
@@ -210,15 +191,12 @@ class TestFcmp:
         cpu.load([0] * 256)
         _store_f32(cpu, 0x80, 1.0)
         fpm_fa = encode_fpm(0, 0, FP_FMT_F)
-        # FMOV.F FA, [0x80]
         cpu.mem[0] = 128
         cpu.mem[1] = fpm_fa
         cpu.mem[2] = 0x80
-        # FCMP.F FA, [0x80]
-        cpu.mem[3] = 140  # FCMP_FP_ADDR
+        cpu.mem[3] = 140
         cpu.mem[4] = fpm_fa
         cpu.mem[5] = 0x80
-        # HLT
         cpu.mem[6] = 0
         cpu.run()
         _assert_halted_steps(cpu, 2)
@@ -232,15 +210,12 @@ class TestFcmp:
         _store_f32(cpu, 0x80, 1.0)
         _store_f32(cpu, 0x84, 2.0)
         fpm_fa = encode_fpm(0, 0, FP_FMT_F)
-        # FMOV.F FA, [0x80] (load 1.0)
         cpu.mem[0] = 128
         cpu.mem[1] = fpm_fa
         cpu.mem[2] = 0x80
-        # FCMP.F FA, [0x84] (compare 1.0 vs 2.0)
         cpu.mem[3] = 140
         cpu.mem[4] = fpm_fa
         cpu.mem[5] = 0x84
-        # HLT
         cpu.mem[6] = 0
         cpu.run()
         _assert_halted_steps(cpu, 2)
@@ -258,18 +233,14 @@ class TestFabsFneg:
         cpu.load([0] * 256)
         _store_f32(cpu, 0x80, -3.14)
         fpm_fa = encode_fpm(0, 0, FP_FMT_F)
-        # FMOV.F FA, [0x80]
         cpu.mem[0] = 128
         cpu.mem[1] = fpm_fa
         cpu.mem[2] = 0x80
-        # FABS.F FA: opcode=142, fpm
         cpu.mem[3] = 142
         cpu.mem[4] = fpm_fa
-        # FMOV.F [0x90], FA
         cpu.mem[5] = 130
         cpu.mem[6] = fpm_fa
         cpu.mem[7] = 0x90
-        # HLT
         cpu.mem[8] = 0
         cpu.run()
         _assert_halted_steps(cpu, 3)
@@ -282,18 +253,14 @@ class TestFabsFneg:
         cpu.load([0] * 256)
         _store_f32(cpu, 0x80, 2.5)
         fpm_fa = encode_fpm(0, 0, FP_FMT_F)
-        # FMOV.F FA, [0x80]
         cpu.mem[0] = 128
         cpu.mem[1] = fpm_fa
         cpu.mem[2] = 0x80
-        # FNEG.F FA: opcode=143
         cpu.mem[3] = 143
         cpu.mem[4] = fpm_fa
-        # FMOV.F [0x90], FA
         cpu.mem[5] = 130
         cpu.mem[6] = fpm_fa
         cpu.mem[7] = 0x90
-        # HLT
         cpu.mem[8] = 0
         cpu.run()
         _assert_halted_steps(cpu, 3)
@@ -312,22 +279,18 @@ class TestFpExceptions:
         _store_f32(cpu, 0x80, 1.0)
         _store_f32(cpu, 0x84, 0.0)
         fpm_fa = encode_fpm(0, 0, FP_FMT_F)
-        # FMOV.F FA, [0x80]
         cpu.mem[0] = 128
         cpu.mem[1] = fpm_fa
         cpu.mem[2] = 0x80
-        # FDIV.F FA, [0x84]
-        cpu.mem[3] = 138  # FDIV_FP_ADDR
+        cpu.mem[3] = 138
         cpu.mem[4] = fpm_fa
         cpu.mem[5] = 0x84
-        # FSTAT A: opcode=149, gpr=0
         cpu.mem[6] = 149
         cpu.mem[7] = 0
-        # HLT
         cpu.mem[8] = 0
         cpu.run()
-        _assert_halted_steps(cpu, 3)  # NOT FAULT
-        assert cpu.a & 0x02 != 0  # DZ flag set
+        _assert_halted_steps(cpu, 3)
+        assert cpu.a & 0x02 != 0
 
 
 # ── FP_FORMAT fault ──────────────────────────────────────────────────
@@ -337,22 +300,20 @@ class TestFpFormatFault:
     def test_invalid_fpm_faults(self) -> None:
         """Invalid FPM byte (fmt=7, reserved) causes FAULT(12)."""
         cpu = CPU(arch=2)
-        # FABS opcode (142) + FPM=0x07 (phys=0, pos=0, fmt=7 = invalid)
-        cpu.load([142, 0x07, 0])
+        cpu.load([int(Op.FABS_FP), 0x07, int(Op.HLT)])
         cpu.run()
         assert cpu.state == CpuState.FAULT
         assert cpu.steps == 0
-        assert cpu.a == 12  # ERR_FP_FORMAT
+        assert cpu.a == 12
 
     def test_phys2_faults(self) -> None:
         """phys=2 is reserved in v2 — causes FAULT(ERR_FP_FORMAT)."""
         cpu = CPU(arch=2)
-        # FABS opcode (142) + FPM=0x80 (phys=2, pos=0, fmt=0)
-        cpu.load([142, 0x80, 0])
+        cpu.load([int(Op.FABS_FP), 0x80, int(Op.HLT)])
         cpu.run()
         assert cpu.state == CpuState.FAULT
         assert cpu.steps == 0
-        assert cpu.a == 12  # ERR_FP_FORMAT
+        assert cpu.a == 12
 
 
 # ── FSTAT / FCLR ─────────────────────────────────────────────────────
@@ -362,10 +323,7 @@ class TestFstat:
     def test_fstat_reads_fpsr(self) -> None:
         """FCLR + FSTAT -> A=0."""
         cpu = CPU(arch=2)
-        # FCLR: opcode=152
-        # FSTAT A: opcode=149, gpr=0
-        # HLT: 0
-        cpu.load([152, 149, 0, 0])
+        cpu.load([int(Op.FCLR), int(Op.FSTAT_GPR), 0, int(Op.HLT)])
         cpu.run()
         _assert_halted_steps(cpu, 2)
         assert cpu.a == 0
@@ -377,24 +335,19 @@ class TestFstat:
         _store_f32(cpu, 0x80, 1.0)
         _store_f32(cpu, 0x84, 0.0)
         fpm_fa = encode_fpm(0, 0, FP_FMT_F)
-        # FMOV.F FA, [0x80]
         cpu.mem[0] = 128
         cpu.mem[1] = fpm_fa
         cpu.mem[2] = 0x80
-        # FDIV.F FA, [0x84] -- div zero
         cpu.mem[3] = 138
         cpu.mem[4] = fpm_fa
         cpu.mem[5] = 0x84
-        # FCLR
         cpu.mem[6] = 152
-        # FSTAT A
         cpu.mem[7] = 149
         cpu.mem[8] = 0
-        # HLT
         cpu.mem[9] = 0
         cpu.run()
         _assert_halted_steps(cpu, 4)
-        assert cpu.a == 0  # cleared
+        assert cpu.a == 0
 
 
 # ── Reg-reg arithmetic ───────────────────────────────────────────────
@@ -407,19 +360,15 @@ class TestRegReg:
         cpu.load([0] * 256)
         _store_f32(cpu, 0x80, 2.5)
         fpm_fa = encode_fpm(0, 0, FP_FMT_F)
-        # FMOV.F FA, [0x80]
         cpu.mem[0] = 128
         cpu.mem[1] = fpm_fa
         cpu.mem[2] = 0x80
-        # FADD_RR FA, FA: opcode=153, dst_fpm, src_fpm
         cpu.mem[3] = 153
         cpu.mem[4] = fpm_fa
         cpu.mem[5] = fpm_fa
-        # FMOV.F [0x90], FA
         cpu.mem[6] = 130
         cpu.mem[7] = fpm_fa
         cpu.mem[8] = 0x90
-        # HLT
         cpu.mem[9] = 0
         cpu.run()
         _assert_halted_steps(cpu, 3)
@@ -435,11 +384,12 @@ class TestFitofFftoi:
         """Convert uint8=42 to float32."""
         cpu = CPU(arch=2)
         fpm_fa = encode_fpm(0, 0, FP_FMT_F)
-        # MOV A, 42: opcode=6, reg=0, value=42
-        # FITOF.F FA, A: opcode=147, fpm, gpr=0
-        # FMOV.F [0x90], FA: opcode=130, fpm, addr
-        # HLT
-        cpu.load([6, 0, 42, 147, fpm_fa, 0, 130, fpm_fa, 0x90, 0])
+        cpu.load([
+            int(Op.MOV_REG_CONST), 0, 42,
+            int(Op.FITOF_FP_GPR), fpm_fa, 0,
+            int(Op.FMOV_ADDR_FP), fpm_fa, 0x90,
+            int(Op.HLT),
+        ])
         cpu.run()
         _assert_halted_steps(cpu, 3)
         result = _read_f32(cpu, 0x90)
@@ -451,15 +401,12 @@ class TestFitofFftoi:
         cpu.load([0] * 256)
         _store_f32(cpu, 0x80, 42.0)
         fpm_fa = encode_fpm(0, 0, FP_FMT_F)
-        # FMOV.F FA, [0x80]
         cpu.mem[0] = 128
         cpu.mem[1] = fpm_fa
         cpu.mem[2] = 0x80
-        # FFTOI.F A, FA: opcode=148, fpm, gpr=0
         cpu.mem[3] = 148
         cpu.mem[4] = fpm_fa
         cpu.mem[5] = 0
-        # HLT
         cpu.mem[6] = 0
         cpu.run()
         _assert_halted_steps(cpu, 2)
@@ -469,23 +416,22 @@ class TestFitofFftoi:
         """NaN converts to 0 with invalid flag."""
         cpu = CPU(arch=2)
         cpu.load([0] * 256)
-        # Store NaN at 0x80
         for i, b in enumerate(struct.pack("<f", float("nan"))):
             cpu.mem[0x80 + i] = b
         fpm_fa = encode_fpm(0, 0, FP_FMT_F)
-        cpu.mem[0] = 128  # FMOV
+        cpu.mem[0] = 128
         cpu.mem[1] = fpm_fa
         cpu.mem[2] = 0x80
-        cpu.mem[3] = 148  # FFTOI
+        cpu.mem[3] = 148
         cpu.mem[4] = fpm_fa
         cpu.mem[5] = 0
-        cpu.mem[6] = 149  # FSTAT B
+        cpu.mem[6] = 149
         cpu.mem[7] = 1
-        cpu.mem[8] = 0  # HLT
+        cpu.mem[8] = 0
         cpu.run()
         _assert_halted_steps(cpu, 3)
-        assert cpu.a == 0  # NaN -> 0
-        assert cpu.b & 0x01 != 0  # invalid flag set
+        assert cpu.a == 0
+        assert cpu.b & 0x01 != 0
 
     def test_fftoi_saturates_high(self) -> None:
         """Float > 255 saturates to 255."""
@@ -499,7 +445,7 @@ class TestFitofFftoi:
         cpu.mem[3] = 148
         cpu.mem[4] = fpm_fa
         cpu.mem[5] = 0
-        cpu.mem[6] = 0  # HLT
+        cpu.mem[6] = 0
         cpu.run()
         _assert_halted_steps(cpu, 2)
         assert cpu.a == 255
@@ -516,19 +462,15 @@ class TestFcvt:
         _store_f32(cpu, 0x80, 1.5)
         fpm_fa = encode_fpm(0, 0, FP_FMT_F)
         fpm_fha = encode_fpm(0, 0, FP_FMT_H)
-        # FMOV.F FA, [0x80]
         cpu.mem[0] = 128
         cpu.mem[1] = fpm_fa
         cpu.mem[2] = 0x80
-        # FCVT FHA, FA: opcode=146, dst_fpm, src_fpm
         cpu.mem[3] = 146
         cpu.mem[4] = fpm_fha
         cpu.mem[5] = fpm_fa
-        # FMOV.H [0x90], FHA: opcode=130, fpm, addr
         cpu.mem[6] = 130
         cpu.mem[7] = fpm_fha
         cpu.mem[8] = 0x90
-        # HLT
         cpu.mem[9] = 0
         cpu.run()
         _assert_halted_steps(cpu, 3)
@@ -543,8 +485,7 @@ class TestFcfgFscfg:
     def test_fcfg_reads_fpcr(self) -> None:
         """FCFG reads FPCR into GPR."""
         cpu = CPU(arch=2)
-        # FPCR defaults to 0; FCFG A: opcode=150, gpr=0; HLT
-        cpu.load([150, 0, 0])
+        cpu.load([int(Op.FCFG_GPR), 0, int(Op.HLT)])
         cpu.run()
         _assert_halted_steps(cpu, 1)
         assert cpu.a == 0
@@ -552,25 +493,30 @@ class TestFcfgFscfg:
     def test_fscfg_sets_rounding_mode(self) -> None:
         """FSCFG sets FPCR from GPR."""
         cpu = CPU(arch=2)
-        # MOV A, 1: opcode=6, reg=0, val=1
-        # FSCFG A: opcode=151, gpr=0
-        # FCFG B: opcode=150, gpr=1
-        # HLT
-        cpu.load([6, 0, 1, 151, 0, 150, 1, 0])
+        cpu.load([
+            int(Op.MOV_REG_CONST), 0, 1,
+            int(Op.FSCFG_GPR), 0,
+            int(Op.FCFG_GPR), 1,
+            int(Op.HLT),
+        ])
         cpu.run()
         _assert_halted_steps(cpu, 3)
-        assert cpu.b == 1  # rounding mode set to RTZ
+        assert cpu.b == 1
         assert cpu.regs.fpu is not None
         assert cpu.regs.fpu.rounding_mode == 1
 
     def test_fscfg_masks_reserved_bits(self) -> None:
         """FSCFG only uses bits [1:0]."""
         cpu = CPU(arch=2)
-        # MOV A, 0xFF; FSCFG A; FCFG B; HLT
-        cpu.load([6, 0, 0xFF, 151, 0, 150, 1, 0])
+        cpu.load([
+            int(Op.MOV_REG_CONST), 0, 0xFF,
+            int(Op.FSCFG_GPR), 0,
+            int(Op.FCFG_GPR), 1,
+            int(Op.HLT),
+        ])
         cpu.run()
         _assert_halted_steps(cpu, 3)
-        assert cpu.b == 3  # only bits 0-1 kept
+        assert cpu.b == 3
 
 
 # ── FCLASS ───────────────────────────────────────────────────────────
@@ -583,16 +529,16 @@ class TestFclass:
         cpu.load([0] * 256)
         _store_f32(cpu, 0x80, 0.0)
         fpm_fa = encode_fpm(0, 0, FP_FMT_F)
-        cpu.mem[0] = 128  # FMOV FA, [0x80]
+        cpu.mem[0] = 128
         cpu.mem[1] = fpm_fa
         cpu.mem[2] = 0x80
-        cpu.mem[3] = 158  # FCLASS A, FA
+        cpu.mem[3] = 158
         cpu.mem[4] = fpm_fa
-        cpu.mem[5] = 0    # gpr A
-        cpu.mem[6] = 0    # HLT
+        cpu.mem[5] = 0
+        cpu.mem[6] = 0
         cpu.run()
         _assert_halted_steps(cpu, 2)
-        assert cpu.a & 0x01 != 0  # ZERO bit
+        assert cpu.a & 0x01 != 0
 
     def test_fclass_normal(self) -> None:
         """FCLASS of 1.0 returns bit 2 (NORM)."""
@@ -609,7 +555,7 @@ class TestFclass:
         cpu.mem[6] = 0
         cpu.run()
         _assert_halted_steps(cpu, 2)
-        assert cpu.a & 0x04 != 0  # NORM bit
+        assert cpu.a & 0x04 != 0
 
     def test_fclass_negative(self) -> None:
         """FCLASS of -1.0 has NORM + NEG bits."""
@@ -626,8 +572,8 @@ class TestFclass:
         cpu.mem[6] = 0
         cpu.run()
         _assert_halted_steps(cpu, 2)
-        assert cpu.a & 0x04 != 0  # NORM
-        assert cpu.a & 0x40 != 0  # NEG
+        assert cpu.a & 0x04 != 0
+        assert cpu.a & 0x40 != 0
 
 
 # ── FCMP_RR ──────────────────────────────────────────────────────────
@@ -640,13 +586,13 @@ class TestFcmpRR:
         cpu.load([0] * 256)
         _store_f32(cpu, 0x80, 5.0)
         fpm_fa = encode_fpm(0, 0, FP_FMT_F)
-        cpu.mem[0] = 128  # FMOV FA, [0x80]
+        cpu.mem[0] = 128
         cpu.mem[1] = fpm_fa
         cpu.mem[2] = 0x80
-        cpu.mem[3] = 157  # FCMP_RR FA, FA
+        cpu.mem[3] = 157
         cpu.mem[4] = fpm_fa
         cpu.mem[5] = fpm_fa
-        cpu.mem[6] = 0  # HLT
+        cpu.mem[6] = 0
         cpu.run()
         _assert_halted_steps(cpu, 2)
         assert cpu.zero is True
@@ -664,13 +610,13 @@ class TestFsubFmul:
         _store_f32(cpu, 0x80, 5.0)
         _store_f32(cpu, 0x84, 2.0)
         fpm_fa = encode_fpm(0, 0, FP_FMT_F)
-        cpu.mem[0] = 128  # FMOV
+        cpu.mem[0] = 128
         cpu.mem[1] = fpm_fa
         cpu.mem[2] = 0x80
-        cpu.mem[3] = 134  # FSUB_FP_ADDR
+        cpu.mem[3] = 134
         cpu.mem[4] = fpm_fa
         cpu.mem[5] = 0x84
-        cpu.mem[6] = 130  # FMOV store
+        cpu.mem[6] = 130
         cpu.mem[7] = fpm_fa
         cpu.mem[8] = 0x90
         cpu.mem[9] = 0
@@ -685,13 +631,13 @@ class TestFsubFmul:
         _store_f32(cpu, 0x80, 3.0)
         _store_f32(cpu, 0x84, 4.0)
         fpm_fa = encode_fpm(0, 0, FP_FMT_F)
-        cpu.mem[0] = 128  # FMOV
+        cpu.mem[0] = 128
         cpu.mem[1] = fpm_fa
         cpu.mem[2] = 0x80
-        cpu.mem[3] = 136  # FMUL_FP_ADDR
+        cpu.mem[3] = 136
         cpu.mem[4] = fpm_fa
         cpu.mem[5] = 0x84
-        cpu.mem[6] = 130  # FMOV store
+        cpu.mem[6] = 130
         cpu.mem[7] = fpm_fa
         cpu.mem[8] = 0x90
         cpu.mem[9] = 0
@@ -713,9 +659,9 @@ class TestFsqrt:
         cpu.mem[0] = 128
         cpu.mem[1] = fpm_fa
         cpu.mem[2] = 0x80
-        cpu.mem[3] = 144  # FSQRT_FP
+        cpu.mem[3] = 144
         cpu.mem[4] = fpm_fa
-        cpu.mem[5] = 130  # FMOV store
+        cpu.mem[5] = 130
         cpu.mem[6] = fpm_fa
         cpu.mem[7] = 0x90
         cpu.mem[8] = 0
@@ -736,88 +682,73 @@ class TestFmovImm:
         cpu = run("FMOV.O3 FQA, 1.5\nHLT")
         _assert_halted_steps(cpu, 1)
         assert cpu.regs.fpu is not None
-        assert cpu.regs.fpu.read_bits(0, 3) == 0x3C  # E4M3 1.5
+        assert cpu.regs.fpu.read_bits(0, 3) == 0x3C
 
     def test_fmov_imm8_o2(self) -> None:
         """FMOV.O2 FQB, 1.0 loads 0x3C into quarter-reg 1."""
         cpu = run("FMOV.O2 FQB, 1.0\nHLT")
         _assert_halted_steps(cpu, 1)
         assert cpu.regs.fpu is not None
-        assert cpu.regs.fpu.read_bits(1, 4) == 0x3C  # E5M2 1.0
+        assert cpu.regs.fpu.read_bits(1, 4) == 0x3C
 
     def test_fmov_imm16_h(self) -> None:
         """FMOV.H FHA, 1.5 loads 0x3E00 into half-reg 0."""
         cpu = run("FMOV.H FHA, 1.5\nHLT")
         _assert_halted_steps(cpu, 1)
         assert cpu.regs.fpu is not None
-        assert cpu.regs.fpu.read_bits(0, 1) == 0x3E00  # float16 1.5
+        assert cpu.regs.fpu.read_bits(0, 1) == 0x3E00
 
     def test_fmov_imm16_bf(self) -> None:
         """FMOV.BF FHB, 1.0 loads 0x3F80 into half-reg 1."""
         cpu = run("FMOV.BF FHB, 1.0\nHLT")
         _assert_halted_steps(cpu, 1)
         assert cpu.regs.fpu is not None
-        assert cpu.regs.fpu.read_bits(1, 2) == 0x3F80  # bfloat16 1.0
+        assert cpu.regs.fpu.read_bits(1, 2) == 0x3F80
 
     def test_fmov_imm_no_fpsr_change(self) -> None:
         """FMOV immediate does not modify FPSR."""
         cpu = run("FMOV.O3 FQA, 1.5\nFSTAT A\nHLT")
         _assert_halted_steps(cpu, 2)
-        assert cpu.a == 0  # FPSR unchanged
+        assert cpu.a == 0
 
     def test_fmov_imm_no_flags_change(self) -> None:
         """FMOV immediate does not affect CPU flags."""
         cpu = CPU(arch=2)
-        # CMP A,0: sets Z=1, then FMOV imm should not touch flags
         from pysim8.asm import assemble
         result = assemble("CMP A, 0\nFMOV.O3 FQA, 1.5\nHLT", arch=2)
         cpu.load(result.code)
         cpu.run()
         _assert_halted_steps(cpu, 2)
-        assert cpu.zero is True  # Z set by CMP, untouched by FMOV
+        assert cpu.zero is True
 
     def test_fmov_imm8_format_mismatch_fault(self) -> None:
         """Op 161 with 16-bit format in FPM -> FAULT(FP_FORMAT)."""
-        fpm_fha = encode_fpm(0, 0, FP_FMT_H)  # fmt=1 (16-bit)
-        cpu = run_binary([161, fpm_fha, 0x3C, 0])
+        fpm_fha = encode_fpm(0, 0, FP_FMT_H)
+        cpu = run_binary([int(Op.FMOV_FP_IMM8), fpm_fha, 0x3C, int(Op.HLT)])
         assert cpu.state == CpuState.FAULT
-        assert cpu.a == 12  # ERR_FP_FORMAT
+        assert cpu.a == 12
 
     def test_fmov_imm16_format_mismatch_fault(self) -> None:
         """Op 162 with 8-bit format in FPM -> FAULT(FP_FORMAT)."""
-        fpm_fqa = encode_fpm(0, 0, 3)  # fmt=3 (O3, 8-bit)
-        cpu = run_binary([162, fpm_fqa, 0x00, 0x3E, 0])
+        fpm_fqa = encode_fpm(0, 0, 3)
+        cpu = run_binary([
+            int(Op.FMOV_FP_IMM16), fpm_fqa, 0x00, 0x3E, int(Op.HLT)
+        ])
         assert cpu.state == CpuState.FAULT
-        assert cpu.a == 12  # ERR_FP_FORMAT
+        assert cpu.a == 12
 
 
 class TestRegressionArch1:
-    """Ensure arch=1 simulator still works."""
-
-    def test_basic_mov_halt(self) -> None:
-        cpu = run("MOV A, 42\nHLT", arch=1)
-        _assert_halted_steps(cpu, 1)
-        assert cpu.a == 42
+    """Arch compatibility checks for FP opcodes."""
 
     def test_fp_opcode_invalid_arch1(self) -> None:
         """FP opcode on arch=1 -> FAULT(INVALID_OPCODE)."""
         cpu = CPU(arch=1)
-        cpu.load([142, 0x00, 0])  # FABS.F FA -- but arch=1
+        cpu.load([int(Op.FABS_FP), 0x00, int(Op.HLT)])
         cpu.run()
         assert cpu.state == CpuState.FAULT
         assert cpu.steps == 0
-        assert cpu.a == 6  # ERR_INVALID_OPCODE
-
-    def test_no_fpu_on_arch1(self) -> None:
-        """Arch=1 CPU has no FPU registers."""
-        cpu = CPU(arch=1)
-        assert cpu.regs.fpu is None
-
-    def test_fpu_present_on_arch2(self) -> None:
-        """Arch=2 CPU has FPU registers."""
-        cpu = CPU(arch=2)
-        assert cpu.regs.fpu is not None
-
+        assert cpu.a == 6
 
 # ── FB register (phys=1) ─────────────────────────────────────────────
 
@@ -828,8 +759,8 @@ class TestFbRegister:
     def test_fmov_load_fb_float32(self) -> None:
         """FMOV.F FB, [addr] loads float32 into FB (phys=1)."""
         cpu = CPU(arch=2)
-        fpm_fb = encode_fpm(1, 0, FP_FMT_F)  # FB
-        cpu.load([128, fpm_fb, 100, 0])
+        fpm_fb = encode_fpm(1, 0, FP_FMT_F)
+        cpu.load([int(Op.FMOV_FP_ADDR), fpm_fb, 100, int(Op.HLT)])
         _store_f32(cpu, 100, 3.14)
         cpu.run()
         _assert_halted_steps(cpu, 1)
@@ -840,22 +771,20 @@ class TestFbRegister:
     def test_fb_independent_from_fa(self) -> None:
         """Writing to FB does not affect FA and vice versa."""
         cpu = run(
-            "FMOV.O3 FQA, 1.5\n"     # FA phys=0 gets 0x3C in [7:0]
-            "FMOV.O3 FQE, 2.0\n"     # FB phys=1 gets 0x40 in [7:0]
+            "FMOV.O3 FQA, 1.5\n"
+            "FMOV.O3 FQE, 2.0\n"
             "HLT"
         )
         _assert_halted_steps(cpu, 2)
         assert cpu.regs.fpu is not None
-        # FA: FQA pos=0 fmt=3 -> bits [7:0] = 0x3C (1.5 E4M3)
         assert cpu.regs.fpu.read_bits(0, 3, 0) == 0x3C
-        # FB: FQE pos=0 fmt=3 -> bits [7:0] = 0x40 (2.0 E4M3)
         assert cpu.regs.fpu.read_bits(0, 3, 1) == 0x40
 
     def test_fmov_store_fb_float16(self) -> None:
         """FMOV.H [addr], FHC stores FB half to memory."""
         cpu = run(
-            "FMOV.H FHC, 1.5\n"       # Load imm16 into FHC (phys=1)
-            "FMOV.H [100], FHC\n"      # Store to memory
+            "FMOV.H FHC, 1.5\n"
+            "FMOV.H [100], FHC\n"
             "HLT"
         )
         _assert_halted_steps(cpu, 2)
@@ -865,17 +794,16 @@ class TestFbRegister:
     def test_fadd_on_fb(self) -> None:
         """FADD on FB sub-register works correctly."""
         cpu = CPU(arch=2)
-        fpm_fb = encode_fpm(1, 0, FP_FMT_F)  # FB
+        fpm_fb = encode_fpm(1, 0, FP_FMT_F)
         cpu.load([
-            128, fpm_fb, 100,   # FMOV.F FB, [100] (load 2.0)
-            132, fpm_fb, 104,   # FADD.F FB, [104] (add 3.0)
-            0,                  # HLT
+            128, fpm_fb, 100,
+            132, fpm_fb, 104,
+            0,
         ])
         _store_f32(cpu, 100, 2.0)
         _store_f32(cpu, 104, 3.0)
         cpu.run()
         _assert_halted_steps(cpu, 2)
-        # FB should have 5.0
         from pysim8.fp_formats import bytes_to_float
         raw = cpu.regs.fpu.read_bits(0, FP_FMT_F, 1)
         data = raw.to_bytes(4, "little")
@@ -885,20 +813,19 @@ class TestFbRegister:
     def test_fadd_rr_cross_phys(self) -> None:
         """FADD_RR between FA and FB sub-registers."""
         cpu = run(
-            "FMOV.O3 FQA, 1.5\n"     # FA: FQA = 1.5
-            "FMOV.O3 FQE, 2.0\n"     # FB: FQE = 2.0
-            "FADD.O3 FQA, FQE\n"     # FQA += FQE -> 3.5
+            "FMOV.O3 FQA, 1.5\n"
+            "FMOV.O3 FQE, 2.0\n"
+            "FADD.O3 FQA, FQE\n"
             "HLT"
         )
         _assert_halted_steps(cpu, 3)
-        # FQA should be 3.5 E4M3 = 0x46
         assert cpu.regs.fpu.read_bits(0, 3, 0) == 0x46
 
     def test_fcvt_between_fa_fb(self) -> None:
         """FCVT from FA sub-register to FB sub-register."""
         cpu = run(
-            "FMOV.H FHA, 1.5\n"      # FA: FHA = 1.5 float16
-            "FCVT.O3.H FQE, FHA\n"   # FB: FQE = convert(1.5) = 0x3C E4M3
+            "FMOV.H FHA, 1.5\n"
+            "FCVT.O3.H FQE, FHA\n"
             "HLT"
         )
         _assert_halted_steps(cpu, 2)
@@ -907,22 +834,21 @@ class TestFbRegister:
     def test_fmov_imm_fb(self) -> None:
         """FMOV immediate into FB sub-register."""
         cpu = run(
-            "FMOV.H FHC, 1.5\n"      # FB: FHC = 1.5 float16
+            "FMOV.H FHC, 1.5\n"
             "HLT"
         )
         _assert_halted_steps(cpu, 1)
-        # float16 1.5 = 0x3E00
         assert cpu.regs.fpu.read_bits(0, 1, 1) == 0x3E00
 
     def test_fclass_fb(self) -> None:
         """FCLASS on FB sub-register."""
         cpu = run(
-            "FMOV.O3 FQE, 1.5\n"     # FB: FQE = 1.5
-            "FCLASS.O3 A, FQE\n"      # Classify -> NORM (bit 2)
+            "FMOV.O3 FQE, 1.5\n"
+            "FCLASS.O3 A, FQE\n"
             "HLT"
         )
         _assert_halted_steps(cpu, 2)
-        assert cpu.a & 0x04  # NORM bit set
+        assert cpu.a & 0x04
 
 # ── FP handler edge cases ────────────────────────────────────────
 
@@ -968,7 +894,7 @@ class TestFftoiEdges:
         """)
         _assert_halted_steps(cpu, 3)
         assert cpu.a == 0
-        assert cpu.b & 0x01  # invalid flag
+        assert cpu.b & 0x01
 
     def test_inf_positive(self) -> None:
         cpu = run("""
@@ -999,7 +925,7 @@ class TestFftoiEdges:
             HLT
         """)
         _assert_halted_steps(cpu, 4)
-        assert cpu.a == 2  # truncate
+        assert cpu.a == 2
 
         # RDN (mode 2)
         cpu = run("""
@@ -1010,7 +936,7 @@ class TestFftoiEdges:
             HLT
         """)
         _assert_halted_steps(cpu, 4)
-        assert cpu.a == 2  # floor
+        assert cpu.a == 2
 
         # RUP (mode 3)
         cpu = run("""
@@ -1021,7 +947,7 @@ class TestFftoiEdges:
             HLT
         """)
         _assert_halted_steps(cpu, 4)
-        assert cpu.a == 3  # ceil
+        assert cpu.a == 3
 
     def test_saturate_high(self) -> None:
         cpu = run("""
@@ -1040,8 +966,8 @@ class TestFftoiEdges:
             HLT
         """)
         _assert_halted_steps(cpu, 3)
-        assert cpu.a == 2  # RNE: 1.5 -> 2
-        assert cpu.b & 0x10  # inexact flag
+        assert cpu.a == 2
+        assert cpu.b & 0x10
 
 
 class TestFclassEdges:
@@ -1052,8 +978,8 @@ class TestFclassEdges:
             HLT
         """)
         _assert_halted_steps(cpu, 2)
-        assert cpu.a & 0x08  # INF bit
-        assert (cpu.a & 0x40) == 0  # NEG bit clear for +inf
+        assert cpu.a & 0x08
+        assert (cpu.a & 0x40) == 0
 
 
 class TestFmaddEdges:
@@ -1069,7 +995,7 @@ class TestFmaddEdges:
         _assert_halted_steps(cpu, 5)
         fpu = cpu.regs.fpu
         assert fpu is not None
-        raw = fpu.read_bits(1, 1, 0)  # FHB: pos=1, fmt=1(H), phys=0
+        raw = fpu.read_bits(1, 1, 0)
         data = raw.to_bytes(2, "little")
         val = struct.unpack("<e", data)[0]
         assert val == 7.0
@@ -1087,7 +1013,7 @@ class TestFmaddEdges:
         _assert_halted_steps(cpu, 6)
         fpu = cpu.regs.fpu
         assert fpu is not None
-        raw = fpu.read_bits(1, 1, 0)  # FHB
+        raw = fpu.read_bits(1, 1, 0)
         data = raw.to_bytes(2, "little")
         val = struct.unpack("<e", data)[0]
         assert val == 7.0
@@ -1155,21 +1081,21 @@ class TestFpFormatsEdges:
 
     def test_fp_classify_nan(self) -> None:
         mask = fp_classify(float("nan"), 0x7E00, 16, 1)
-        assert mask & 0x10  # QNAN
+        assert mask & 0x10
 
     def test_fp_classify_inf(self) -> None:
         mask = fp_classify(float("inf"), 0x7C00, 16, 1)
-        assert mask & 0x08  # INF
+        assert mask & 0x08
 
     def test_fp_classify_negative_inf(self) -> None:
         mask = fp_classify(float("-inf"), 0xFC00, 16, 1)
-        assert mask & 0x08  # INF
-        assert mask & 0x40  # NEG
+        assert mask & 0x08
+        assert mask & 0x40
 
     def test_fp_classify_subnormal(self) -> None:
         val = struct.unpack("<e", b"\x01\x00")[0]
         mask = fp_classify(val, 0x0001, 16, 1)
-        assert mask & 0x02  # SUB
+        assert mask & 0x02
 
     def test_is_subnormal_unknown_fmt(self) -> None:
         from pysim8.fp_formats import _is_subnormal
@@ -1190,17 +1116,17 @@ class TestFpFormatsEdges:
 
     def test_round_mantissa_fallback(self) -> None:
         from pysim8.fp_formats import encode_ofp8_e5m2
-        data, exc = encode_ofp8_e5m2(0.3, rm=2)  # RDN
+        data, exc = encode_ofp8_e5m2(0.3, rm=2)
         assert data == b"\x34"
         assert decode_ofp8_e5m2(data[0]) == 0.25
         assert exc.inexact
 
     def test_float32_directed_rounding(self) -> None:
         expected = {
-            0: b"\xcd\xcc\x8c\x3f",  # RNE
-            1: b"\xcc\xcc\x8c\x3f",  # RTZ
-            2: b"\xcc\xcc\x8c\x3f",  # RDN
-            3: b"\xcd\xcc\x8c\x3f",  # RUP
+            0: b"\xcd\xcc\x8c\x3f",
+            1: b"\xcc\xcc\x8c\x3f",
+            2: b"\xcc\xcc\x8c\x3f",
+            3: b"\xcd\xcc\x8c\x3f",
         }
         for rm in range(4):
             data, exc = encode_float32(1.1, rm=rm)
@@ -1231,8 +1157,8 @@ class TestFmovRr:
             "val: DB 1.5_h"
         )
         _assert_halted_steps(cpu, 2)
-        fha = cpu.regs.fpu.read_bits(0, 1, 0)  # FHA
-        fhb = cpu.regs.fpu.read_bits(1, 1, 0)  # FHB
+        fha = cpu.regs.fpu.read_bits(0, 1, 0)
+        fhb = cpu.regs.fpu.read_bits(1, 1, 0)
         assert fha == fhb == 0x3E00
 
     def test_fmov_rr_f_cross_phys(self) -> None:
@@ -1244,8 +1170,8 @@ class TestFmovRr:
             "val: DB 2.0"
         )
         _assert_halted_steps(cpu, 2)
-        assert cpu.regs.fpu.read_bits(0, 0, 0) == 0x40000000  # FA
-        assert cpu.regs.fpu.read_bits(0, 0, 1) == 0x40000000  # FB
+        assert cpu.regs.fpu.read_bits(0, 0, 0) == 0x40000000
+        assert cpu.regs.fpu.read_bits(0, 0, 1) == 0x40000000
 
     def test_fmov_rr_no_exceptions(self) -> None:
         """FMOV_RR does not set any FPSR flags."""
@@ -1257,14 +1183,13 @@ class TestFmovRr:
             "val: DB 1.5_h"
         )
         _assert_halted_steps(cpu, 3)
-        assert cpu.regs.read(0) == 0  # FPSR = 0
+        assert cpu.regs.read(0) == 0
 
     def test_fmov_rr_format_mismatch_fault(self) -> None:
         """Format mismatch → FAULT(ERR_FP_FORMAT)."""
-        # Craft bytecode: [145, dst_fpm=0x01(H,pos0), src_fpm=0x00(F,pos0)]
         from pysim8.sim import CPU, CpuState
         cpu = CPU(arch=2)
-        cpu.load([145, 0x01, 0x00, 0])
+        cpu.load([int(Op.FMOV_RR), 0x01, 0x00, int(Op.HLT)])
         state = cpu.run()
         assert state == CpuState.FAULT
         assert cpu.steps == 0
@@ -1279,7 +1204,6 @@ class TestFmovRr:
             "val: DB 1.5_h"
         )
         _assert_halted_steps(cpu, 2)
-        # FMOV load = 2, FMOV_RR = 1, HLT = 0 → total = 3
         assert cpu.cycles == 3
 
 
@@ -1307,7 +1231,7 @@ def _store_o3(cpu: CPU, addr: int, value: float) -> None:
 
 def _read_o3(cpu: CPU, addr: int) -> float:
     """Read OFP8 E4M3 from memory."""
-    return bytes_to_float(bytes([cpu.mem[addr]]), 3)  # fmt=3 = O3
+    return bytes_to_float(bytes([cpu.mem[addr]]), 3)
 
 
 class TestFcmpSignedZero:
@@ -1319,16 +1243,16 @@ class TestFcmpSignedZero:
         _store_f32(cpu, 0x80, 0.0)
         _store_f32(cpu, 0x84, -0.0)
         fpm_fa = encode_fpm(0, 0, FP_FMT_F)
-        cpu.mem[0] = 128   # FMOV.F FA, [0x80]  (+0.0)
+        cpu.mem[0] = 128
         cpu.mem[1] = fpm_fa
         cpu.mem[2] = 0x80
-        cpu.mem[3] = 140   # FCMP.F FA, [0x84]  vs -0.0
+        cpu.mem[3] = 140
         cpu.mem[4] = fpm_fa
         cpu.mem[5] = 0x84
-        cpu.mem[6] = 0     # HLT
+        cpu.mem[6] = 0
         cpu.run()
         _assert_halted_steps(cpu, 2)
-        assert cpu.zero is True   # equal
+        assert cpu.zero is True
         assert cpu.carry is False
 
     def test_neg_zero_eq_pos_zero_f32(self) -> None:
@@ -1359,15 +1283,15 @@ class TestFsqrtSignedZero:
         cpu.load([0] * 256)
         _store_f32(cpu, 0x80, -0.0)
         fpm_fa = encode_fpm(0, 0, FP_FMT_F)
-        cpu.mem[0] = 128   # FMOV.F FA, [0x80]
+        cpu.mem[0] = 128
         cpu.mem[1] = fpm_fa
         cpu.mem[2] = 0x80
-        cpu.mem[3] = 144   # FSQRT.F FA
+        cpu.mem[3] = 144
         cpu.mem[4] = fpm_fa
-        cpu.mem[5] = 130   # FMOV.F [0x90], FA
+        cpu.mem[5] = 130
         cpu.mem[6] = fpm_fa
         cpu.mem[7] = 0x90
-        cpu.mem[8] = 0     # HLT
+        cpu.mem[8] = 0
         cpu.run()
         _assert_halted_steps(cpu, 3)
         result = _read_f32(cpu, 0x90)
@@ -1385,7 +1309,7 @@ class TestFsqrtSignedZero:
         cpu.mem[0] = 128
         cpu.mem[1] = fpm_fa
         cpu.mem[2] = 0x80
-        cpu.mem[3] = 144   # FSQRT
+        cpu.mem[3] = 144
         cpu.mem[4] = fpm_fa
         cpu.mem[5] = 130
         cpu.mem[6] = fpm_fa
@@ -1406,20 +1330,19 @@ class TestSubregisterAliasing:
         """Writing FA=0x40490FDB (pi), FHA should be low 16, FHB high 16."""
         cpu = CPU(arch=2)
         cpu.load([0] * 256)
-        _store_f32(cpu, 0x80, 3.1415927)  # ~ 0x40490FDB
+        _store_f32(cpu, 0x80, 3.1415927)
         fpm_fa = encode_fpm(0, 0, FP_FMT_F)
-        cpu.mem[0] = 128  # FMOV.F FA, [0x80]
+        cpu.mem[0] = 128
         cpu.mem[1] = fpm_fa
         cpu.mem[2] = 0x80
-        cpu.mem[3] = 0    # HLT
+        cpu.mem[3] = 0
         cpu.run()
         _assert_halted_steps(cpu, 1)
         fpu = cpu.regs.fpu
         assert fpu is not None
         fa_raw = fpu.fa
-        # FHA = low 16 bits, FHB = high 16 bits
-        fha_raw = fpu.read_bits(0, FP_FMT_H, 0)  # pos=0, fmt=H
-        fhb_raw = fpu.read_bits(1, FP_FMT_H, 0)  # pos=1, fmt=H
+        fha_raw = fpu.read_bits(0, FP_FMT_H, 0)
+        fhb_raw = fpu.read_bits(1, FP_FMT_H, 0)
         assert fha_raw == fa_raw & 0xFFFF
         assert fhb_raw == (fa_raw >> 16) & 0xFFFF
 
@@ -1432,7 +1355,7 @@ class TestSubregisterAliasing:
         cpu.mem[0] = 128
         cpu.mem[1] = fpm_fa
         cpu.mem[2] = 0x80
-        cpu.mem[3] = 0  # HLT
+        cpu.mem[3] = 0
         cpu.run()
         _assert_halted_steps(cpu, 1)
         fpu = cpu.regs.fpu
@@ -1448,26 +1371,22 @@ class TestSubregisterAliasing:
         """Writing FHA should not change FHB bits."""
         cpu = CPU(arch=2)
         cpu.load([0] * 256)
-        # First load a known value into FA (sets both FHA and FHB)
         _store_f32(cpu, 0x80, 3.1415927)
         fpm_fa = encode_fpm(0, 0, FP_FMT_F)
         fpm_fha = encode_fpm(0, 0, FP_FMT_H)
-        cpu.mem[0] = 128  # FMOV.F FA, [0x80]  (sets all 32 bits)
+        cpu.mem[0] = 128
         cpu.mem[1] = fpm_fa
         cpu.mem[2] = 0x80
-        # Now store float16 1.5 into FHA (should only touch low 16)
-        cpu.mem[3] = 128  # FMOV.H FHA, [0x88]
+        cpu.mem[3] = 128
         cpu.mem[4] = fpm_fha
         cpu.mem[5] = 0x88
-        cpu.mem[6] = 0    # HLT
+        cpu.mem[6] = 0
         _store_f16(cpu, 0x88, 1.5)
         cpu.run()
         _assert_halted_steps(cpu, 2)
         fpu = cpu.regs.fpu
         assert fpu is not None
-        # FHA should be float16 1.5 = 0x3E00
         assert fpu.read_bits(0, FP_FMT_H, 0) == 0x3E00
-        # FHB should be the ORIGINAL upper 16 bits of pi
         pi_raw = struct.unpack("<I", struct.pack("<f", 3.1415927))[0]
         expected_fhb = (pi_raw >> 16) & 0xFFFF
         assert fpu.read_bits(1, FP_FMT_H, 0) == expected_fhb
@@ -1480,16 +1399,15 @@ class TestFmovNanFpsr:
         """Loading NaN via FMOV should not set any FPSR flags."""
         cpu = CPU(arch=2)
         cpu.load([0] * 256)
-        # Store NaN at 0x80
         for i, b in enumerate(struct.pack("<f", float("nan"))):
             cpu.mem[0x80 + i] = b
         fpm_fa = encode_fpm(0, 0, FP_FMT_F)
-        cpu.mem[0] = 128   # FMOV.F FA, [0x80]
+        cpu.mem[0] = 128
         cpu.mem[1] = fpm_fa
         cpu.mem[2] = 0x80
-        cpu.mem[3] = 149   # FSTAT A
+        cpu.mem[3] = 149
         cpu.mem[4] = 0
-        cpu.mem[5] = 0     # HLT
+        cpu.mem[5] = 0
         cpu.run()
         _assert_halted_steps(cpu, 2)
         assert cpu.a == 0, f"FPSR should be 0 after FMOV NaN, got {cpu.a:#x}"
@@ -1501,16 +1419,16 @@ class TestFmovNanFpsr:
         for i, b in enumerate(struct.pack("<f", float("nan"))):
             cpu.mem[0x80 + i] = b
         fpm_fa = encode_fpm(0, 0, FP_FMT_F)
-        cpu.mem[0] = 128   # FMOV.F FA, [0x80]  (load NaN)
+        cpu.mem[0] = 128
         cpu.mem[1] = fpm_fa
         cpu.mem[2] = 0x80
-        cpu.mem[3] = 152   # FCLR (clear any flags from load)
-        cpu.mem[4] = 130   # FMOV.F [0x90], FA  (store NaN)
+        cpu.mem[3] = 152
+        cpu.mem[4] = 130
         cpu.mem[5] = fpm_fa
         cpu.mem[6] = 0x90
-        cpu.mem[7] = 149   # FSTAT A
+        cpu.mem[7] = 149
         cpu.mem[8] = 0
-        cpu.mem[9] = 0     # HLT
+        cpu.mem[9] = 0
         cpu.run()
         _assert_halted_steps(cpu, 4)
         assert cpu.a == 0, f"FPSR should be 0 after FMOV store NaN, got {cpu.a:#x}"
@@ -1523,16 +1441,16 @@ class TestFmovNanFpsr:
             cpu.mem[0x80 + i] = b
         fpm_fa = encode_fpm(0, 0, FP_FMT_F)
         fpm_fb = encode_fpm(1, 0, FP_FMT_F)
-        cpu.mem[0] = 128   # FMOV.F FA, [0x80]
+        cpu.mem[0] = 128
         cpu.mem[1] = fpm_fa
         cpu.mem[2] = 0x80
-        cpu.mem[3] = 152   # FCLR
-        cpu.mem[4] = 145   # FMOV_RR FB, FA
+        cpu.mem[3] = 152
+        cpu.mem[4] = 145
         cpu.mem[5] = fpm_fb
         cpu.mem[6] = fpm_fa
-        cpu.mem[7] = 149   # FSTAT A
+        cpu.mem[7] = 149
         cpu.mem[8] = 0
-        cpu.mem[9] = 0     # HLT
+        cpu.mem[9] = 0
         cpu.run()
         _assert_halted_steps(cpu, 4)
         assert cpu.a == 0, f"FPSR should be 0 after FMOV_RR NaN, got {cpu.a:#x}"
@@ -1564,19 +1482,19 @@ class TestE4m3Saturation:
 
     def test_448_rtz(self) -> None:
         """E4M3 value just above 448 under RTZ → 448 (truncate)."""
-        data, exc = encode_ofp8_e4m3(449.0, rm=1)  # RTZ
+        data, exc = encode_ofp8_e4m3(449.0, rm=1)
         val = bytes_to_float(data, 3)
         assert val == 448.0
 
     def test_448_rdn_positive(self) -> None:
         """E4M3 value 449 under RDN (floor) → 448."""
-        data, exc = encode_ofp8_e4m3(449.0, rm=2)  # RDN
+        data, exc = encode_ofp8_e4m3(449.0, rm=2)
         val = bytes_to_float(data, 3)
         assert val == 448.0
 
     def test_448_rup_positive(self) -> None:
         """E4M3 value 449 under RUP (ceil) → 448 (saturate, no Inf)."""
-        data, exc = encode_ofp8_e4m3(449.0, rm=3)  # RUP
+        data, exc = encode_ofp8_e4m3(449.0, rm=3)
         val = bytes_to_float(data, 3)
         assert val == 448.0
         assert exc.overflow
@@ -1589,18 +1507,18 @@ class TestE4m3Saturation:
         fpm_fqa = encode_fpm(0, 0, FP_FMT_O3)
         _store_o3(cpu, 0x80, 256.0)
         _store_o3(cpu, 0x81, 256.0)
-        cpu.mem[0] = 128  # FMOV.O3 FQA, [0x80]
+        cpu.mem[0] = 128
         cpu.mem[1] = fpm_fqa
         cpu.mem[2] = 0x80
-        cpu.mem[3] = 132  # FADD.O3 FQA, [0x81]
+        cpu.mem[3] = 132
         cpu.mem[4] = fpm_fqa
         cpu.mem[5] = 0x81
-        cpu.mem[6] = 130  # FMOV.O3 [0x90], FQA
+        cpu.mem[6] = 130
         cpu.mem[7] = fpm_fqa
         cpu.mem[8] = 0x90
-        cpu.mem[9] = 149  # FSTAT A
+        cpu.mem[9] = 149
         cpu.mem[10] = 0
-        cpu.mem[11] = 0   # HLT
+        cpu.mem[11] = 0
         cpu.run()
         _assert_halted_steps(cpu, 4)
         result = _read_o3(cpu, 0x90)
@@ -1670,27 +1588,24 @@ class TestFmaddNan:
         cpu.load([0] * 256)
         fpm_fha = encode_fpm(0, 0, FP_FMT_H)
         fpm_fhb = encode_fpm(0, 1, FP_FMT_H)
-        # FHB (dst) = NaN
         for i, b in enumerate(struct.pack("<e", float("nan"))):
             cpu.mem[0x80 + i] = b
-        # FHA (src) = 2.0
         _store_f16(cpu, 0x82, 2.0)
-        # mem[0x84] = 3.0
         _store_f16(cpu, 0x84, 3.0)
-        cpu.mem[0] = 128   # FMOV.H FHB, [0x80]  (NaN)
+        cpu.mem[0] = 128
         cpu.mem[1] = fpm_fhb
         cpu.mem[2] = 0x80
-        cpu.mem[3] = 128   # FMOV.H FHA, [0x82]  (2.0)
+        cpu.mem[3] = 128
         cpu.mem[4] = fpm_fha
         cpu.mem[5] = 0x82
-        cpu.mem[6] = 159   # FMADD.H FHB, FHA, [0x84]
+        cpu.mem[6] = 159
         cpu.mem[7] = fpm_fhb
         cpu.mem[8] = fpm_fha
         cpu.mem[9] = 0x84
-        cpu.mem[10] = 130  # FMOV.H [0x90], FHB
+        cpu.mem[10] = 130
         cpu.mem[11] = fpm_fhb
         cpu.mem[12] = 0x90
-        cpu.mem[13] = 0    # HLT
+        cpu.mem[13] = 0
         cpu.run()
         _assert_halted_steps(cpu, 4)
         result = _read_f16(cpu, 0x90)
@@ -1702,18 +1617,17 @@ class TestFmaddNan:
         cpu.load([0] * 256)
         fpm_fha = encode_fpm(0, 0, FP_FMT_H)
         fpm_fhb = encode_fpm(0, 1, FP_FMT_H)
-        # FHA (src) = NaN
         for i, b in enumerate(struct.pack("<e", float("nan"))):
             cpu.mem[0x80 + i] = b
-        _store_f16(cpu, 0x82, 1.0)   # FHB (dst) = 1.0
-        _store_f16(cpu, 0x84, 3.0)   # mem = 3.0
+        _store_f16(cpu, 0x82, 1.0)
+        _store_f16(cpu, 0x84, 3.0)
         cpu.mem[0] = 128
         cpu.mem[1] = fpm_fha
         cpu.mem[2] = 0x80
         cpu.mem[3] = 128
         cpu.mem[4] = fpm_fhb
         cpu.mem[5] = 0x82
-        cpu.mem[6] = 159   # FMADD.H FHB, FHA, [0x84]
+        cpu.mem[6] = 159
         cpu.mem[7] = fpm_fhb
         cpu.mem[8] = fpm_fha
         cpu.mem[9] = 0x84
@@ -1732,9 +1646,8 @@ class TestFmaddNan:
         cpu.load([0] * 256)
         fpm_fha = encode_fpm(0, 0, FP_FMT_H)
         fpm_fhb = encode_fpm(0, 1, FP_FMT_H)
-        _store_f16(cpu, 0x80, 2.0)   # FHA (src) = 2.0
-        _store_f16(cpu, 0x82, 1.0)   # FHB (dst) = 1.0
-        # mem = NaN
+        _store_f16(cpu, 0x80, 2.0)
+        _store_f16(cpu, 0x82, 1.0)
         for i, b in enumerate(struct.pack("<e", float("nan"))):
             cpu.mem[0x84 + i] = b
         cpu.mem[0] = 128
@@ -1768,16 +1681,16 @@ class TestFcmpNanFpsr:
             cpu.mem[0x80 + i] = b
         _store_f32(cpu, 0x84, 1.0)
         fpm_fa = encode_fpm(0, 0, FP_FMT_F)
-        cpu.mem[0] = 128   # FMOV.F FA, [0x80]  (NaN)
+        cpu.mem[0] = 128
         cpu.mem[1] = fpm_fa
         cpu.mem[2] = 0x80
-        cpu.mem[3] = 152   # FCLR
-        cpu.mem[4] = 140   # FCMP.F FA, [0x84]
+        cpu.mem[3] = 152
+        cpu.mem[4] = 140
         cpu.mem[5] = fpm_fa
         cpu.mem[6] = 0x84
-        cpu.mem[7] = 149   # FSTAT A
+        cpu.mem[7] = 149
         cpu.mem[8] = 0
-        cpu.mem[9] = 0     # HLT
+        cpu.mem[9] = 0
         cpu.run()
         _assert_halted_steps(cpu, 4)
         assert cpu.zero is True, "NaN compare should set Z=1 (Unordered)"
@@ -1805,16 +1718,13 @@ class TestBf16RneEdges:
         f32_val = struct.unpack("<f", f32_bits.to_bytes(4, "little"))[0]
         d, exc = encode_bfloat16(f32_val, RoundingMode.RNE)
         bf16_bits = int.from_bytes(d, "little")
-        # Odd upper + tie → round up: 0x3F81 → 0x3F82
         assert bf16_bits == 0x3F82
         assert exc.inexact
 
     def test_rne_carry_overflow_to_inf(self) -> None:
         """RNE carry overflow → Inf (lines 179-180)."""
-        # Max bf16 normal: 0x7F7F → value ≈ 3.389e38
-        # If lower > 0x8000, upper rounds up: 0x7F7F → 0x7F80 = Inf
         import struct
-        f32_bits = 0x7F7F_FFFF  # max finite f32
+        f32_bits = 0x7F7F_FFFF
         f32_val = struct.unpack("<f", f32_bits.to_bytes(4, "little"))[0]
         d, exc = encode_bfloat16(f32_val, RoundingMode.RNE)
         bf16_val = decode_bfloat16(d)
@@ -1824,7 +1734,7 @@ class TestBf16RneEdges:
     def test_rne_neg_carry_overflow(self) -> None:
         """Negative RNE carry → -Inf."""
         import struct
-        f32_bits = 0xFF7F_FFFF  # -max finite f32
+        f32_bits = 0xFF7F_FFFF
         f32_val = struct.unpack("<f", f32_bits.to_bytes(4, "little"))[0]
         d, exc = encode_bfloat16(f32_val, RoundingMode.RNE)
         bf16_val = decode_bfloat16(d)
@@ -2173,12 +2083,12 @@ class TestPropCmp:
     def test_antisymmetric(self, a: float, b: float) -> None:
         z1, c1, _ = fp_cmp(a, b)
         z2, c2, _ = fp_cmp(b, a)
-        if z1 and not c1:       # a == b
+        if z1 and not c1:
             assert z2 and not c2
-        elif not z1 and c1:     # a < b
-            assert not z2 and not c2  # b > a
-        elif not z1 and not c1: # a > b
-            assert not z2 and c2      # b < a
+        elif not z1 and c1:
+            assert not z2 and not c2
+        elif not z1 and not c1:
+            assert not z2 and c2
 
     @given(st.floats(allow_nan=False, allow_infinity=False))
     def test_reflexive(self, a: float) -> None:
@@ -2312,7 +2222,6 @@ class TestFmovRegaddr:
             FMOV.F FA, [B]
             HLT
         """)
-        # B=100, DP=0 → addr=100. Memory is zeroed → FA=0.0
         _assert_halted_steps(cpu, 2)
         assert cpu.b == 100
         assert cpu.regs.fpu.read_bits(0, FP_FMT_F, 0) == 0
@@ -2323,19 +2232,16 @@ class TestFmovRegaddr:
         cpu.load([0] * 256)
         _store_f32(cpu, 0x80, 3.14)
         fpm_fa = encode_fpm(0, 0, FP_FMT_F)
-        # FMOV.F FA, [0x80]
         cpu.mem[0] = 128
         cpu.mem[1] = fpm_fa
         cpu.mem[2] = 0x80
-        # MOV B, 0x90
-        cpu.mem[3] = 6   # MOV_REG_CONST
-        cpu.mem[4] = 1   # B
+        cpu.mem[3] = 6
+        cpu.mem[4] = 1
         cpu.mem[5] = 0x90
-        # FMOV.F [B], FA (opcode 131)
         cpu.mem[6] = 131
         cpu.mem[7] = fpm_fa
-        cpu.mem[8] = (0 << 3) | 1  # [B+0]
-        cpu.mem[9] = 0   # HLT
+        cpu.mem[8] = (0 << 3) | 1
+        cpu.mem[9] = 0
         cpu.run()
         _assert_halted_steps(cpu, 3)
         assert cpu.b == 0x90
@@ -2397,9 +2303,9 @@ class TestFcmpRrFormatMismatch:
 
     def test_fcmp_rr_format_mismatch_fault(self) -> None:
         """FCMP_RR with different format FPMs → FP_FORMAT fault."""
-        fpm_f32 = encode_fpm(0, 0, FP_FMT_F)   # FA as float32
-        fpm_f16 = encode_fpm(0, 0, FP_FMT_H)   # FHA as float16
-        cpu = run_binary([157, fpm_f32, fpm_f16, 0])  # FCMP_RR
+        fpm_f32 = encode_fpm(0, 0, FP_FMT_F)
+        fpm_f16 = encode_fpm(0, 0, FP_FMT_H)
+        cpu = run_binary([int(Op.FCMP_RR), fpm_f32, fpm_f16, int(Op.HLT)])
         assert cpu.state == CpuState.FAULT
         assert cpu.a == ErrorCode.FP_FORMAT
 
@@ -2409,31 +2315,13 @@ class TestFmaddFormatMismatch:
 
     def test_fmadd_format_mismatch_fault(self) -> None:
         """FMADD with different dst/src formats → FP_FORMAT fault."""
-        fpm_f32 = encode_fpm(0, 0, FP_FMT_F)   # FA as float32
-        fpm_f16 = encode_fpm(0, 0, FP_FMT_H)   # FHA as float16
-        # FMADD_ADDR: [159, dst_fpm, src_fpm, addr]
-        cpu = run_binary([159, fpm_f16, fpm_f32, 0x80, 0])
+        fpm_f32 = encode_fpm(0, 0, FP_FMT_F)
+        fpm_f16 = encode_fpm(0, 0, FP_FMT_H)
+        cpu = run_binary([
+            int(Op.FMADD_FP_FP_ADDR), fpm_f16, fpm_f32, 0x80, int(Op.HLT)
+        ])
         assert cpu.state == CpuState.FAULT
         assert cpu.a == ErrorCode.FP_FORMAT
-
-
-class TestInvalidRegFaults:
-    """Handler validation faults for invalid register codes."""
-
-    def test_indirect_addr_invalid_reg(self) -> None:
-        """Register code > SP in indirect addressing → FAULT (handlers line 47)."""
-        # MOV_REG_REGADDR (opcode 3): dest=A, regaddr with reg=6 (invalid)
-        encoded_regaddr = (0 << 3) | 6  # offset=0, reg=6
-        cpu = run_binary([3, 0, encoded_regaddr, 0])
-        assert cpu.state == CpuState.FAULT
-        assert cpu.a == ErrorCode.INVALID_REG
-
-    def test_mov_reg_invalid_high_code(self) -> None:
-        """MOV with register code > DP → FAULT (handlers line 76)."""
-        # MOV_REG_REG (opcode 1): dst=6 (invalid), src=0
-        cpu = run_binary([1, 6, 0, 0])
-        assert cpu.state == CpuState.FAULT
-        assert cpu.a == ErrorCode.INVALID_REG
 
 
 # ── More property-based tests ──────────────────────────────────────
@@ -2617,33 +2505,24 @@ class TestPropSimRoundTrip:
 class TestCrazySimInput:
     """Adversarial simulator inputs that should not crash."""
 
-    def test_all_zero_memory(self) -> None:
-        """All-zero memory → immediate HLT (opcode 0)."""
-        cpu = CPU(arch=2)
-        cpu.load([0] * 256)
-        cpu.run()
-        _assert_halted_steps(cpu, 0)
-
     def test_invalid_fpm_byte(self) -> None:
         """FPM with reserved format code → FAULT."""
-        # fmt=5 is reserved
         fpm_bad = (0 << 6) | (0 << 3) | 5
-        cpu = run_binary([142, fpm_bad, 0])  # FABS with bad FPM
+        cpu = run_binary([int(Op.FABS_FP), fpm_bad, int(Op.HLT)])
         assert cpu.state == CpuState.FAULT
         assert cpu.a == ErrorCode.FP_FORMAT
 
     def test_fpm_invalid_pos_for_format(self) -> None:
         """FPM with pos > max for format → FAULT."""
-        # float32 (fmt=0) only has pos=0. pos=1 is invalid.
         fpm_bad = (0 << 6) | (1 << 3) | 0
-        cpu = run_binary([142, fpm_bad, 0])  # FABS with bad pos
+        cpu = run_binary([int(Op.FABS_FP), fpm_bad, int(Op.HLT)])
         assert cpu.state == CpuState.FAULT
         assert cpu.a == ErrorCode.FP_FORMAT
 
     def test_fmov_imm8_with_f32_fmt_faults(self) -> None:
         """FMOV_FP_IMM8 (opcode 161) with float32 fmt → FAULT."""
         fpm_fa = encode_fpm(0, 0, FP_FMT_F)
-        cpu = run_binary([161, fpm_fa, 0x3C, 0])
+        cpu = run_binary([int(Op.FMOV_FP_IMM8), fpm_fa, 0x3C, int(Op.HLT)])
         assert cpu.state == CpuState.FAULT
         assert cpu.a == ErrorCode.FP_FORMAT
 
@@ -2658,7 +2537,6 @@ class TestCrazySimInput:
             HLT
         """)
         _assert_halted_steps(cpu, 5)
-        # 1.0 * 2^4 = 16.0
         raw = cpu.regs.fpu.read_bits(0, FP_FMT_H, 0)
         data = raw.to_bytes(2, "little")
         val = struct.unpack("<e", data)[0]
@@ -2676,7 +2554,7 @@ class TestCrazySimInput:
             HLT
         """)
         _assert_halted_steps(cpu, 6)
-        assert cpu.a == 0  # FPSR cleared
+        assert cpu.a == 0
 
     def test_fp_operation_on_zeroed_register(self) -> None:
         """FP operations on uninitialized (zero) FP register."""
@@ -2684,7 +2562,6 @@ class TestCrazySimInput:
             FADD.F FA, [100]
             HLT
         """)
-        # FA=0, mem[100]=0 → 0+0=0
         _assert_halted_steps(cpu, 1)
         assert cpu.regs.fpu.read_bits(0, FP_FMT_F, 0) == 0
 

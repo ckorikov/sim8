@@ -19,7 +19,7 @@ from typing import NamedTuple
 
 import pytest
 
-from pysim8.isa import FP_FMT_F, FP_FMT_H, encode_fpm
+from pysim8.isa import FP_FMT_F, FP_FMT_H, Op, encode_fpm
 from pysim8.sim import CPU, CpuState
 
 # ── Constants ─────────────────────────────────────────────────────────────
@@ -40,42 +40,42 @@ TERNARY_OPS: frozenset[str] = frozenset({"*+"})
 CONVERT_OPS: frozenset[str] = frozenset({"cff", "cif", "cfi"})
 
 OP_OPCODE: dict[str, int] = {
-    "+": 132,    # FADD_FP_ADDR
-    "-": 134,    # FSUB_FP_ADDR
-    "*": 136,    # FMUL_FP_ADDR
-    "/": 138,    # FDIV_FP_ADDR
-    "qC": 140,   # FCMP_FP_ADDR
-    "V": 144,    # FSQRT_FP
-    "~": 143,    # FNEG_FP
-    "A": 142,    # FABS_FP
-    "*+": 159,   # FMADD_FP_FP_ADDR
-    "cff": 146,  # FCVT_FP_FP
-    "cif": 147,  # FITOF_FP_GPR
-    "cfi": 148,  # FFTOI_GPR_FP
+    "+": int(Op.FADD_FP_ADDR),
+    "-": int(Op.FSUB_FP_ADDR),
+    "*": int(Op.FMUL_FP_ADDR),
+    "/": int(Op.FDIV_FP_ADDR),
+    "qC": int(Op.FCMP_FP_ADDR),
+    "V": int(Op.FSQRT_FP),
+    "~": int(Op.FNEG_FP),
+    "A": int(Op.FABS_FP),
+    "*+": int(Op.FMADD_FP_FP_ADDR),
+    "cff": int(Op.FCVT_FP_FP),
+    "cif": int(Op.FITOF_FP_GPR),
+    "cfi": int(Op.FFTOI_GPR_FP),
 }
 
 # FPSR bit masks (from spec/errors.md and existing tests)
-FPSR_NV = 0x01  # invalid
-FPSR_DZ = 0x02  # div-by-zero
-FPSR_OF = 0x04  # overflow
-FPSR_UF = 0x08  # underflow
-FPSR_NX = 0x10  # inexact
+FPSR_NV = 0x01
+FPSR_DZ = 0x02
+FPSR_OF = 0x04
+FPSR_UF = 0x08
+FPSR_NX = 0x10
 FPSR_KNOWN_MASK = FPSR_NV | FPSR_DZ | FPSR_OF | FPSR_UF | FPSR_NX
 
 FLAG_CHAR_TO_MASK: dict[str, int] = {
     "i": FPSR_NV,
     "z": FPSR_DZ,
     "o": FPSR_OF,
-    "u": FPSR_UF,  # underflow (tininess before rounding)
-    "v": FPSR_UF,  # underflow (tininess after rounding)
-    "w": FPSR_UF,  # underflow (tininess + error)
+    "u": FPSR_UF,
+    "v": FPSR_UF,
+    "w": FPSR_UF,
     "x": FPSR_NX,
 }
 
 # FPM bytes
-_FPM_FA  = encode_fpm(0, 0, FP_FMT_F)  # 0x00 — float32 FA
-_FPM_FHA = encode_fpm(0, 0, FP_FMT_H)  # 0x01 — float16 FHA
-_FPM_FHB = encode_fpm(0, 1, FP_FMT_H)  # 0x09 — float16 FHB
+_FPM_FA  = encode_fpm(0, 0, FP_FMT_F)
+_FPM_FHA = encode_fpm(0, 0, FP_FMT_H)
+_FPM_FHB = encode_fpm(0, 1, FP_FMT_H)
 
 _KNOWN_PREFIXES = frozenset({"b32", "b16"})
 
@@ -84,12 +84,12 @@ _KNOWN_PREFIXES = frozenset({"b32", "b16"})
 
 class FpTestCase(NamedTuple):
     op: str
-    prefix: str          # "b32" or "b16"
-    rounding: int        # RoundingMode constant 0-3
+    prefix: str
+    rounding: int
     inputs: list[float]
-    expected: float      # math.nan if result is Q or S
-    flags: str           # expected raised flags e.g. "xi", ""
-    line: str            # original line for pytest ID
+    expected: float
+    flags: str
+    line: str
 
 
 # ── Parser ────────────────────────────────────────────────────────────────
@@ -277,41 +277,41 @@ def _read_f16(mem: list[int], addr: int) -> float:
 def _binary_prog(opcode: int, fpm: int, rounding: int, b_addr: int) -> list[int]:
     """Program: set rounding, load A, compute A op mem[b_addr], store to 0x90."""
     return [
-        6, 0, rounding,       # MOV A, rounding
-        151, 0,               # FSCFG A  (write FPCR.RM)
-        152,                  # FCLR     (clear FPSR)
-        128, fpm, 0x80,       # FMOV FA, [0x80]
-        opcode, fpm, b_addr,  # OP FA, [b_addr]
-        130, fpm, 0x90,       # FMOV [0x90], FA
-        149, 0,               # FSTAT A  (read FPSR → A)
-        0,                    # HLT
+        int(Op.MOV_REG_CONST), 0, rounding,
+        int(Op.FSCFG_GPR), 0,
+        int(Op.FCLR),
+        int(Op.FMOV_FP_ADDR), fpm, 0x80,
+        opcode, fpm, b_addr,
+        int(Op.FMOV_ADDR_FP), fpm, 0x90,
+        int(Op.FSTAT_GPR), 0,
+        int(Op.HLT),
     ]
 
 
 def _unary_prog(opcode: int, fpm: int, rounding: int) -> list[int]:
     """Program: set rounding, load A, apply unary op, store to 0x90."""
     return [
-        6, 0, rounding,  # MOV A, rounding
-        151, 0,          # FSCFG A
-        152,             # FCLR
-        128, fpm, 0x80,  # FMOV FA, [0x80]
-        opcode, fpm,     # OP FA  (in-place unary)
-        130, fpm, 0x90,  # FMOV [0x90], FA
-        149, 0,          # FSTAT A
-        0,               # HLT
+        int(Op.MOV_REG_CONST), 0, rounding,
+        int(Op.FSCFG_GPR), 0,
+        int(Op.FCLR),
+        int(Op.FMOV_FP_ADDR), fpm, 0x80,
+        opcode, fpm,
+        int(Op.FMOV_ADDR_FP), fpm, 0x90,
+        int(Op.FSTAT_GPR), 0,
+        int(Op.HLT),
     ]
 
 
 def _cmp_prog(fpm: int, rounding: int) -> list[int]:
     """Program: load A, compare A vs mem[0x84], read FPSR."""
     return [
-        6, 0, rounding,
-        151, 0,
-        152,
-        128, fpm, 0x80,   # FMOV FA, [0x80]
-        140, fpm, 0x84,   # FCMP FA, [0x84]
-        149, 0,           # FSTAT A
-        0,                # HLT
+        int(Op.MOV_REG_CONST), 0, rounding,
+        int(Op.FSCFG_GPR), 0,
+        int(Op.FCLR),
+        int(Op.FMOV_FP_ADDR), fpm, 0x80,
+        int(Op.FCMP_FP_ADDR), fpm, 0x84,
+        int(Op.FSTAT_GPR), 0,
+        int(Op.HLT),
     ]
 
 
@@ -322,15 +322,15 @@ def _fma_b16_prog(rounding: int) -> list[int]:
     Memory layout:  FHA=c @0x80, FHB=a @0x82, b @0x84
     """
     return [
-        6, 0, rounding,                           # MOV A, rounding
-        151, 0,                                   # FSCFG A
-        152,                                      # FCLR
-        128, _FPM_FHA, 0x80,                      # FMOV FHA, [0x80]  (c)
-        128, _FPM_FHB, 0x82,                      # FMOV FHB, [0x82]  (a)
-        159, _FPM_FHA, _FPM_FHB, 0x84,           # FMADD FHA, FHB, [0x84]
-        130, _FPM_FHA, 0x90,                      # FMOV [0x90], FHA
-        149, 0,                                   # FSTAT A
-        0,                                        # HLT
+        int(Op.MOV_REG_CONST), 0, rounding,
+        int(Op.FSCFG_GPR), 0,
+        int(Op.FCLR),
+        int(Op.FMOV_FP_ADDR), _FPM_FHA, 0x80,
+        int(Op.FMOV_FP_ADDR), _FPM_FHB, 0x82,
+        int(Op.FMADD_FP_FP_ADDR), _FPM_FHA, _FPM_FHB, 0x84,
+        int(Op.FMOV_ADDR_FP), _FPM_FHA, 0x90,
+        int(Op.FSTAT_GPR), 0,
+        int(Op.HLT),
     ]
 
 
@@ -366,9 +366,9 @@ def run_fp_case(tc: FpTestCase) -> tuple[float, int]:
 
     elif tc.op == "*+":
         # b16 FMA only (b32 filtered out by parser)
-        _store_f16(mem, 0x80, tc.inputs[2])  # c (addend)
-        _store_f16(mem, 0x82, tc.inputs[0])  # a
-        _store_f16(mem, 0x84, tc.inputs[1])  # b
+        _store_f16(mem, 0x80, tc.inputs[2])
+        _store_f16(mem, 0x82, tc.inputs[0])
+        _store_f16(mem, 0x84, tc.inputs[1])
         prog = _fma_b16_prog(tc.rounding)
         read = _read_f16
 
