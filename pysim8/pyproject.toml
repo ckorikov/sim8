@@ -16,11 +16,30 @@ pysim8-disasm = "pysim8.disasm.cli:main"
 
 [dependency-groups]
 dev = [
+    "hypothesis>=6.151.9",
     "ml-dtypes>=0.5.4",
     "numpy>=2.4.2",
     "pytest",
+    "pytest-cov>=7.0.0",
 ]
 
 [build-system]
 requires = ["uv_build>=0.8.0,<0.9"]
 build-backend = "uv_build"
+
+# ── Coverage ──────────────────────────────────────────────────────
+
+[tool.coverage.run]
+source = ["pysim8"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+fail_under = 80
+
+[tool.coverage.html]
+directory = "htmlcov"
+
+[tool.pytest.ini_options]
+addopts = "--cov --cov-report=term-missing:skip-covered"
