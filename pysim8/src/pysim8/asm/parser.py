@@ -27,6 +27,7 @@ __all__ = [
     "OpAddrLabel",
     "OpFpReg",
     "OpFloat",
+    "OpFpImm",
     "parse_lines",
     "AsmError",
     "ParseError",
@@ -104,12 +105,12 @@ class OpAddrLabel:
 
 @dataclass(frozen=True, slots=True)
 class OpFpReg:
-    """FP register operand: FA, FHA, FHB, FQA-FQD, FOA-FOH."""
+    """FP register operand: FA/FB, FHA-FHD, FQA-FQH, FOA-FOP."""
 
-    name: str    # uppercase: "FA", "FHA", etc.
+    name: str    # uppercase: "FA", "FHA", "FB", etc.
     pos: int     # position within format (0-7)
     fmt: int     # canonical format code
-    width: int   # register width in bits
+    phys: int    # physical register index (0 or 1)
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,9 +121,17 @@ class OpFloat:
     fmt: int  # FP_FMT_* constant
 
 
+@dataclass(frozen=True, slots=True)
+class OpFpImm:
+    """FP immediate literal for FMOV instruction."""
+
+    value: float
+    fmt: int | None  # FP_FMT_* or None (resolved from instruction suffix)
+
+
 Operand = (
     OpReg | OpConst | OpAddr | OpRegAddr | OpString | OpLabel
-    | OpAddrLabel | OpFpReg | OpFloat
+    | OpAddrLabel | OpFpReg | OpFloat | OpFpImm
 )
 
 
@@ -262,8 +271,8 @@ def _try_register(token: str, line: int) -> Operand | None:
     if up in REGISTERS:
         return OpReg(REGISTERS[up])
     if up in FP_REGISTERS:
-        pos, fmt, width = FP_REGISTERS[up]
-        return OpFpReg(up, pos, fmt, width)
+        phys, pos, fmt, _width = FP_REGISTERS[up]
+        return OpFpReg(up, pos, fmt, phys)
     return None
 
 
@@ -285,6 +294,52 @@ def _try_const(token: str, line: int) -> Operand | None:
     return None
 
 
+def _resolve_fp_imm_suffix(
+    suffix_str: str | None, line: int
+) -> int | None:
+    """Resolve FP immediate literal suffix to fmt code (None if no suffix)."""
+    if suffix_str is None:
+        return None
+    from pysim8.isa import FP_DB_SUFFIX_TO_FMT
+    suffix = suffix_str[1:].upper()  # strip leading _
+    if suffix not in FP_DB_SUFFIX_TO_FMT:
+        raise ParseError("Invalid float literal", line)
+    return FP_DB_SUFFIX_TO_FMT[suffix]
+
+
+def _try_fp_imm(token: str, line: int) -> Operand | None:
+    """Try to parse FP immediate literal: 1.5, 1.5_o3, inf, nan_h."""
+    m = _RE_FLOAT_SPECIAL.match(token)
+    if m:
+        sign_str = m.group(1)
+        name = m.group(2)
+        suffix_str = m.group(3)
+        fmt = _resolve_fp_imm_suffix(suffix_str, line)
+        if name.lower() == "inf":
+            val = float("-inf") if sign_str == "-" else float("inf")
+        else:
+            val = float("nan")
+            if sign_str == "-":
+                val = -val
+        return OpFpImm(val, fmt)
+
+    m = _RE_FLOAT.match(token)
+    if m:
+        sign_str = m.group(1)
+        num = m.group(2)
+        exp = m.group(3)
+        suffix_str = m.group(4)
+        fmt = _resolve_fp_imm_suffix(suffix_str, line)
+        text = (sign_str or "") + num + (exp or "")
+        try:
+            val = float(text)
+        except ValueError:
+            raise ParseError("Invalid float literal", line)
+        return OpFpImm(val, fmt)
+
+    return None
+
+
 def _try_label(token: str, line: int) -> Operand | None:
     """Try to parse label reference (identifier not matching above)."""
     if _RE_LABEL.match(token):
@@ -294,12 +349,14 @@ def _try_label(token: str, line: int) -> Operand | None:
 
 # Order matters: bracket is unambiguous ('['), register is a finite set,
 # string is unambiguous ('"'), number has specific formats,
+# FP imm catches float literals (must come before label to grab inf/nan),
 # label is the fallback for any remaining identifier.
 _OPERAND_PARSERS = [
     _try_bracket,
     _try_register,
     _try_string,
     _try_const,
+    _try_fp_imm,
     _try_label,
 ]
 
@@ -430,14 +487,6 @@ def _parse_db_operands(
             )
 
         if _RE_LABEL.match(part) and _try_parse_number(part) is None:
-            # Reject labels and float specials when not parsed above
-            lower = part.lower()
-            if lower in ("inf", "nan") or lower.startswith((
-                "inf_", "nan_", "-inf", "-nan",
-            )):
-                raise ParseError(
-                    "DB does not support this operand", line
-                )
             raise ParseError(
                 "DB does not support this operand", line
             )

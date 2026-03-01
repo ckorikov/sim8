@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from pysim8.isa import (
@@ -21,6 +22,7 @@ from pysim8.asm.parser import (
     OpLabel,
     OpFpReg,
     OpFloat,
+    OpFpImm,
     Operand,
     ParseError,
     parse_lines,
@@ -62,7 +64,9 @@ def _operand_matches(op: Operand, ot: OpType) -> bool:
             return isinstance(op, OpRegAddr)
         case OpType.FP_REG:
             return isinstance(op, OpFpReg)
-    return False  # pragma: no cover
+        case OpType.FP_IMM8 | OpType.FP_IMM16:
+            return isinstance(op, OpFpImm)
+    return False
 
 
 def _encode_regaddr(ra: OpRegAddr) -> int:
@@ -84,14 +88,19 @@ def _encode_operand(op: Operand) -> int:
             return 0  # placeholder for pass 2
         case OpAddrLabel():
             return 0  # placeholder for pass 2
-    raise AssertionError(f"unexpected operand: {op!r}")  # pragma: no cover
+    raise AssertionError(f"unexpected operand: {op!r}")
 
 
 def _find_insn(
-    mnemonic: str, operands: list[Operand], line: int
+    mnemonic: str,
+    operands: list[Operand],
+    line: int,
+    table: Mapping[str, tuple[InsnDef, ...]] | None = None,
 ) -> InsnDef:
     """Find matching InsnDef by mnemonic and operands."""
-    candidates = BY_MNEMONIC.get(mnemonic)
+    if table is None:
+        table = BY_MNEMONIC
+    candidates = table.get(mnemonic)
     if candidates is None:
         raise AssemblerError(f"Invalid instruction: {mnemonic}", line)
 
@@ -104,7 +113,6 @@ def _find_insn(
         ):
             return insn
 
-    # No match — pick appropriate error
     max_arity = max(len(i.sig) for i in candidates)
     if len(operands) > max_arity:
         raise AssemblerError(
@@ -118,33 +126,35 @@ def _find_insn(
 # ── DB encoding ────────────────────────────────────────────────────
 
 
+def _encode_db_operand(
+    op: Operand, line: int, result: list[int],
+) -> None:
+    """Encode one DB operand, appending bytes to result."""
+    if isinstance(op, OpConst):
+        result.append(op.value)
+        return
+    if isinstance(op, OpString):
+        if not op.text:
+            raise AssemblerError(
+                "DB string must not be empty", line
+            )
+        result.extend(ord(c) for c in op.text)
+        return
+    if isinstance(op, OpFloat):
+        from pysim8.fp_formats import float_to_bytes
+        data, _exc = float_to_bytes(op.value, op.fmt)
+        result.extend(data)
+        return
+    raise AssemblerError(
+        f"DB does not support this operand: {op!r}", line
+    )
+
+
 def _encode_db(operands: list[Operand], line: int) -> list[int]:
     """Encode DB pseudo-instruction."""
     result: list[int] = []
     for op in operands:
-        match op:
-            case OpConst(value=v):
-                result.append(v)
-            case OpString(text=s):
-                if not s:
-                    raise AssemblerError(
-                        "DB string must not be empty", line
-                    )
-                result.extend(ord(c) for c in s)
-            case OpFloat(value=v, fmt=fmt):
-                from pysim8.fp_formats import float_to_bytes
-                try:
-                    data, _exc = float_to_bytes(v, fmt)
-                except (OverflowError, ValueError) as e:
-                    raise AssemblerError(
-                        "Float value out of range for format",
-                        line,
-                    ) from e
-                result.extend(data)
-            case _:
-                raise AssemblerError(
-                    "DB does not support this operand", line
-                )
+        _encode_db_operand(op, line, result)
     return result
 
 
@@ -178,29 +188,7 @@ def _find_fp_insn(
     mnemonic: str, operands: list[Operand], line: int
 ) -> InsnDef:
     """Find matching FP InsnDef by mnemonic and operands."""
-    candidates = BY_MNEMONIC_FP.get(mnemonic)
-    if candidates is None:
-        raise AssemblerError(
-            f"Invalid instruction: {mnemonic}", line
-        )
-
-    for insn in candidates:
-        if len(insn.sig) != len(operands):
-            continue
-        if all(
-            _operand_matches(op, ot)
-            for op, ot in zip(operands, insn.sig)
-        ):
-            return insn
-
-    max_arity = max(len(i.sig) for i in candidates)
-    if len(operands) > max_arity:
-        raise AssemblerError(
-            f"{mnemonic}: too many arguments", line
-        )
-    raise AssemblerError(
-        f"{mnemonic} does not support this operand(s)", line
-    )
+    return _find_insn(mnemonic, operands, line, table=BY_MNEMONIC_FP)
 
 
 def _encode_fp_instruction(
@@ -221,26 +209,21 @@ def _encode_fp_instruction(
 
     # FCVT special case: dual suffix
     if insn.op == Op.FCVT_FP_FP:
-        if dst_fmt is None or src_fmt is None:
+        assert dst_fmt is not None and src_fmt is not None
+        if dst_fmt == src_fmt:
             raise AssemblerError(
-                "FP format suffix required", line
+                "FCVT with identical formats (use FMOV)", line
             )
         dst_reg = operands[0]
         src_reg = operands[1]
-        if not isinstance(dst_reg, OpFpReg) or not isinstance(
-            src_reg, OpFpReg
-        ):
-            raise AssemblerError(
-                "FCVT requires two FP register operands", line
-            )
+        assert isinstance(dst_reg, OpFpReg) and isinstance(src_reg, OpFpReg)
         _validate_fp_reg_width(dst_reg, dst_fmt, line)
         _validate_fp_reg_width(src_reg, src_fmt, line)
-        dst_fpm = encode_fpm(0, dst_reg.pos, dst_fmt)
-        src_fpm = encode_fpm(0, src_reg.pos, src_fmt)
+        dst_fpm = encode_fpm(dst_reg.phys, dst_reg.pos, dst_fmt)
+        src_fpm = encode_fpm(src_reg.phys, src_reg.pos, src_fmt)
         return [int(insn.op), dst_fpm, src_fpm]
 
-    if dst_fmt is None:
-        raise AssemblerError("FP format suffix required", line)
+    assert dst_fmt is not None
 
     # Separate FP reg operands from non-FP operands
     fp_ops: list[OpFpReg] = []
@@ -254,13 +237,63 @@ def _encode_fp_instruction(
 
     # Encode FPM bytes
     fpm_bytes = [
-        encode_fpm(0, fp_op.pos, dst_fmt) for fp_op in fp_ops
+        encode_fpm(fp_op.phys, fp_op.pos, dst_fmt) for fp_op in fp_ops
     ]
 
     # Encode non-FP bytes
     non_fp_bytes = [_encode_operand(op) for op in non_fp_ops]
 
     return [int(insn.op)] + fpm_bytes + non_fp_bytes
+
+
+# ── FMOV immediate encoding ──────────────────────────────────────
+
+
+def _encode_fmov_imm(
+    operands: list[Operand],
+    dst_suffix: str | None,
+    line: int,
+) -> list[int]:
+    """Encode FMOV with FP immediate operand."""
+    if not isinstance(operands[0], OpFpReg):
+        raise AssemblerError(
+            "FMOV does not support this operand(s)", line
+        )
+    assert dst_suffix is not None
+
+    dst_reg = operands[0]
+    fp_imm = operands[1]
+    assert isinstance(fp_imm, OpFpImm)
+
+    dst_fmt = _validate_fp_suffix(dst_suffix, line)
+    fmt_width = FP_FMT_WIDTH[dst_fmt]
+
+    if fmt_width == 32:
+        raise AssemblerError(
+            "FP immediate not supported for float32", line
+        )
+    if fmt_width == 4:
+        raise AssemblerError(
+            "FP immediate not supported for 4-bit formats", line
+        )
+
+    # Check literal suffix matches instruction suffix
+    if fp_imm.fmt is not None and fp_imm.fmt != dst_fmt:
+        raise AssemblerError(
+            "FP immediate suffix mismatch", line
+        )
+
+    _validate_fp_reg_width(dst_reg, dst_fmt, line)
+
+    from pysim8.fp_formats import float_to_bytes
+    data, _exc = float_to_bytes(fp_imm.value, dst_fmt)
+
+    fpm_byte = encode_fpm(dst_reg.phys, dst_reg.pos, dst_fmt)
+
+    if fmt_width == 8:
+        return [int(Op.FMOV_FP_IMM8), fpm_byte, data[0]]
+    else:
+        return [int(Op.FMOV_FP_IMM16), fpm_byte, data[0], data[1]]
 
 
 # ── Instruction encoding ──────────────────────────────────────────
@@ -279,6 +312,14 @@ def _encode_instruction(
         return _encode_db(operands, line)
 
     if arch >= 2 and mnemonic in MNEMONICS_FP:
+        # FMOV immediate special case (bypasses _find_fp_insn)
+        if (
+            mnemonic == "FMOV"
+            and len(operands) == 2
+            and isinstance(operands[1], OpFpImm)
+        ):
+            return _encode_fmov_imm(operands, dst_suffix, line)
+
         insn = _find_fp_insn(mnemonic, operands, line)
         if mnemonic in FP_CONTROL_MNEMONICS:
             # Control: no FPM, just opcode + operand bytes
