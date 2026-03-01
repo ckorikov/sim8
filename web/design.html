@@ -1,0 +1,1295 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="business">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>sim8 v2 — Hardware Simulator</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@antv/x6@2.19.2/dist/index.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: { extend: { fontFamily: { mono: ["'JetBrains Mono'", 'monospace'] } } }
+    }
+  </script>
+
+  <style>
+    * { box-sizing: border-box; }
+
+    /* ── Theme via CSS custom properties ── */
+    :root {
+      --t-bg: #1e1e1e;
+      --t-surface: #2a2a2a;
+      --t-nav: #222222;
+      --t-border: #3a3a3a;
+      --t-dim: #666666;
+      --t-mid: #999999;
+      --t-text: #cccccc;
+      --t-bright: #ffffff;
+      --t-canvas: #1e1e1e;
+      --t-label-bg: rgba(255,255,255,0.03);
+      --t-instr-bg: rgba(255,255,255,0.06);
+      --t-marker-text: #1e1e1e;
+      --t-hover-bg: rgba(204,85,0,0.1);
+      /* accents — dark: muted neon */
+      --a-orange: #cc5500;
+      --a-yellow: #ccaa00;
+      --a-green:  #3a9a3a;
+      --a-red:    #cc4444;
+      --a-blue:   #4488cc;
+      --a-orange-a20: rgba(204,85,0,0.2);
+      --a-green-a40: rgba(58,154,58,0.4);
+
+      /* ── Layout sizes (for resizable diagram) ── */
+      --s-split: 38%;                 /* editor / diagram split */
+      --s-diagram-w: 840px;          /* diagram container width */
+      --s-block-radius: 4px;         /* hw-block border-radius */
+      --s-block-font: 11px;          /* hw-block base font-size */
+      --s-hdr-font: 10px;            /* hw-hdr font-size */
+      --s-hdr-pad: 12px 16px 8px;    /* hw-hdr padding */
+      --s-body-pad: 12px 16px;       /* hw-body default padding */
+      --s-body-compact-pad: 8px 16px 12px; /* hw-body compact (CPU/FPU) */
+      --s-port: 8px;                 /* connector dot size */
+      --s-reg-gap: 4px;              /* gap in .rr */
+      --s-label-font: 8px;           /* section label font-size */
+      --s-row-gap: 10px;             /* margin between hw rows */
+      --s-wire-gap: 56px;            /* vertical gap between blocks for wires */
+      --s-cpu-w: 312px;              /* CPU block width */
+      --s-fpu-w: 360px;              /* FPU block width */
+      --s-mem-w: 544px;              /* Memory block width */
+      --s-disp-w: 544px;             /* Display block width */
+      --s-cpu-x: 48px;               /* CPU/Mem/Disp left offset */
+      --s-fpu-x: 432px;              /* FPU left offset */
+      --s-top-y: 32px;               /* top row Y offset */
+      --s-mem-cell-w: 28px;          /* memory cell width (hex) */
+      --s-mem-cell-h: 20px;          /* memory cell height */
+      --s-mem-cell-font: 10px;       /* memory cell font-size */
+      --s-mem-hdr-w: 28px;           /* memory col header width */
+      --s-mem-row-w: 24px;           /* memory row label width */
+      --s-disp-char-w: 20px;         /* display char width */
+      --s-disp-char-h: 24px;         /* display char height */
+      --s-ri-label-font: 8px;        /* .ri-l font-size */
+      --s-ri-label-pad: 3px 5px;     /* .ri-l padding */
+      --s-ri-val-font: 11px;         /* .ri-v font-size */
+      --s-ri-val-pad: 3px 6px;       /* .ri-v padding */
+      --s-fb-pad: 4px 6px;           /* .fb padding (matches .ri height) */
+      --s-fb-font: 9px;              /* .fb font-size */
+      --s-flag-min-w: 22px;          /* CPU flag badge min-width */
+      --s-tab-font: 9px;             /* .ft tab font-size */
+      --s-tab-pad: 2px 8px;          /* .ft tab padding */
+      --s-page-btn: 20px;            /* page nav button size */
+      --s-fp-cell-h: 22px;           /* FPU register map cell height */
+    }
+    :root.light {
+      --t-bg: #e8e6e3;
+      --t-surface: #dddad6;
+      --t-nav: #d4d1cc;
+      --t-border: #b5b2ad;
+      --t-dim: #8a8784;
+      --t-mid: #6b6966;
+      --t-text: #3a3836;
+      --t-bright: #1a1918;
+      --t-canvas: #e2e0dc;
+      --t-label-bg: rgba(0,0,0,0.04);
+      --t-instr-bg: rgba(0,0,0,0.04);
+      --t-marker-text: #ffffff;
+      --t-hover-bg: rgba(120,60,15,0.08);
+      /* accents — light: muted earth tones */
+      --a-orange: #8a5a30;
+      --a-yellow: #7a6210;
+      --a-green:  #3a7a50;
+      --a-red:    #9a4040;
+      --a-blue:   #3a6090;
+      --a-orange-a20: rgba(138,90,48,0.15);
+      --a-green-a40: rgba(58,122,80,0.30);
+    }
+
+    body {
+      font-family: 'JetBrains Mono', monospace;
+      background: var(--t-bg);
+      color: var(--t-text);
+    }
+
+    /* ── Wire animation — idle by default, active on .wire-active ── */
+    @keyframes dash-flow { from { stroke-dashoffset: 20; } to { stroke-dashoffset: 0; } }
+    .x6-edge path[stroke-dasharray] { opacity: 0.3; transition: opacity 0.2s; }
+    .x6-edge.wire-active path[stroke-dasharray] {
+      opacity: 1; animation: dash-flow 0.4s linear infinite;
+    }
+
+    /* ── Hardware block (positioned absolutely) ── */
+    .hw-block {
+      position: absolute;
+      background: var(--t-surface);
+      border: 1px solid var(--t-border);
+      border-radius: var(--s-block-radius);
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--t-text);
+      font-size: var(--s-block-font);
+      overflow: hidden;
+      z-index: 2;
+    }
+
+    /* ── Block header ── */
+    .hw-hdr {
+      font-size: var(--s-hdr-font); font-weight: 700; letter-spacing: 0.08em;
+      text-transform: uppercase; color: var(--t-dim);
+      padding: var(--s-hdr-pad);
+      display: flex; align-items: center; gap: 8px;
+      border-bottom: 1px solid var(--t-border);
+    }
+    .hw-hdr .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+
+    /* ── Block body ── */
+    .hw-body {
+      padding: var(--s-body-pad);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+    }
+
+    /* ── Connector dot (wire anchor) ── */
+    .hw-port {
+      position: absolute; width: var(--s-port); height: var(--s-port);
+      border-radius: 50%; z-index: 3;
+      border: 1.5px solid var(--t-surface);
+    }
+
+    /* ── Memory cell ── */
+    .mem-cell {
+      width: var(--s-mem-cell-w); height: var(--s-mem-cell-h);
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: var(--s-mem-cell-font); color: var(--t-dim);
+      border: 1px solid transparent;
+      transition: all 0.1s;
+    }
+    .mem-cell:hover { border-color: var(--a-orange); color: var(--t-bright); background: var(--t-hover-bg); }
+    .mem-cell.instr   { color: var(--t-mid); }
+    .mem-cell.instr-start { background: var(--t-instr-bg); color: var(--t-mid); }
+    .mem-cell.stack    { color: var(--a-yellow); }
+    .mem-cell.io       { color: var(--a-green); }
+    .mem-cell.marker-ip { background: var(--a-orange); color: var(--t-marker-text); font-weight: 700; }
+    .mem-cell.marker-sp { background: var(--a-yellow); color: var(--t-marker-text); font-weight: 700; }
+    .mem-cell.marker-a  { border-color: var(--a-green); }
+    .mem-cell.marker-b  { border-color: var(--a-blue); }
+    .mem-cell.marker-c  { border-color: var(--a-orange); }
+    .mem-cell.marker-d  { border-color: var(--a-red); }
+
+    /* ── Register rows — centered ── */
+    .rr { display: flex; gap: var(--s-reg-gap); margin-bottom: 4px; flex-wrap: wrap; justify-content: center; }
+    .ri {
+      display: flex; align-items: center; gap: 0;
+      border: 1px solid var(--t-border); border-radius: 2px; overflow: hidden;
+    }
+    .ri-l {
+      font-size: var(--s-ri-label-font); color: var(--t-dim); padding: var(--s-ri-label-pad);
+      background: var(--t-label-bg); border-right: 1px solid var(--t-border);
+    }
+    .ri-v { font-weight: 700; font-size: var(--s-ri-val-font); padding: var(--s-ri-val-pad); }
+
+    /* ── Flag badge ── */
+    .fb {
+      display: inline-flex; align-items: center; justify-content: center;
+      padding: var(--s-fb-pad); font-size: var(--s-fb-font); font-weight: 700;
+      border: 1px solid var(--t-border); border-radius: 2px;
+    }
+    .fb-on  { border-color: var(--a-green); color: var(--a-green); }
+    .fb-off { color: var(--t-dim); }
+
+    /* ── Console char — 24 in a single row ── */
+    .cc {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: var(--s-disp-char-w); height: var(--s-disp-char-h); font-size: var(--s-block-font);
+      border: 1px solid var(--t-border); color: var(--t-dim);
+      flex-shrink: 0;
+    }
+    .cc.on { color: var(--a-green); text-shadow: 0 0 4px var(--a-green-a40); }
+
+    /* ── Mem headers ── */
+    .mh { width: var(--s-mem-hdr-w); font-size: var(--s-fb-font); color: var(--t-dim); display: inline-flex; align-items: center; justify-content: center; height: var(--s-mem-cell-h); }
+    .mr { width: var(--s-mem-row-w); font-size: var(--s-fb-font); color: var(--t-dim); display: inline-flex; align-items: center; justify-content: flex-end; padding-right: 4px; height: var(--s-mem-cell-h); }
+
+    /* ── FPU register map ── */
+    .fp-map { width: 100%; border-collapse: collapse; }
+    .fp-map td {
+      border: 1px solid var(--t-border); text-align: center; font-size: var(--s-fb-font);
+      height: var(--s-fp-cell-h); padding: 0 2px; white-space: nowrap;
+    }
+    .fp-map .fp-lbl { color: var(--a-orange); font-size: 7px; font-weight: 700; display: block; line-height: 1; }
+    .fp-map .fp-val { color: var(--t-text); font-size: 9px; font-weight: 700; display: block; line-height: 1.2; }
+    .fp-map .fp-w { color: var(--t-dim); font-size: 7px; background: var(--t-label-bg); }
+
+    /* ── FPU tabs ── */
+    .ft { cursor: pointer; padding: var(--s-tab-pad); font-size: var(--s-tab-font); border: 1px solid var(--t-border); border-radius: 2px; color: var(--t-dim); background: none; }
+    .ft.act { border-color: var(--a-orange); color: var(--a-orange); }
+
+    /* ── Page buttons ── */
+    .pb {
+      width: var(--s-page-btn); height: var(--s-page-btn); font-size: var(--s-mem-cell-font);
+      display: inline-flex; align-items: center; justify-content: center;
+      border: 1px solid var(--t-border); background: none; color: var(--t-dim); cursor: pointer; border-radius: 2px;
+    }
+    .pb:hover { border-color: var(--a-orange); color: var(--a-orange); }
+
+    /* ── X6 wire canvas overlay ── */
+    #wire-canvas {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      z-index: 1; pointer-events: none;
+    }
+    #wire-canvas svg { pointer-events: none; }
+
+    /* ── Split drag handle ── */
+    #split-handle {
+      width: 5px; cursor: col-resize; flex-shrink: 0;
+      background: var(--t-border);
+      transition: background 0.15s;
+    }
+    #split-handle:hover, #split-handle.active {
+      background: var(--a-orange);
+    }
+
+    /* ── CodeMirror syntax highlighting via CSS vars ── */
+    .cm-hl-kw  { color: var(--a-orange) !important; font-weight: 700; }
+    .cm-hl-var { color: var(--a-yellow) !important; }
+    .cm-hl-num { color: var(--a-blue) !important; }
+    .cm-hl-str { color: var(--a-green) !important; }
+    .cm-hl-cmt { color: var(--t-dim) !important; font-style: italic; }
+    .cm-hl-brk { color: var(--t-mid) !important; }
+    .cm-hl-lbl { color: var(--t-text) !important; font-weight: 500; }
+    .cm-exec-line { background: rgba(204,85,0,0.15) !important; }
+    .cm-exec-gutter { width: 16px; }
+    .cm-exec-arrow { color: var(--a-orange); font-size: 10px; line-height: 1; }
+    :root.light .cm-exec-line { background: rgba(138,90,48,0.18) !important; }
+  </style>
+</head>
+
+<body class="h-screen flex flex-col overflow-hidden">
+
+  <!-- NAVBAR -->
+  <nav class="flex items-center gap-3 px-4 py-2 border-b flex-shrink-0" style="background:var(--t-nav);border-color:var(--t-border);">
+    <span class="text-xs font-bold tracking-widest uppercase" style="color:var(--t-dim);">sim8</span>
+    <span class="text-xs font-bold" style="color:var(--a-orange);">v2</span>
+
+    <div class="w-px h-4 mx-1" style="background:var(--t-border);"></div>
+
+    <div class="flex gap-1">
+      <button class="btn btn-xs btn-ghost rounded-sm gap-1" style="border:1px solid var(--t-border);color:var(--a-green);" id="btn-run" data-state="run">
+        <svg class="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 16 16"><polygon points="3,1 13,8 3,15"/></svg>
+        <span>run</span>
+      </button>
+      <button class="btn btn-xs btn-ghost rounded-sm gap-1" style="border:1px solid var(--t-border);color:var(--t-text);" id="btn-step">
+        <svg class="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 16 16"><path d="M3,1 L9,8 L3,15 M9,1 L15,8 L9,15"/></svg>
+        step
+      </button>
+      <button class="btn btn-xs btn-ghost rounded-sm" style="border:1px solid var(--t-border);color:var(--t-dim);" id="btn-reset">reset</button>
+    </div>
+
+    <div class="w-px h-4 mx-1" style="background:var(--t-border);"></div>
+
+    <select class="bg-transparent text-xs px-2 py-0.5 rounded-sm focus:outline-none" style="border:1px solid var(--t-border);color:var(--t-dim);" id="speed-select">
+      <option>1 hz</option><option selected>4 hz</option><option>8 hz</option><option>16 hz</option>
+    </select>
+
+    <div class="w-px h-4 mx-1" style="background:var(--t-border);"></div>
+
+    <span class="text-xs" style="color:var(--t-dim);" id="nav-cycles">0 cycles</span>
+
+    <div class="flex-1"></div>
+
+    <button class="btn btn-xs btn-ghost rounded-sm gap-1" style="border:1px solid var(--t-border);color:var(--t-dim);" id="btn-theme">
+      <svg id="theme-icon-light" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+      <svg id="theme-icon-dark" class="w-3 h-3 hidden" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/></svg>
+      <span id="theme-label">light</span>
+    </button>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="flex-1 flex overflow-hidden">
+
+    <!-- LEFT: Code Editor -->
+    <section class="flex flex-col overflow-hidden" id="left-panel" style="background:var(--t-nav);width:var(--s-split);flex-shrink:0;">
+      <div class="px-4 py-2 flex items-center justify-between flex-shrink-0" style="border-bottom:1px solid var(--t-border);">
+        <span class="text-[10px] font-bold uppercase tracking-widest" style="color:var(--t-dim);">code</span>
+        <a href="#" class="text-[10px] no-underline uppercase tracking-wider" style="color:var(--a-orange);">isa ref</a>
+      </div>
+
+      <div id="editor-container" class="flex-1 overflow-hidden" style="background:var(--t-canvas);"></div>
+
+      <div class="p-2 flex-shrink-0" style="border-top:1px solid var(--t-border);">
+        <button class="btn btn-sm btn-block border-none hover:brightness-110 rounded-sm font-bold uppercase text-xs tracking-wider" style="background:var(--a-orange);color:var(--t-bg);" id="btn-assemble">assemble</button>
+      </div>
+
+      <details style="border-top:1px solid var(--t-border);">
+        <summary class="px-4 py-2 text-[10px] font-bold uppercase tracking-widest cursor-pointer" style="color:var(--t-dim);">labels</summary>
+        <div class="px-4 py-3">
+          <table class="w-full text-xs" style="border-collapse:collapse;">
+            <thead><tr class="text-[9px] uppercase" style="border-bottom:1px solid var(--t-border);color:var(--t-dim);">
+              <th class="text-left py-1.5 font-normal">name</th><th class="text-left py-1.5 font-normal">addr</th>
+              <th class="text-left py-1.5 font-normal">val</th><th class="text-left py-1.5 font-normal">chr</th>
+            </tr></thead>
+            <tbody style="color:var(--t-text);">
+              <tr style="cursor:pointer;"><td class="py-1">start</td><td class="py-1" style="color:var(--a-orange);">00</td><td class="py-1">07</td><td class="py-1"></td></tr>
+              <tr style="cursor:pointer;"><td class="py-1">msg</td><td class="py-1" style="color:var(--a-orange);">E8</td><td class="py-1">48</td><td class="py-1" style="color:var(--a-green);">'H'</td></tr>
+              <tr style="cursor:pointer;"><td class="py-1">loop</td><td class="py-1" style="color:var(--a-orange);">04</td><td class="py-1">07</td><td class="py-1"></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </section>
+
+    <!-- DRAG HANDLE -->
+    <div id="split-handle"></div>
+
+    <!-- RIGHT: Hardware Diagram -->
+    <section id="diagram-section" class="relative overflow-auto flex-1" style="background:var(--t-canvas); display:flex; align-items:flex-start; justify-content:center; padding:16px 0;">
+      <div id="diagram-container" style="position:relative; width:var(--s-diagram-w); height:870px; flex-shrink:0; transform-origin:top center;">
+
+        <!-- X6 wire canvas (SVG only, behind blocks) -->
+        <div id="wire-canvas"></div>
+
+        <!-- CPU Block -->
+        <div class="hw-block" id="blk-cpu" style="left:var(--s-cpu-x);top:var(--s-top-y);width:var(--s-cpu-w);">
+          <div class="hw-hdr" style="justify-content:space-between;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span id="cpu-state-icon" style="display:inline-flex;align-items:center;color:var(--a-green);"></span>
+              cpu
+            </div>
+            <div style="display:flex;align-items:center;gap:4px;" id="cpu-fmt-tabs">
+              <span style="font-size:var(--s-tab-font);color:var(--t-dim);font-weight:400;text-transform:none;letter-spacing:0;">view:</span>
+              <button class="ft act" data-cfmt="hex">hex</button>
+              <button class="ft" data-cfmt="dec">dec</button>
+            </div>
+          </div>
+          <div class="hw-body" style="padding:var(--s-body-compact-pad);gap:0;align-items:flex-start;">
+            <!-- Row 1: GPR -->
+            <div style="width:100%;margin-bottom:var(--s-row-gap);">
+              <div style="font-size:var(--s-label-font);color:var(--t-dim);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;">registers</div>
+              <div class="rr" id="cpu-regs" style="margin-bottom:0;justify-content:flex-start;"></div>
+            </div>
+            <!-- Row 2: Pointers + Flags -->
+            <div style="width:100%;display:flex;justify-content:space-between;align-items:flex-end;">
+              <div>
+                <div style="font-size:var(--s-label-font);color:var(--t-dim);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;">pointers</div>
+                <div class="rr" id="cpu-ptrs" style="margin-bottom:0;justify-content:flex-start;"></div>
+              </div>
+              <div>
+                <div style="font-size:var(--s-label-font);color:var(--t-dim);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;">flags</div>
+                <div class="rr" id="cpu-flags" style="margin-bottom:0;"></div>
+              </div>
+            </div>
+          </div>
+          <!-- Ports -->
+          <div class="hw-port" id="port-cpu-bottom" style="bottom:-4px;left:50%;transform:translateX(-50%);background:var(--a-yellow);"></div>
+          <div class="hw-port" id="port-cpu-right" style="right:-4px;top:50%;transform:translateY(-50%);background:var(--a-orange);"></div>
+        </div>
+
+        <!-- FPU Block -->
+        <div class="hw-block" id="blk-fpu" style="left:var(--s-fpu-x);top:var(--s-top-y);width:var(--s-fpu-w);">
+          <div class="hw-hdr" style="justify-content:space-between;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div class="dot" style="background:var(--a-orange);"></div>
+              fpu
+            </div>
+            <div style="display:flex;align-items:center;gap:4px;" id="fpu-fmt-tabs">
+              <span style="font-size:var(--s-tab-font);color:var(--t-dim);font-weight:400;text-transform:none;letter-spacing:0;">view:</span>
+              <button class="ft act" data-ffmt="hex">hex</button>
+              <button class="ft" data-ffmt="dec">dec</button>
+              <button class="ft" data-ffmt="fp32">f32</button>
+              <button class="ft" data-ffmt="fp16">f16</button>
+              <button class="ft" data-ffmt="fp8">f8</button>
+            </div>
+          </div>
+          <div class="hw-body" style="padding:var(--s-body-compact-pad);gap:0;">
+            <!-- FA -->
+            <div style="width:100%;margin-bottom:6px;">
+              <div style="font-size:var(--s-label-font);color:var(--t-dim);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;">fa <span id="fpu-fa-info" style="color:var(--t-dim);text-transform:none;"></span></div>
+              <div id="fpu-fa-bytes" style="display:flex;justify-content:center;"></div>
+            </div>
+            <!-- FB -->
+            <div style="width:100%;margin-bottom:6px;">
+              <div style="font-size:var(--s-label-font);color:var(--t-dim);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;">fb <span id="fpu-fb-info" style="color:var(--t-dim);text-transform:none;"></span></div>
+              <div id="fpu-fb-bytes" style="display:flex;justify-content:center;"></div>
+            </div>
+            <!-- Control / Status -->
+            <div style="width:100%;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+              <div>
+                <div style="font-size:var(--s-label-font);color:var(--t-dim);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;">rounding</div>
+                <div class="rr" id="fpu-rm" style="margin-bottom:0;"></div>
+              </div>
+              <div>
+                <div style="font-size:var(--s-label-font);color:var(--t-dim);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;">status</div>
+                <div class="rr" id="fpu-flags" style="margin-bottom:0;"></div>
+              </div>
+            </div>
+          </div>
+          <!-- Port -->
+          <div class="hw-port" id="port-fpu-left" style="left:-4px;top:50%;transform:translateY(-50%);background:var(--a-orange);"></div>
+        </div>
+
+        <!-- Memory Block -->
+        <div class="hw-block" id="blk-mem" style="left:var(--s-cpu-x);top:288px;width:var(--s-mem-w);">
+          <div class="hw-hdr" style="justify-content:space-between;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div class="dot" style="background:var(--a-yellow);"></div>
+              memory
+              <span style="font-weight:400;color:var(--t-dim);">64k</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:20px;">
+              <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:9px;color:var(--t-dim);font-weight:400;text-transform:none;letter-spacing:0;">
+                <input type="checkbox" checked id="chk-instr" style="width:10px;height:10px;accent-color:var(--a-orange);">
+                instructions
+              </label>
+              <div style="display:flex;align-items:center;gap:4px;" id="fmt-tabs">
+                <span style="font-size:9px;color:var(--t-dim);font-weight:400;text-transform:none;letter-spacing:0;">view:</span>
+                <button class="ft act" data-fmt="hex">hex</button>
+                <button class="ft" data-fmt="dec">dec</button>
+              </div>
+              <div style="display:flex;align-items:center;gap:4px;">
+                <span style="font-size:9px;color:var(--t-dim);font-weight:400;text-transform:none;letter-spacing:0;">page:</span>
+                <button class="pb" id="page-prev">&lsaquo;</button>
+                <span style="font-size:9px;color:var(--t-text);min-width:40px;text-align:center;font-weight:400;text-transform:none;letter-spacing:0;" id="page-num">0/255</span>
+                <button class="pb" id="page-next">&rsaquo;</button>
+              </div>
+            </div>
+          </div>
+          <div class="hw-body" id="mem-grid"></div>
+          <!-- Ports -->
+          <div class="hw-port" id="port-mem-top" style="top:-4px;left:50%;transform:translateX(-50%);background:var(--a-yellow);"></div>
+          <div class="hw-port" id="port-mem-bottom" style="bottom:-4px;left:50%;transform:translateX(-50%);background:var(--a-green);"></div>
+        </div>
+
+        <!-- Display Block — wide enough for 24 chars in 1 row -->
+        <div class="hw-block" id="blk-disp" style="left:var(--s-cpu-x);top:752px;width:var(--s-disp-w);">
+          <div class="hw-hdr" style="justify-content:center;">
+            <div class="dot" style="background:var(--a-green);"></div>
+            display
+          </div>
+          <div class="hw-body" id="disp-chars"></div>
+          <!-- Port -->
+          <div class="hw-port" id="port-disp-top" style="top:-4px;left:50%;transform:translateX(-50%);background:var(--a-green);"></div>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    // ── Constants ──
+    const STACK_BASE = 0xE5;
+    const IO_BASE    = 0xE8;
+    const INIT_SP    = 0xE7;
+    const WIRE_FLASH_MS = 350;
+    const WIRE_DATA  = 0, WIRE_FP = 1, WIRE_IO = 2;
+
+    // ── Opcodes ──
+    const OP_HLT     = 0x00;
+    const OP_MOV_MEM = 0x06;
+    const OP_MOV_IMM = 0x07;
+    const OP_FMOV_FA = 0x20;
+    const OP_FMOV_FB = 0x21;
+    const OP_FMUL    = 0x22;
+
+    // ── Machine state ──
+    const M = {
+      r: { A:0, B:0, C:0, D:0 },
+      p: { IP:0, SP:INIT_SP, DP:0 },
+      f: { Z:false, C:false, F:false },
+      st: 'idle', steps:0, cycles:0,
+      fpu: { FA:0, FB:0, FPCR:0, FPSR:0 },
+    };
+
+    // ── Program ROM ──
+    const mem = new Uint8Array(256);
+    const prog = [
+      OP_MOV_IMM,0x48,                    // 00: MOV A, 'H'
+      OP_MOV_MEM,0xE8,                    // 02: MOV [E8], A
+      OP_MOV_IMM,0x65,                    // 04: MOV A, 'e'
+      OP_MOV_MEM,0xE9,                    // 06: MOV [E9], A
+      OP_MOV_IMM,0x6C,                    // 08: MOV A, 'l'
+      OP_MOV_MEM,0xEA,                    // 0A: MOV [EA], A
+      OP_MOV_MEM,0xEB,                    // 0C: MOV [EB], A
+      OP_MOV_IMM,0x6F,                    // 0E: MOV A, 'o'
+      OP_MOV_MEM,0xEC,                    // 10: MOV [EC], A
+      OP_FMOV_FA,0x40,0x49,0x0F,0xDB,    // 12: FMOV FA, 3.14159
+      OP_FMOV_FB,0x40,0x00,0x00,0x00,    // 17: FMOV FB, 2.0
+      OP_FMUL,                            // 1C: FMUL FA, FB
+      OP_HLT,                             // 1D: HLT
+    ];
+    prog.forEach((v,i) => mem[i] = v);
+    const PROG_END = prog.length;
+
+    // Instruction width table for instrStarts
+    const opSize = op =>
+      (op === OP_MOV_IMM || op === OP_MOV_MEM) ? 2 :
+      (op === OP_FMOV_FA || op === OP_FMOV_FB) ? 5 : 1;
+
+    const instrStarts = new Set();
+    for (let pc = 0; pc < prog.length; pc += opSize(prog[pc]))
+      instrStarts.add(pc);
+
+    // IP → editor line (0-based) mapping for execution highlight
+    // Maps mock program IPs to hello.asm source lines
+    const ipToLine = {
+      0x00: 20, 0x02: 21, // 'H': MOV A,[C] / MOV [D],A
+      0x04: 20, 0x06: 21, // 'e'
+      0x08: 20, 0x0A: 21, 0x0C: 21, // 'l','l'
+      0x0E: 20, 0x10: 21, // 'o'
+      0x12: 20, 0x17: 21, // FMOV FA/FB → reuse loop lines
+      0x1C: 21,           // FMUL
+      0x1D: 12,           // HLT
+    };
+
+    // Editor view ref (set after CodeMirror init)
+    let cmView = null;
+    let cmExecEffect = null;
+
+    let cmScrollIntoView = null; // set after CM init
+
+    function highlightExecLine(line) {
+      if (!cmView || !cmExecEffect) return;
+      cmView.dispatch({ effects: cmExecEffect.of(line) });
+      if (cmScrollIntoView && line >= 0 && line < cmView.state.doc.lines) {
+        const pos = cmView.state.doc.line(line + 1).from;
+        cmView.dispatch({ effects: cmScrollIntoView(pos, { y: 'center' }) });
+      }
+    }
+
+    // ── Render helpers ──
+    function renderAll() {
+      renderCPU(); renderFPU(); renderMemory(); renderDisplay();
+      const line = ipToLine[M.p.IP];
+      highlightExecLine(line !== undefined ? line : -1);
+    }
+
+    // ── Wire flash ──
+    function flashWire(idx) {
+      const edge = document.querySelectorAll('#wire-canvas .x6-edge')[idx];
+      if (!edge) return;
+      edge.classList.add('wire-active');
+      setTimeout(() => edge.classList.remove('wire-active'), WIRE_FLASH_MS);
+    }
+
+    // Read big-endian f32 from mem[offset..offset+3]
+    function readF32(offset) {
+      const buf = new ArrayBuffer(4);
+      new Uint8Array(buf).set(mem.subarray(offset, offset + 4));
+      return new DataView(buf).getFloat32(0, false);
+    }
+
+    // ── Opcode dispatch ──
+    const opcodes = {
+      [OP_MOV_IMM](ip) {
+        M.r.A = mem[ip + 1];
+        M.f.Z = M.r.A === 0;
+        M.p.IP = (ip + 2) & 0xFF;
+        flashWire(WIRE_DATA);
+      },
+      [OP_MOV_MEM](ip) {
+        const addr = mem[ip + 1];
+        mem[addr] = M.r.A;
+        M.p.IP = (ip + 2) & 0xFF;
+        flashWire(WIRE_DATA);
+        if (addr >= IO_BASE) flashWire(WIRE_IO);
+      },
+      [OP_FMOV_FA](ip) {
+        M.fpu.FA = readF32(ip + 1);
+        M.p.IP = (ip + 5) & 0xFF;
+        flashWire(WIRE_FP);
+      },
+      [OP_FMOV_FB](ip) {
+        M.fpu.FB = readF32(ip + 1);
+        M.p.IP = (ip + 5) & 0xFF;
+        flashWire(WIRE_FP);
+      },
+      [OP_FMUL](ip) {
+        M.fpu.FA *= M.fpu.FB;
+        M.p.IP = (ip + 1) & 0xFF;
+        flashWire(WIRE_FP);
+      },
+      [OP_HLT](ip) {
+        M.st = 'halted';
+      },
+    };
+
+    // ── CPU step ──
+    function stepCPU() {
+      if (M.st === 'halted' || M.st === 'fault') return false;
+      M.st = 'running';
+
+      const handler = opcodes[mem[M.p.IP]];
+      if (!handler) { M.st = 'fault'; M.f.F = true; return false; }
+      handler(M.p.IP);
+
+      M.steps++;
+      M.cycles += 2;
+      renderAll();
+      return M.st === 'running';
+    }
+
+    // ── Reset ──
+    function resetCPU() {
+      Object.assign(M.r, { A:0, B:0, C:0, D:0 });
+      Object.assign(M.p, { IP:0, SP:INIT_SP, DP:0 });
+      Object.assign(M.f, { Z:false, C:false, F:false });
+      Object.assign(M.fpu, { FA:0, FB:0, FPCR:0, FPSR:0 });
+      M.st = 'idle'; M.steps = 0; M.cycles = 0;
+      mem.fill(0);
+      prog.forEach((v,i) => mem[i] = v);
+      highlightExecLine(-1);
+      renderAll();
+    }
+
+    // ── Colors (read from CSS vars for theme switching) ──
+    function cv(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+    function getCLR() {
+      return { or:cv('--a-orange'), bl:cv('--a-blue'), gr:cv('--a-green'), rd:cv('--a-red'), yl:cv('--a-yellow'),
+               dim:cv('--t-dim'), mid:cv('--t-mid'), txt:cv('--t-text') };
+    }
+    let CLR = getCLR();
+    function getRC() { return { A:CLR.gr, B:CLR.bl, C:CLR.or, D:CLR.rd, IP:CLR.or, SP:CLR.yl, DP:CLR.mid }; }
+    let RC = getRC();
+
+    function hx(v,p=2) { return v.toString(16).toUpperCase().padStart(p,'0'); }
+
+    // ── CPU view format ──
+    let cpuFmt = 'hex';
+    function cpuFmtVal(v) { return cpuFmt === 'dec' ? v.toString().padStart(3,' ') : hx(v); }
+
+    // CPU state icons (SVG inline) — function so colors re-read after theme switch
+    function cpuState(key) {
+      const map = {
+        idle:    { icon: `<svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3" fill="currentColor"/></svg>`, color: CLR.mid, title: 'IDLE' },
+        running: { icon: `<svg width="8" height="8" viewBox="0 0 8 8"><polygon points="1.5,1 7,4 1.5,7" fill="currentColor"/></svg>`, color: CLR.gr, title: 'RUNNING' },
+        halted:  { icon: `<svg width="8" height="8" viewBox="0 0 8 8"><rect x="1.5" y="1.5" width="5" height="5" rx="0.5" fill="currentColor"/></svg>`, color: CLR.yl, title: 'HALTED' },
+        fault:   { icon: `<svg width="8" height="8" viewBox="0 0 8 8"><line x1="1.5" y1="1.5" x2="6.5" y2="6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="6.5" y1="1.5" x2="1.5" y2="6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`, color: CLR.rd, title: 'FAULT' },
+      };
+      return map[key] || map.idle;
+    }
+
+    // ── Render CPU ──
+    function renderCPU() {
+      const ri = (n,v) => `<div class="ri"><span class="ri-l" style="color:${RC[n]||CLR.dim}">${n}</span><span class="ri-v" style="color:${RC[n]||CLR.txt}">${cpuFmtVal(v)}</span></div>`;
+      const fl = (n,v) => `<span class="fb" style="border-color:${v?CLR.or:'var(--t-border)'};color:${v?CLR.or:CLR.dim};min-width:var(--s-flag-min-w);">${n}</span>`;
+
+      document.getElementById('cpu-regs').innerHTML = ri('A',M.r.A)+ri('B',M.r.B)+ri('C',M.r.C)+ri('D',M.r.D);
+      document.getElementById('cpu-ptrs').innerHTML = ri('IP',M.p.IP)+ri('SP',M.p.SP)+ri('DP',M.p.DP);
+      document.getElementById('cpu-flags').innerHTML = fl('Z',M.f.Z)+fl('C',M.f.C)+fl('F',M.f.F);
+
+      // Navbar cycles counter
+      document.getElementById('nav-cycles').textContent = `${M.cycles} cycles`;
+
+      // State
+      const sc = cpuState(M.st);
+
+      // Single active state icon
+      const si = document.getElementById('cpu-state-icon');
+      si.innerHTML = sc.icon;
+      si.style.color = sc.color;
+      si.title = sc.title;
+    }
+
+    // CPU format toggle
+    document.getElementById('blk-cpu').addEventListener('click', e => {
+      const t = e.target.closest('[data-cfmt]');
+      if (!t) return;
+      cpuFmt = t.dataset.cfmt;
+      document.querySelectorAll('#cpu-fmt-tabs .ft').forEach(b => b.classList.toggle('act', b.dataset.cfmt === cpuFmt));
+      renderCPU();
+    });
+
+    // ── Render FPU ──
+    let fpuFmt = 'hex';
+
+    function fpuRawBits(f) {
+      const buf = new ArrayBuffer(4);
+      new Float32Array(buf)[0] = f;
+      return new Uint32Array(buf)[0];
+    }
+
+    // Decode float16 from 16-bit uint
+    function f16Decode(bits) {
+      const sign = (bits >> 15) & 1;
+      const exp = (bits >> 10) & 0x1F;
+      const frac = bits & 0x3FF;
+      if (exp === 0x1F) return frac ? NaN : (sign ? -Infinity : Infinity);
+      if (exp === 0) return (sign ? -1 : 1) * (frac / 1024) * Math.pow(2, -14);
+      return (sign ? -1 : 1) * (1 + frac / 1024) * Math.pow(2, exp - 15);
+    }
+
+    // Decode OFP8 E4M3 from 8-bit uint
+    function fp8Decode(bits) {
+      const sign = (bits >> 7) & 1;
+      const exp = (bits >> 3) & 0xF;
+      const frac = bits & 0x7;
+      if (exp === 0xF && frac === 7) return NaN;
+      if (exp === 0) return (sign ? -1 : 1) * (frac / 8) * Math.pow(2, -6);
+      return (sign ? -1 : 1) * (1 + frac / 8) * Math.pow(2, exp - 7);
+    }
+
+    function renderFPUReg(bytesId, infoId, fVal, color) {
+      const raw = fpuRawBits(fVal);
+      const bytes = [(raw >>> 24) & 0xFF, (raw >>> 16) & 0xFF, (raw >>> 8) & 0xFF, raw & 0xFF]; // [31:24]..[7:0]
+
+      let cells = '';
+      let info = '';
+      const bc = (lbl, val, span) =>
+        `<div class="ri" style="flex:${span};">` +
+        `<span class="ri-l" style="color:${color};font-size:7px;">${lbl}</span>` +
+        `<span class="ri-v" style="color:${color};font-size:${val.length > 8 ? 9 : 11}px;">${val}</span></div>`;
+
+      if (fpuFmt === 'hex') {
+        cells = bytes.map((b,i) => bc(`[${3-i}]`, hx(b), 1)).join('');
+        info = `= ${hx(raw, 8)}`;
+      } else if (fpuFmt === 'dec') {
+        cells = bytes.map((b,i) => bc(`[${3-i}]`, b.toString(), 1)).join('');
+        info = `= ${raw}`;
+      } else if (fpuFmt === 'fp32') {
+        cells = bc('f32', fVal.toPrecision(6), 4);
+        info = `${hx(raw, 8)}`;
+      } else if (fpuFmt === 'fp16') {
+        const hi16 = (raw >>> 16) & 0xFFFF;
+        const lo16 = raw & 0xFFFF;
+        cells = bc('hi', f16Decode(hi16).toPrecision(4), 2) + bc('lo', f16Decode(lo16).toPrecision(4), 2);
+        info = `${hx(hi16,4)} ${hx(lo16,4)}`;
+      } else if (fpuFmt === 'fp8') {
+        cells = bytes.map((b,i) => bc(`[${3-i}]`, fp8Decode(b).toPrecision(3), 1)).join('');
+        info = bytes.map(b => hx(b)).join(' ');
+      }
+
+      document.getElementById(bytesId).innerHTML = cells;
+      document.getElementById(infoId).textContent = info;
+    }
+
+    function renderFPU() {
+      renderFPUReg('fpu-fa-bytes', 'fpu-fa-info', M.fpu.FA, CLR.gr);
+      renderFPUReg('fpu-fb-bytes', 'fpu-fb-info', M.fpu.FB, CLR.bl);
+
+      // Rounding mode
+      const rmNames = ['RNE','RTZ','RDN','RUP'];
+      const rmIdx = M.fpu.FPCR & 3;
+      document.getElementById('fpu-rm').innerHTML =
+        rmNames.map((n,i) => `<span class="fb ${i===rmIdx?'fb-on':'fb-off'}" style="font-size:8px;${i===rmIdx?'border-color:'+CLR.or+';color:'+CLR.or:''}">${n}</span>`).join('');
+
+      // Status flags
+      const fpsr = M.fpu.FPSR;
+      const fl = [{n:'NV',b:0},{n:'DZ',b:1},{n:'OF',b:2},{n:'UF',b:3},{n:'NX',b:4}];
+      document.getElementById('fpu-flags').innerHTML =
+        fl.map(f => `<span class="fb ${(fpsr>>f.b)&1?'fb-on':'fb-off'}" style="font-size:8px;">${f.n}</span>`).join('');
+    }
+
+    // FPU format toggle
+    document.getElementById('blk-fpu').addEventListener('click', e => {
+      const t = e.target.closest('[data-ffmt]');
+      if (!t) return;
+      fpuFmt = t.dataset.ffmt;
+      document.querySelectorAll('#fpu-fmt-tabs .ft').forEach(b => b.classList.toggle('act', b.dataset.ffmt === fpuFmt));
+      renderFPU();
+    });
+
+    // ── Render Memory ──
+    function fmtByte(v) {
+      return memFmt === 'dec' ? v.toString().padStart(3,' ') : hx(v);
+    }
+
+    function cellClass(addr, val, showInstr) {
+      let cl = 'mem-cell';
+      if (addr === M.p.IP) return cl + ' marker-ip';
+      if (addr === M.p.SP) return cl + ' marker-sp';
+      if (showInstr && instrStarts.has(addr)) cl += ' instr-start';
+      else if (showInstr && addr < PROG_END && val) cl += ' instr';
+      else if (addr >= STACK_BASE && addr < IO_BASE) cl += ' stack';
+      else if (addr >= IO_BASE) cl += ' io';
+      if (addr === M.r.A && addr !== M.p.IP) cl += ' marker-a';
+      return cl;
+    }
+
+    function renderMemory() {
+      const showInstr = document.getElementById('chk-instr').checked;
+      const baseCw = parseInt(cv('--s-mem-cell-w')) || 28;
+      const cellW = memFmt === 'dec' ? baseCw + 2 : baseCw;
+      const rowW = parseInt(cv('--s-mem-row-w')) || 24;
+      const cellFont = parseInt(cv('--s-mem-cell-font')) || 10;
+
+      const rows = [];
+      // Column headers
+      const hdrs = Array.from({length:16}, (_,c) => `<div class="mh" style="width:${cellW}px">${hx(c,1)}</div>`).join('');
+      rows.push(`<div style="display:flex;"><div class="mr" style="width:${rowW}px"></div>${hdrs}</div>`);
+
+      for (let r = 0; r < 16; r++) {
+        const cells = Array.from({length:16}, (_,c) => {
+          const addr = r * 16 + c, val = mem[addr];
+          const ch = (val >= 32 && val < 127) ? String.fromCharCode(val) : '';
+          return `<div class="${cellClass(addr, val, showInstr)}" style="width:${cellW}px;font-size:${cellFont}px" title="[${hx(addr)}]=${hx(val)} ${ch}">${fmtByte(val)}</div>`;
+        }).join('');
+        rows.push(`<div style="display:flex;"><div class="mr" style="width:${rowW}px">${fmtByte(r*16)}</div>${cells}</div>`);
+      }
+
+      const legend = [
+        [CLR.mid, 'data'], [CLR.yl, 'stack'], [CLR.gr, 'i/o'], [CLR.or, 'ip'], [CLR.yl, 'sp']
+      ].map(([c,l]) => `<span><b style="color:${c};">&#9632;</b> ${l}</span>`).join('');
+
+      document.getElementById('mem-grid').innerHTML =
+        `<div style="line-height:0;display:inline-block;">${rows.join('')}</div>` +
+        `<div style="margin-top:8px;display:flex;gap:12px;font-size:8px;color:${CLR.dim};justify-content:center;">${legend}</div>`;
+    }
+
+    // Instructions checkbox
+    document.getElementById('chk-instr').addEventListener('change', () => renderMemory());
+
+    // Format toggle
+    let memFmt = 'hex';
+    document.getElementById('blk-mem').addEventListener('click', e => {
+      const t = e.target.closest('[data-fmt]');
+      if (!t) return;
+      memFmt = t.dataset.fmt;
+      document.querySelectorAll('#fmt-tabs .ft').forEach(b => b.classList.toggle('act', b.dataset.fmt === memFmt));
+      renderMemory();
+    });
+
+    // Page navigation (1-based display: "1/256")
+    let pg = 0;
+    function updatePageLabel() { document.getElementById('page-num').textContent = `${pg}/255`; }
+    document.getElementById('page-prev').addEventListener('click', () => {
+      if (pg > 0) { pg--; updatePageLabel(); }
+    });
+    document.getElementById('page-next').addEventListener('click', () => {
+      if (pg < 255) { pg++; updatePageLabel(); }
+    });
+
+    // ── Render Display ──
+    function renderDisplay() {
+      let ch = '';
+      for (let i=0xE8; i<=0xFF; i++) {
+        const v = mem[i], c = (v>=32&&v<127)?String.fromCharCode(v):'';
+        ch += `<span class="cc ${c?'on':''}">${c||'&nbsp;'}</span>`;
+      }
+      document.getElementById('disp-chars').innerHTML =
+        `<div style="display:inline-flex;gap:1px;">${ch}</div>`;
+    }
+
+    // ── Initial render ──
+    renderAll();
+
+    // ── Adjust layout after render ──
+    requestAnimationFrame(() => {
+      const cpuEl = document.getElementById('blk-cpu');
+      const fpuEl = document.getElementById('blk-fpu');
+      const memEl = document.getElementById('blk-mem');
+      const dispEl = document.getElementById('blk-disp');
+      const wireGap = parseInt(cv('--s-wire-gap')) || 56;
+
+      // Vertically center-align CPU with FPU
+      const cpuH = cpuEl.offsetHeight;
+      const fpuH = fpuEl.offsetHeight;
+      const maxH = Math.max(cpuH, fpuH);
+      const topY = parseInt(cv('--s-top-y')) || 32;
+      if (cpuH < fpuH) cpuEl.style.top = (topY + Math.round((fpuH - cpuH) / 2)) + 'px';
+      if (fpuH < cpuH) fpuEl.style.top = (topY + Math.round((cpuH - fpuH) / 2)) + 'px';
+
+      // Position Memory below the tallest top block
+      const topBottom = topY + maxH;
+      memEl.style.top = (topBottom + wireGap) + 'px';
+
+      // Position Display below Memory
+      const memTop = parseInt(memEl.style.top);
+      const memH = memEl.offsetHeight;
+      dispEl.style.top = (memTop + memH + wireGap) + 'px';
+
+      // Adjust container height
+      const container = document.getElementById('diagram-container');
+      const dispTop = parseInt(dispEl.style.top);
+      container.style.height = (dispTop + dispEl.offsetHeight + 32) + 'px';
+
+      // ── X6 Wires ──
+      initWires();
+    });
+
+    function initWires() {
+      if (typeof X6 === 'undefined') {
+        document.getElementById('wire-canvas').innerHTML =
+          '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#cc4444;">X6 failed to load</div>';
+        return;
+      }
+
+      const container = document.getElementById('diagram-container');
+      const cRect = container.getBoundingClientRect();
+      const canvas = document.getElementById('wire-canvas');
+      const cW = container.offsetWidth;
+      const cH = container.offsetHeight;
+      canvas.style.width = cW + 'px';
+      canvas.style.height = cH + 'px';
+
+      const { Graph } = X6;
+      const graph = new Graph({
+        container: canvas,
+        width: cW,
+        height: cH,
+        background: false,
+        grid: false,
+        interacting: false,
+      });
+
+      function portPos(portId) {
+        const port = document.getElementById(portId);
+        const pr = port.getBoundingClientRect();
+        return {
+          x: Math.round(pr.left - cRect.left + pr.width / 2),
+          y: Math.round(pr.top - cRect.top + pr.height / 2),
+        };
+      }
+
+      function addWire(fromId, toId, color, label, opts = {}) {
+        const from = portPos(fromId);
+        const to = portPos(toId);
+        const bidir = opts.bidir !== false;
+        const labelOffset = opts.labelOffset || 0;
+        const lineAttrs = {
+          stroke: color, strokeWidth: 1.5, strokeDasharray: '6 3',
+          targetMarker: { name: 'block', width: 6, height: 4, fill: color, stroke: color },
+        };
+        if (bidir) {
+          lineAttrs.sourceMarker = { name: 'block', width: 6, height: 4, fill: color, stroke: color };
+        }
+
+        // Build clean orthogonal vertices
+        let verts = opts.vertices || [];
+        if (!opts.vertices) {
+          const dx = Math.abs(to.x - from.x);
+          const dy = Math.abs(to.y - from.y);
+          if (dx < 4) {
+            // Nearly vertical — straight line, no vertices needed
+          } else if (dy < 4) {
+            // Nearly horizontal — straight line
+          } else {
+            // L-shape: go vertical halfway, then horizontal
+            const midY = Math.round((from.y + to.y) / 2);
+            verts = [{ x: from.x, y: midY }, { x: to.x, y: midY }];
+          }
+        }
+
+        graph.addEdge({
+          source: { x: from.x, y: from.y },
+          target: { x: to.x, y: to.y },
+          vertices: verts,
+          router: { name: 'normal' },
+          connector: { name: 'rounded', args: { radius: 8 } },
+          attrs: { line: lineAttrs },
+          labels: [{ position: { distance: 0.5, offset: labelOffset }, attrs: {
+            text: { text: label, fontSize: 9, fontFamily: "'JetBrains Mono',monospace", fill: color, letterSpacing: '0.05em' },
+            rect: { fill: getComputedStyle(document.documentElement).getPropertyValue('--t-canvas').trim(), rx: 2, ry: 2 },
+          }}],
+        });
+      }
+
+      // Data bus: CPU bottom → Memory top (L-shape with midpoint)
+      addWire('port-cpu-bottom', 'port-mem-top', CLR.yl, 'data bus');
+
+      // FP bus: CPU right → FPU left (straight horizontal, label above)
+      addWire('port-cpu-right', 'port-fpu-left', CLR.or, 'fp bus', { labelOffset: -12 });
+
+      // I/O: Memory bottom → Display top (straight vertical)
+      addWire('port-mem-bottom', 'port-disp-top', CLR.gr, 'i/o', { bidir: false, labelOffset: 20 });
+    }
+  </script>
+
+  <!-- CodeMirror -->
+  <script type="module">
+    const code = `; Simple example
+; Writes Hello World to the output
+
+        JMP start
+hello:
+        DB "Hello World!"    ; Variable
+        DB 0                 ; String terminator
+
+start:
+        MOV C, hello         ; Point to var
+        MOV D, 232           ; Point to output
+        CALL print
+        HLT                  ; Stop execution
+
+print:                       ; print(C:*from, D:*to)
+        PUSH A
+        PUSH B
+        MOV B, 0
+
+.loop:
+        MOV A, [C]           ; Get char from var
+        MOV [D], A           ; Write to output
+        INC C
+        INC D
+        CMP B, [C]           ; Check if end
+        JNZ .loop            ; jump if not
+
+        POP B
+        POP A
+        RET
+`;
+    const ct = document.getElementById('editor-container');
+    try {
+      const { EditorView, basicSetup } = await import('https://esm.sh/codemirror');
+      const { EditorState, StateEffect, StateField } = await import('https://esm.sh/@codemirror/state');
+      const { Decoration, GutterMarker, gutter } = await import('https://esm.sh/@codemirror/view');
+      const { StreamLanguage, HighlightStyle, syntaxHighlighting } = await import('https://esm.sh/@codemirror/language');
+      const { tags } = await import('https://esm.sh/@lezer/highlight');
+
+      // Execution line highlight via StateEffect/StateField + gutter marker
+      const setExecLine = StateEffect.define();
+      cmExecEffect = setExecLine;
+      const execLineDeco = Decoration.line({ class: 'cm-exec-line' });
+
+      class ExecMarker extends GutterMarker {
+        toDOM() {
+          const el = document.createElement('span');
+          el.textContent = '\u25B6';
+          el.className = 'cm-exec-arrow';
+          return el;
+        }
+      }
+      const execMarker = new ExecMarker();
+
+      const execLineField = StateField.define({
+        create() { return { line: -1, decos: Decoration.none }; },
+        update(state, tr) {
+          for (const e of tr.effects) {
+            if (e.is(setExecLine)) {
+              if (e.value < 0) return { line: -1, decos: Decoration.none };
+              const doc = tr.state.doc;
+              if (e.value >= doc.lines) return { line: -1, decos: Decoration.none };
+              const lineStart = doc.line(e.value + 1).from;
+              return {
+                line: e.value,
+                decos: Decoration.set([execLineDeco.range(lineStart)]),
+              };
+            }
+          }
+          return state;
+        },
+      });
+      const execDecoExt = EditorView.decorations.from(execLineField, s => s.decos);
+      const execGutter = gutter({
+        class: 'cm-exec-gutter',
+        lineMarker(view, line) {
+          const state = view.state.field(execLineField);
+          if (state.line < 0) return null;
+          const execLine = view.state.doc.line(state.line + 1);
+          return line.from === execLine.from ? execMarker : null;
+        },
+      });
+      const asm = StreamLanguage.define({
+        token(s) {
+          if (s.match(/;.*/)) return 'comment';
+          if (s.match(/\b(MOV|ADD|SUB|INC|DEC|CMP|JMP|JZ|JNZ|JC|JNC|JA|JNA|JB|JNB|JEQ|JNE|JGT|JLT|JGE|JLE|PUSH|POP|CALL|RET|MUL|DIV|AND|OR|XOR|NOT|SHL|SHR|HLT|NOP|INT|IRET|STI|CLI|IN|OUT|DB|DW|FMOV|FADD|FSUB|FMUL|FDIV|FCMP|FABS|FNEG|FSQRT|FCVT|FITOF|FFTOI|FSTAT|FCFG|FSCFG|FCLR|FCLASS|FMADD)\b/i)) return 'keyword';
+          if (s.match(/\b(A|B|C|D|SP|IP|DP|FA|FB|FHA|FHB|FHC|FHD|FQA|FQB|FQC|FQD|FQE|FQF|FQG|FQH)\b/)) return 'variableName';
+          if (s.match(/\b0x[0-9A-Fa-f]+\b/)) return 'number';
+          if (s.match(/\b[0-9]+(\.[0-9]+)?\b/)) return 'number';
+          if (s.match(/'[^']*'/) || s.match(/"[^"]*"/)) return 'string';
+          if (s.match(/\[.*?\]/)) return 'bracket';
+          if (s.match(/\.?\w+:/)) return 'labelName';
+          s.next(); return null;
+        },
+      });
+      // Custom theme matching the hardware diagram palette
+      const sim8Theme = EditorView.theme({
+        '&': { height: '100%', background: 'var(--t-canvas)', color: 'var(--t-mid)' },
+        '.cm-scroller': { fontFamily: "'JetBrains Mono', monospace", fontSize: '12px', lineHeight: '1.6' },
+        '.cm-gutters': { background: 'var(--t-nav)', borderRight: '1px solid var(--t-border)', color: 'var(--t-dim)', minWidth: '36px' },
+        '.cm-gutter': { fontSize: '11px' },
+        '.cm-activeLine': { background: 'rgba(204,85,0,0.04)' },
+        '.cm-activeLineGutter': { background: 'rgba(204,85,0,0.06)', color: 'var(--t-dim)' },
+        '.cm-cursor': { borderLeftColor: 'var(--a-orange)', borderLeftWidth: '1.5px' },
+        '.cm-selectionBackground': { background: 'var(--a-orange-a20) !important' },
+        '.cm-matchingBracket': { background: 'var(--a-orange-a20)', color: 'var(--a-orange) !important' },
+        '.cm-searchMatch': { background: 'var(--a-orange-a20)' },
+        '.cm-foldPlaceholder': { background: 'var(--t-surface)', border: '1px solid var(--t-border)', color: 'var(--t-dim)' },
+        '.cm-tooltip': { background: 'var(--t-surface)', border: '1px solid var(--t-border)', color: 'var(--t-text)' },
+        '.cm-panels': { background: 'var(--t-nav)', borderTop: '1px solid var(--t-border)', color: 'var(--t-mid)' },
+      }, { dark: true });
+
+      // Syntax highlighting — use CSS vars via cssText so they respond to theme switch
+      const sim8Highlight = HighlightStyle.define([
+        { tag: tags.keyword,      class: 'cm-hl-kw' },
+        { tag: tags.variableName, class: 'cm-hl-var' },
+        { tag: tags.number,       class: 'cm-hl-num' },
+        { tag: tags.string,       class: 'cm-hl-str' },
+        { tag: tags.comment,      class: 'cm-hl-cmt' },
+        { tag: tags.bracket,      class: 'cm-hl-brk' },
+        { tag: tags.labelName,    class: 'cm-hl-lbl' },
+      ]);
+
+      cmScrollIntoView = EditorView.scrollIntoView;
+      cmView = new EditorView({
+        state: EditorState.create({ doc: code, extensions: [
+          basicSetup, asm,
+          sim8Theme,
+          syntaxHighlighting(sim8Highlight),
+          execLineField, execDecoExt, execGutter,
+        ]}),
+        parent: ct,
+      });
+    } catch(e) {
+      console.warn('CodeMirror failed to load, using textarea fallback:', e);
+      const ta = document.createElement('textarea');
+      ta.style.cssText = "width:100%;height:100%;background:var(--t-canvas);color:var(--t-text);padding:16px;resize:none;outline:none;border:none;font-family:'JetBrains Mono',monospace;font-size:13px;tab-size:4;";
+      ta.value = code; ta.spellcheck = false; ct.appendChild(ta);
+    }
+  </script>
+
+  <!-- Run/Stop toggle + Theme toggle -->
+  <script>
+    // ── Run/Stop/Step/Reset ──
+    const btnRun = document.getElementById('btn-run');
+    const btnStep = document.getElementById('btn-step');
+    const btnReset = document.getElementById('btn-reset');
+    const speedSel = document.getElementById('speed-select');
+    let runTimer = null;
+
+    function updateRunBtnColor() {
+      btnRun.style.color = btnRun.dataset.state === 'run' ? cv('--a-green') : cv('--a-red');
+    }
+
+    function getSpeedMs() {
+      const hz = parseInt(speedSel.value) || 4;
+      return Math.round(1000 / hz);
+    }
+
+    function setRunUI(running) {
+      btnRun.dataset.state = running ? 'stop' : 'run';
+      btnRun.querySelector('svg').innerHTML = running
+        ? '<rect x="3" y="3" width="10" height="10"/>'
+        : '<polygon points="3,1 13,8 3,15"/>';
+      btnRun.querySelector('span').textContent = running ? 'stop' : 'run';
+      updateRunBtnColor();
+    }
+
+    function startRun() {
+      if (runTimer) return;
+      if (M.st === 'halted' || M.st === 'fault') resetCPU();
+      setRunUI(true);
+      runTimer = setInterval(() => {
+        if (!stepCPU()) stopRun();
+      }, getSpeedMs());
+    }
+
+    function stopRun() {
+      if (runTimer) { clearInterval(runTimer); runTimer = null; }
+      if (M.st === 'running') M.st = 'idle';
+      setRunUI(false);
+      renderCPU();
+    }
+
+    btnRun.addEventListener('click', () => {
+      if (runTimer) stopRun(); else startRun();
+    });
+
+    btnStep.addEventListener('click', () => {
+      if (runTimer) stopRun();
+      if (M.st === 'halted' || M.st === 'fault') return;
+      stepCPU();
+      if (M.st === 'running') { M.st = 'idle'; renderCPU(); }
+    });
+
+    btnReset.addEventListener('click', () => {
+      if (runTimer) stopRun();
+      resetCPU();
+    });
+
+    speedSel.addEventListener('change', () => {
+      if (runTimer) { stopRun(); startRun(); }
+    });
+
+    // ── Wire theme sync ──
+    function updateWireColors() {
+      const canvasBg = cv('--t-canvas');
+      document.querySelectorAll('#wire-canvas rect[rx]').forEach(r => r.setAttribute('fill', canvasBg));
+      const colors = [cv('--a-yellow'), cv('--a-orange'), cv('--a-green')];
+      document.querySelectorAll('#wire-canvas .x6-edge').forEach((edge, i) => {
+        const c = colors[i];
+        if (!c) return;
+        const line = edge.querySelector('path[stroke-dasharray]');
+        if (line) line.setAttribute('stroke', c);
+        edge.querySelectorAll('marker path, marker polygon').forEach(m => {
+          m.setAttribute('fill', c); m.setAttribute('stroke', c);
+        });
+        const txt = edge.querySelector('text');
+        if (txt) txt.setAttribute('fill', c);
+      });
+    }
+
+    // ── Theme toggle ──
+    let isDark = true;
+    const btnTheme = document.getElementById('btn-theme');
+    btnTheme.addEventListener('click', () => {
+      isDark = !isDark;
+      document.documentElement.classList.toggle('light', !isDark);
+      document.getElementById('theme-icon-dark').classList.toggle('hidden', isDark);
+      document.getElementById('theme-icon-light').classList.toggle('hidden', !isDark);
+      document.getElementById('theme-label').textContent = isDark ? 'light' : 'dark';
+
+      // Refresh JS color palette from CSS vars
+      CLR = getCLR();
+      RC = getRC();
+
+      // Re-render all blocks with new colors
+      renderAll();
+
+      // Update run button color
+      updateRunBtnColor();
+
+      updateWireColors();
+    });
+
+    // ── Responsive diagram scaling ──
+    function fitDiagram() {
+      const section = document.getElementById('diagram-section');
+      const container = document.getElementById('diagram-container');
+      const natW = parseInt(cv('--s-diagram-w')) || 840;
+      const availW = section.clientWidth - 32;
+      const scale = Math.min(availW / natW, 1);
+      container.style.transform = `scale(${scale})`;
+      // Shrink visual footprint so scrollbar matches scaled size
+      const natH = parseInt(container.style.height) || container.offsetHeight;
+      container.style.marginBottom = (-(1 - scale) * natH) + 'px';
+    }
+
+    // ── Split handle drag ──
+    (() => {
+      const handle = document.getElementById('split-handle');
+      const left = document.getElementById('left-panel');
+      let dragging = false;
+
+      handle.addEventListener('mousedown', e => {
+        e.preventDefault();
+        dragging = true;
+        handle.classList.add('active');
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+      });
+
+      window.addEventListener('mousemove', e => {
+        if (!dragging) return;
+        const mainRect = left.parentElement.getBoundingClientRect();
+        const x = e.clientX - mainRect.left;
+        const pct = Math.min(Math.max(x / mainRect.width * 100, 15), 70);
+        left.style.width = pct + '%';
+        fitDiagram();
+      });
+
+      window.addEventListener('mouseup', () => {
+        if (!dragging) return;
+        dragging = false;
+        handle.classList.remove('active');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      });
+
+      window.addEventListener('resize', fitDiagram);
+      requestAnimationFrame(fitDiagram);
+    })();
+  </script>
+
+</body>
+</html>
