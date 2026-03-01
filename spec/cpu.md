@@ -6,7 +6,7 @@
 
 | State | Description |
 |-------|-------------|
-| IDLE | Initial state; IP=0, SP=0xE7, DP=0, F=0, Z=0, C=0, regs=0, FA=0, FPCR=0, FPSR=0 |
+| IDLE | Initial state; IP=0, SP=0xE7, DP=0, F=0, Z=0, C=0, regs=0, FA=0, FB=0, FPCR=0, FPSR=0 |
 | RUNNING | Executing instructions |
 | HALTED | Opcode 0 encountered |
 | FAULT | F=1, error code in A; see [Error Codes](errors.md) |

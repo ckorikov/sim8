@@ -94,9 +94,9 @@ IEEE 754 floating-point coprocessor extension. Key additions from v1:
 
 **FP Register Model:**
 
-- One 32-bit physical FP register with 15 named sub-register views (FA, FHA/FHB, FQA-FQD, FOA-FOH)
+- Two 32-bit physical FP registers with 30 named sub-register views (FA/FB, FHA-FHD, FQA-FQH, FOA-FOP)
 - x86-style aliasing: writing a wider view overwrites all contained narrower views
-- Encoding reserves up to 4 physical registers; v2 implements 1
+- Encoding reserves up to 4 physical registers; v2 implements 2 (phys 0=FA, phys 1=FB)
 
 **FP Formats (EXMY notation):**
 
@@ -111,7 +111,7 @@ IEEE 754 floating-point coprocessor extension. Key additions from v1:
 - FPSR (8-bit): 5 sticky IEEE 754 exception flags
 - FP arithmetic exceptions always set FPSR sticky flags and produce IEEE 754 default results (no traps)
 
-**FP Instructions (32 opcodes, 128-160 except 145):**
+**FP Instructions (35 opcodes, 128-162):**
 
 - Data movement: FMOV load/store (4 opcodes)
 - Arithmetic: FADD, FSUB, FMUL, FDIV — memory (8 opcodes) + reg-reg (4 opcodes)
@@ -125,7 +125,7 @@ IEEE 754 floating-point coprocessor extension. Key additions from v1:
 **FPM Byte Encoding:**
 
 - 1-byte modifier (3+3+2 bits: fmt+pos+phys) for all FP data instructions
-- 32 opcodes cover all formats and sub-registers (vs 80+ with per-format opcodes)
+- FPM-based encoding covers formats and sub-registers without per-format opcode explosion
 
 **Assembly Syntax:**
 
@@ -140,8 +140,8 @@ IEEE 754 floating-point coprocessor extension. Key additions from v1:
 
 **Cost model extension:**
 
-- FP unary: 3 ticks, FCLASS: 2 ticks, FSQRT: 4 ticks, FP move: 2 ticks
+- FP unary: 3 ticks, FCLASS: 2 ticks, FSQRT: 4 ticks, FP move (mem): 2 ticks, FP move (reg-reg/imm): 1 tick
 - FP binary + mem: 5 ticks, FP reg-reg: 3 ticks, FMADD: 6 ticks
 - FP conversion: 3 ticks, FP control: 1 tick
 
-**Totals:** 108 opcodes assigned (74 integer + 34 FP), 148 free, 7 error codes
+**Totals:** 109 opcodes assigned (74 integer + 35 FP), 147 free, 7 error codes

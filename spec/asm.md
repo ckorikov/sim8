@@ -35,7 +35,7 @@ The assembler produces:
 - Defined with trailing colon: `start:`, `.loop:`
 - Must start with a letter or dot, followed by word characters: `/^[.A-Za-z]\w*$/`
 - Case-insensitive duplicate detection (`Start` and `start` are the same label)
-- Forbidden names: `A`, `B`, `C`, `D`, `SP`, `DP`, `FA`, `FB`, `FC`, `FD`, `FHA`, `FHB`, `FHC`, `FHD`, `FHE`, `FHF`, `FHG`, `FHH`, `FQA`, `FQB`, `FQC`, `FQD`, `FQE`, `FQF`, `FQG`, `FQH`, `FQI`, `FQJ`, `FQK`, `FQL`, `FQM`, `FQN`, `FQO`, `FQP`, `FOA`, `FOB`, `FOC`, `FOD`, `FOE`, `FOF`, `FOG`, `FOH`, `FOI`, `FOJ`, `FOK`, `FOL`, `FOM`, `FON`, `FOO`, `FOP` (conflict with register names)
+- Forbidden names: `A`, `B`, `C`, `D`, `SP`, `DP`, `FA`, `FB`, `FC`, `FD`, `FHA`, `FHB`, `FHC`, `FHD`, `FHE`, `FHF`, `FHG`, `FHH`, `FQA`, `FQB`, `FQC`, `FQD`, `FQE`, `FQF`, `FQG`, `FQH`, `FQI`, `FQJ`, `FQK`, `FQL`, `FQM`, `FQN`, `FQO`, `FQP`, `FOA`, `FOB`, `FOC`, `FOD`, `FOE`, `FOF`, `FOG`, `FOH`, `FOI`, `FOJ`, `FOK`, `FOL`, `FOM`, `FON`, `FOO`, `FOP` (conflict with register names; `FC`/`FD` and phys 2-3 sub-register names are reserved for future expansion)
 - Forward references allowed — a label can be used before its definition
 - Labels can be used inside brackets: `[label]` is equivalent to `[addr]` where addr is the label's resolved address. Uses the same direct addressing opcode as `[number]`
 - Dot-prefix labels supported for local scope convention: `.loop`, `.end`
@@ -57,12 +57,16 @@ The assembler produces:
 
 ### FP Register Operands
 
-| Register | Width | Description |
-|----------|-------|-------------|
-| FA | 32-bit | Full FP register |
-| FHA, FHB | 16-bit | Half views (low, high) |
-| FQA, FQB, FQC, FQD | 8-bit | Quarter views |
-| FOA-FOH | 4-bit | Octet views |
+| Register | Width | Phys | Description |
+|----------|-------|------|-------------|
+| FA | 32-bit | 0 | Full FP register |
+| FB | 32-bit | 1 | Full FP register |
+| FHA, FHB | 16-bit | 0 | Half views (low, high) |
+| FHC, FHD | 16-bit | 1 | Half views (low, high) |
+| FQA, FQB, FQC, FQD | 8-bit | 0 | Quarter views |
+| FQE, FQF, FQG, FQH | 8-bit | 1 | Quarter views |
+| FOA-FOH | 4-bit | 0 | Octet views (reserved in v2 ops) |
+| FOI-FOP | 4-bit | 1 | Octet views (reserved in v2 ops) |
 
 FP registers are used with FP instructions only (opcodes 128-162). FP register names are case-insensitive: `FA` = `fa` = `Fa`.
 
@@ -268,7 +272,7 @@ All errors include the source line number (1-based: first line is 1).
 | Error | Trigger |
 |-------|---------|
 | `Duplicate label: X` | Label defined more than once (case-insensitive) |
-| `Label contains keyword: X` | Label name is a register name: A, B, C, D, SP, DP, or any FP register (FA, FHA, FHB, FQA-FQD, FOA-FOH) |
+| `Label contains keyword: X` | Label name is a register name or reserved FP name (see forbidden names in §5.3) |
 | `Undefined label: X` | Label used but never defined (detected in pass 2) |
 | `Invalid number format` | Number doesn't match any supported format |
 | `X must have a value between 0-255` | Number out of byte range |

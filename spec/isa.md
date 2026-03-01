@@ -9,7 +9,7 @@
 | Word Size | 8 bits |
 | Address Space | 64 KB (256 pages × 256 bytes) |
 | General Purpose Registers | 4 (A, B, C, D) |
-| FP Registers | 4 physical × 32-bit (44 named sub-register views); see [FPU](fp.md) |
+| FP Registers | 2 physical × 32-bit (30 named sub-register views; encoding supports up to 4 physical); see [FPU](fp.md) |
 | Instruction Encoding | 1-4 bytes per instruction |
 
 ## 1.2 Registers
@@ -63,14 +63,14 @@
 
 ### Floating-Point Registers
 
-The FPU provides four 32-bit physical registers (FA phys=0, FB phys=1, FC phys=2, FD phys=3), each with named sub-register views at multiple granularity levels:
+The FPU provides two 32-bit physical registers (FA phys=0, FB phys=1), each with named sub-register views at multiple granularity levels:
 
 | Register(s) | Width | Count | Description |
 |-------------|-------|-------|-------------|
-| FA, FB, FC, FD | 32-bit | 4 | Full registers (phys=0–3) |
-| FHA-FHH | 16-bit | 8 | Half views (A/B on phys=0, C/D on phys=1, E/F on phys=2, G/H on phys=3) |
-| FQA-FQP | 8-bit | 16 | Quarter views (A-D on phys=0, E-H on phys=1, I-L on phys=2, M-P on phys=3) |
-| FOA-FOP | 4-bit | 16 | Octet views (A-H on phys=0, I-P on phys=1; phys=2/3 have no 4-bit views) |
+| FA, FB | 32-bit | 2 | Full registers (phys=0–1) |
+| FHA-FHD | 16-bit | 4 | Half views (A/B on phys=0, C/D on phys=1) |
+| FQA-FQH | 8-bit | 8 | Quarter views (A-D on phys=0, E-H on phys=1) |
+| FOA-FOP | 4-bit | 16 | Octet views (A-H on phys=0, I-P on phys=1; reserved in v2 ops) |
 
 **FP Control Registers:**
 
@@ -496,9 +496,9 @@ The tables below cover integer instructions (opcodes 0-97). For FP instruction e
 | `DB "Hi"` | `72, 105` | raw bytes: 'H'=72, 'i'=105 |
 | `DB 10, 20, 30` | `10, 20, 30` | comma-separated list of raw bytes |
 
-## 1.9 Floating-Point Instructions (Opcodes 128-160)
+## 1.9 Floating-Point Instructions (Opcodes 128-162)
 
-The FPU adds 32 opcodes (128-160, except 145) for IEEE 754 floating-point operations. All FP data instructions use a format suffix in assembly and an FPM byte in encoding. For full instruction semantics, encoding details, and the FP exception model, see [FPU](fp.md).
+The FPU adds 35 opcodes (128-162) for IEEE 754 floating-point operations. All FP data instructions use a format suffix in assembly and an FPM byte in encoding. For full instruction semantics, encoding details, and the FP exception model, see [FPU](fp.md).
 
 ### FP Instruction Summary
 
@@ -513,7 +513,7 @@ The FPU adds 32 opcodes (128-160, except 145) for IEEE 754 floating-point operat
 | 142 | FABS | Unary | Absolute value (clear sign bit) |
 | 143 | FNEG | Unary | Negate (toggle sign bit) |
 | 144 | FSQRT | Unary | Square root |
-| 145 | *(reserved)* | — | — |
+| 145 | FMOV | Reg-reg copy | Raw bit copy between FP sub-registers |
 | 146 | FCVT | Conversion | Convert between FP formats |
 | 147 | FITOF | Conversion | uint8 (GPR) → FP |
 | 148 | FFTOI | Conversion | FP → uint8 (GPR), saturating |
