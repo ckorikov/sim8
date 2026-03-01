@@ -248,6 +248,9 @@ class TestDbFloatLiterals:
         """DB nan_h -> float16 NaN, 2 bytes."""
         code = asm_bytes("DB nan_h")
         assert len(code) == 2
+        raw = int.from_bytes(bytes(code), "little")
+        assert (raw & 0x7C00) == 0x7C00  # exponent all ones
+        assert (raw & 0x03FF) != 0       # non-zero payload
 
     def test_db_float_array(self) -> None:
         """DB 1.0, 2.0 -> 8 bytes (two float32)."""
@@ -424,7 +427,7 @@ class TestFmovImmEncoding:
     def test_fmov_imm_no_suffix_h(self) -> None:
         """No suffix on literal, format from instruction suffix."""
         code = asm_bytes("FMOV.H FHA, 1.5\nHLT")
-        assert code[0] == 162
+        assert code == [162, 0x01, 0x00, 0x3E, 0]
 
     def test_fmov_imm_suffix_mismatch_error(self) -> None:
         """Literal suffix mismatches instruction suffix."""
@@ -439,17 +442,17 @@ class TestFmovImmEncoding:
     def test_fmov_imm_special_inf(self) -> None:
         """FMOV.H FHA, inf."""
         code = asm_bytes("FMOV.H FHA, inf\nHLT")
-        assert code[0] == 162
+        assert code == [162, 0x01, 0x00, 0x7C, 0]
 
     def test_fmov_imm_special_nan(self) -> None:
         """FMOV.O2 FQA, nan."""
         code = asm_bytes("FMOV.O2 FQA, nan\nHLT")
-        assert code[0] == 161
+        assert code == [161, 0x04, 0x7D, 0]
 
     def test_fmov_imm_negative(self) -> None:
         """FMOV.H FHA, -1.5."""
         code = asm_bytes("FMOV.H FHA, -1.5\nHLT")
-        assert code[0] == 162
+        assert code == [162, 0x01, 0x00, 0xBE, 0]
         # float16 -1.5: sign=1 → high byte has bit 7 set
         assert code[3] & 0x80 == 0x80
 
@@ -516,29 +519,32 @@ class TestFpParserEdges:
     """FP-specific parser coverage tests."""
 
     def test_fp_suffix_invalid(self) -> None:
-        with pytest.raises(AssemblerError):
-            assemble("FMOV.H FHA, 1.0_zz\nHLT", arch=2)
+        e = asm_error("FMOV.H FHA, 1.0_zz\nHLT")
+        assert "invalid" in e.message.lower() or "suffix" in e.message.lower()
 
     def test_fp_control_with_suffix_error(self) -> None:
-        with pytest.raises(AssemblerError):
-            assemble("FSTAT.H A\nHLT", arch=2)
+        e = asm_error("FSTAT.H A\nHLT")
+        assert (
+            "suffix" in e.message.lower()
+            or "invalid" in e.message.lower()
+            or "syntax" in e.message.lower()
+        )
 
     def test_fcvt_missing_suffix(self) -> None:
-        with pytest.raises(AssemblerError):
-            assemble("FCVT.H FHA, FHB\nHLT", arch=2)
+        e = asm_error("FCVT.H FHA, FHB\nHLT")
+        assert "suffix" in e.message.lower()
 
     def test_fp_mnemonic_missing_suffix(self) -> None:
-        with pytest.raises(AssemblerError):
-            assemble("FADD FHA, [100]\nHLT", arch=2)
+        e = asm_error("FADD FHA, [100]\nHLT")
+        assert "suffix" in e.message.lower()
 
     def test_db_mixed_float_int_error(self) -> None:
-        with pytest.raises(AssemblerError):
-            assemble("DB 1.0_h, 42\nHLT", arch=2)
+        e = asm_error("DB 1.0_h, 42\nHLT")
+        assert "mix" in e.message.lower()
 
     def test_parse_float_special_neg_nan(self) -> None:
         result = assemble("DB -nan_h\nHLT", arch=2)
-        assert len(result.code) == 3
-        assert result.code[2] == 0
+        assert result.code == [0x00, 0xFE, 0x00]
 
     def test_parse_float_with_exponent(self) -> None:
         result = assemble("DB 1.5e2_h\nHLT", arch=2)
@@ -560,20 +566,28 @@ class TestFpCodegenEdges:
         assert result.code == [146, 0x01, 0x00, 0]
 
     def test_fcvt_non_fpreg_error(self) -> None:
-        with pytest.raises(AssemblerError):
-            assemble("FCVT.H.F A, B\nHLT", arch=2)
+        e = asm_error("FCVT.H.F A, B\nHLT", arch=2)
+        assert (
+            "syntax" in e.message.lower()
+            or "invalid" in e.message.lower()
+            or "does not support" in e.message.lower()
+        )
 
     def test_fmov_imm_4bit_error(self) -> None:
-        with pytest.raises(AssemblerError):
-            assemble("FMOV.N1 FOA, 1.0\nHLT", arch=2)
+        e = asm_error("FMOV.N1 FOA, 1.0\nHLT", arch=2)
+        assert (
+            "not supported" in e.message.lower()
+            or "invalid" in e.message.lower()
+            or "syntax" in e.message.lower()
+        )
 
     def test_fmov_imm_suffix_mismatch(self) -> None:
-        with pytest.raises(AssemblerError):
-            assemble("FMOV.H FHA, 1.0_bf\nHLT", arch=2)
+        e = asm_error("FMOV.H FHA, 1.0_bf\nHLT", arch=2)
+        assert "mismatch" in e.message.lower()
 
     def test_undefined_label(self) -> None:
-        with pytest.raises(AssemblerError, match="Undefined label"):
-            assemble("JMP nowhere\nHLT")
+        e = asm_error("JMP nowhere\nHLT")
+        assert "undefined label" in e.message.lower()
 
 
 # ── ISA edge cases ────────────────────────────────────────────────
@@ -632,7 +646,7 @@ class TestFcvtSameFormatBan:
     def test_fcvt_different_ok(self) -> None:
         """Cross-format FCVT still works."""
         code = asm_bytes("FCVT.H.F FHA, FA\nHLT")
-        assert code[0] == 146
+        assert code == [146, 0x01, 0x00, 0]
 
 
 class TestIsaEdges:
@@ -646,35 +660,39 @@ class TestIsaEdges:
 
     def test_db_unsupported_operand(self) -> None:
         """DB with register operand → error (line 152-153)."""
-        with pytest.raises(AssemblerError):
-            assemble("DB A\nHLT", arch=2)
+        e = asm_error("DB A\nHLT", arch=2)
+        assert "does not support" in e.message.lower()
 
     def test_fcvt_missing_src_suffix(self) -> None:
         """FCVT.H with only one suffix → error (line 211)."""
-        with pytest.raises(AssemblerError, match="suffix required"):
-            assemble("FCVT.H FHA, FA\nHLT", arch=2)
+        e = asm_error("FCVT.H FHA, FA\nHLT", arch=2)
+        assert "suffix required" in e.message.lower()
 
     def test_fp_insn_no_suffix(self) -> None:
         """FADD without format suffix → error (line 233)."""
-        with pytest.raises(AssemblerError, match="suffix required"):
-            assemble("FADD FA, [100]\nHLT", arch=2)
+        e = asm_error("FADD FA, [100]\nHLT", arch=2)
+        assert "suffix required" in e.message.lower()
 
     def test_fmov_imm_non_fpreg_dst(self) -> None:
         """FMOV.H with integer register dst → error (line 266)."""
-        with pytest.raises(AssemblerError):
-            assemble("FMOV.H A, 1.0\nHLT", arch=2)
+        e = asm_error("FMOV.H A, 1.0\nHLT", arch=2)
+        assert (
+            "syntax" in e.message.lower()
+            or "invalid" in e.message.lower()
+            or "does not support" in e.message.lower()
+        )
 
     def test_fmov_imm_no_suffix(self) -> None:
         """FMOV FHA, 1.0 without suffix → error (line 270)."""
-        with pytest.raises(AssemblerError, match="suffix required"):
-            assemble("FMOV FHA, 1.0\nHLT", arch=2)
+        e = asm_error("FMOV FHA, 1.0\nHLT", arch=2)
+        assert "suffix required" in e.message.lower()
 
     def test_label_address_over_255(self) -> None:
         """Label beyond 256 bytes → error (line 437)."""
         padding = "DB " + ", ".join(["0"] * 256)
         source = f"{padding}\ntarget:\nHLT\nJMP target\n"
-        with pytest.raises(AssemblerError, match="must have a value"):
-            assemble(source, arch=2)
+        e = asm_error(source, arch=2)
+        assert "must have a value" in e.message.lower()
 
     def test_operand_matches_fp_imm(self) -> None:
         """FP_IMM8/FP_IMM16 matching (line 67-68)."""
@@ -687,33 +705,36 @@ class TestIsaEdges:
 
     def test_db_empty_string(self) -> None:
         """DB with empty string → error (line 137)."""
-        with pytest.raises(AssemblerError, match="must not be empty"):
-            assemble('DB ""\nHLT', arch=2)
+        e = asm_error('DB ""\nHLT', arch=2)
+        assert "must not be empty" in e.message.lower()
 
     def test_db_float_then_float(self) -> None:
         """DB with multiple floats exercises OpFloat loop-back branch."""
         from pysim8.asm.codegen import _encode_db
         from pysim8.asm.parser import OpFloat
         result = _encode_db([OpFloat(1.0, 0), OpFloat(2.0, 0)], 1)
-        assert len(result) == 8  # two float32 = 8 bytes
+        assert result == list(struct.pack("<f", 1.0)) + list(struct.pack("<f", 2.0))
 
     def test_db_unsupported_operand_type(self) -> None:
         """DB with unexpected operand type raises AssemblerError."""
         from pysim8.asm.codegen import _encode_db_operand, AssemblerError
         from pysim8.asm.parser import OpReg
         result: list[int] = []
-        with pytest.raises(AssemblerError, match="does not support"):
+        with pytest.raises(AssemblerError) as exc_info:
             _encode_db_operand(OpReg(0), 1, result)
+        assert "does not support" in str(exc_info.value).lower()
 
     def test_encode_regaddr_invalid_reg(self) -> None:
         from pysim8.isa import encode_regaddr
-        with pytest.raises(ValueError, match="Invalid register code"):
+        with pytest.raises(ValueError) as exc_info:
             encode_regaddr(6, 0)
+        assert "invalid register code" in str(exc_info.value).lower()
 
     def test_encode_regaddr_offset_out_of_range(self) -> None:
         from pysim8.isa import encode_regaddr
-        with pytest.raises(ValueError, match="Offset out of range"):
+        with pytest.raises(ValueError) as exc_info:
             encode_regaddr(0, 16)
+        assert "offset out of range" in str(exc_info.value).lower()
 
 
 # ── Parser coverage tests ──────────────────────────────────────────
@@ -745,7 +766,7 @@ class TestParserCoverage:
     def test_fmov_imm_negative_nan(self) -> None:
         """FMOV.H FHA, -nan exercises -val path (line 323)."""
         code = asm_bytes("FMOV.H FHA, -nan\nHLT")
-        assert code[0] == 162  # FMOV_FP_IMM16 opcode
+        assert code == [162, 0x01, 0x00, 0xFE, 0]
 
     def test_db_empty_part_between_commas(self) -> None:
         """DB 1,,2 with empty part between commas (line 460)."""
@@ -771,34 +792,59 @@ class TestFpCrazyInput:
     """Adversarial FP assembler inputs."""
 
     def test_fmov_no_operands(self) -> None:
-        with pytest.raises(AssemblerError):
-            assemble("FMOV.F\nHLT", arch=2)
+        e = asm_error("FMOV.F\nHLT")
+        assert (
+            "syntax" in e.message.lower()
+            or "invalid" in e.message.lower()
+            or "does not support" in e.message.lower()
+        )
 
     def test_fmov_one_operand(self) -> None:
-        with pytest.raises(AssemblerError):
-            assemble("FMOV.F FA\nHLT", arch=2)
+        e = asm_error("FMOV.F FA\nHLT")
+        assert (
+            "syntax" in e.message.lower()
+            or "invalid" in e.message.lower()
+            or "does not support" in e.message.lower()
+        )
 
     def test_fmov_three_operands(self) -> None:
-        with pytest.raises(AssemblerError):
-            assemble("FMOV.F FA, [10], [20]\nHLT", arch=2)
+        e = asm_error("FMOV.F FA, [10], [20]\nHLT")
+        assert (
+            "syntax" in e.message.lower()
+            or "invalid" in e.message.lower()
+            or "too many" in e.message.lower()
+        )
 
     def test_fadd_no_operands(self) -> None:
-        with pytest.raises(AssemblerError):
-            assemble("FADD.F\nHLT", arch=2)
+        e = asm_error("FADD.F\nHLT", arch=2)
+        assert (
+            "syntax" in e.message.lower()
+            or "invalid" in e.message.lower()
+            or "does not support" in e.message.lower()
+        )
 
     def test_fabs_extra_operand(self) -> None:
-        with pytest.raises(AssemblerError):
-            assemble("FABS.F FA, FB\nHLT", arch=2)
+        e = asm_error("FABS.F FA, FB\nHLT", arch=2)
+        assert (
+            "syntax" in e.message.lower()
+            or "invalid" in e.message.lower()
+            or "does not support" in e.message.lower()
+            or "too many" in e.message.lower()
+        )
 
     def test_fcvt_three_suffixes(self) -> None:
         """FCVT with 3+ suffixes is a syntax error."""
-        with pytest.raises(AssemblerError):
-            assemble("FCVT.H.F.BF FHA, FA\nHLT", arch=2)
+        e = asm_error("FCVT.H.F.BF FHA, FA\nHLT", arch=2)
+        assert (
+            "syntax" in e.message.lower()
+            or "invalid" in e.message.lower()
+            or "does not support" in e.message.lower()
+        )
 
     def test_fmov_imm_float32_reject(self) -> None:
         """FMOV.F FA, 1.5 — float32 imm not supported."""
-        with pytest.raises(AssemblerError, match="not supported"):
-            assemble("FMOV.F FA, 1.5\nHLT", arch=2)
+        e = asm_error("FMOV.F FA, 1.5\nHLT", arch=2)
+        assert "not supported" in e.message.lower()
 
     def test_db_float_int_then_float_error(self) -> None:
         """DB 42, 1.0 — int before float → error (line 472)."""
@@ -808,28 +854,28 @@ class TestFpCrazyInput:
     def test_fcvt_same_format_all(self) -> None:
         """All FCVT same-format combinations rejected."""
         for sfx in ("F", "H", "BF", "O3", "O2"):
-            with pytest.raises(AssemblerError, match="identical"):
-                assemble(f"FCVT.{sfx}.{sfx} FA, FA\nHLT", arch=2)
+            e = asm_error(f"FCVT.{sfx}.{sfx} FA, FA\nHLT", arch=2)
+            assert "identical" in e.message.lower()
 
     def test_fmov_regaddr_load(self) -> None:
         """FMOV.F FA, [B] — register indirect load."""
         code = asm_bytes("FMOV.F FA, [B]\nHLT")
-        assert code[0] == 129  # FMOV_FP_REGADDR opcode
+        assert code == [129, 0x00, 0x01, 0]
 
     def test_fmov_regaddr_store(self) -> None:
         """FMOV.F [B], FA — register indirect store."""
         code = asm_bytes("FMOV.F [B], FA\nHLT")
-        assert code[0] == 131  # FMOV_REGADDR_FP opcode
+        assert code == [131, 0x00, 0x01, 0]
 
     def test_fp_with_label_in_regaddr(self) -> None:
         """FADD.F FA, [B+3] — FP with register indirect + offset."""
         code = asm_bytes("FADD.F FA, [B+3]\nHLT")
-        assert code[0] in (132, 133)  # FADD_ADDR or FADD_REGADDR
+        assert code == [133, 0x00, 0x19, 0]
 
     def test_fmadd_regaddr_encoding(self) -> None:
         """FMADD.F FA, FA, [B] — register indirect in FMADD."""
         code = asm_bytes("FMADD.F FA, FA, [B]\nHLT")
-        assert code[0] == 160  # FMADD_REGADDR
+        assert code == [160, 0x00, 0x00, 0x01, 0]
 
 
 # ── FP assembler property-based tests ──────────────────────────────
@@ -858,7 +904,8 @@ class TestPropFpAssembly:
         reg = {"F": "FA", "H": "FHA", "BF": "FHB", "O3": "FQA",
                "O2": "FQB", "E8M23": "FA", "E5M10": "FHA"}[sfx]
         code = asm_bytes(f"FABS.{sfx} {reg}\nHLT")
-        assert len(code) == 3
+        assert code[0] == 142
+        assert code[2] == 0
 
 
 class TestCodegenEdgeCoverage:
@@ -875,12 +922,15 @@ class TestCodegenEdgeCoverage:
         """_encode_operand raises on unexpected operand type."""
         from pysim8.asm.codegen import _encode_operand
         from pysim8.asm.parser import OpString
-        with pytest.raises(AssertionError, match="unexpected operand"):
+        with pytest.raises(AssertionError) as exc_info:
             _encode_operand(OpString("hi"))
+        assert "unexpected operand" in str(exc_info.value).lower()
 
     def test_find_insn_invalid_fp_mnemonic(self) -> None:
         """_find_insn with FP table raises on invalid mnemonic."""
         from pysim8.asm.codegen import _find_insn, AssemblerError
         from pysim8.isa import BY_MNEMONIC_FP
-        with pytest.raises(AssemblerError, match="Invalid instruction.*BOGUS"):
+        with pytest.raises(AssemblerError) as exc_info:
             _find_insn("BOGUS", [], 1, table=BY_MNEMONIC_FP)
+        msg = str(exc_info.value).lower()
+        assert "invalid instruction" in msg and "bogus" in msg
