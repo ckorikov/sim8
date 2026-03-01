@@ -537,11 +537,12 @@ class TestFpParserEdges:
 
     def test_parse_float_special_neg_nan(self) -> None:
         result = assemble("DB -nan_h\nHLT", arch=2)
-        assert len(result.code) > 0
+        assert len(result.code) == 3
+        assert result.code[2] == 0
 
     def test_parse_float_with_exponent(self) -> None:
         result = assemble("DB 1.5e2_h\nHLT", arch=2)
-        assert len(result.code) > 0
+        assert result.code == list(struct.pack("<e", 150.0)) + [0]
 
 
 # ── FP codegen edge cases ─────────────────────────────────────────
@@ -552,11 +553,11 @@ class TestFpCodegenEdges:
 
     def test_db_float_valid(self) -> None:
         result = assemble("DB 1.0_h\nHLT", arch=2)
-        assert len(result.code) > 0
+        assert result.code == list(struct.pack("<e", 1.0)) + [0]
 
     def test_fcvt_encoding(self) -> None:
         result = assemble("FCVT.H.F FHA, FA\nHLT", arch=2)
-        assert 146 in result.code  # FCVT opcode
+        assert result.code == [146, 0x01, 0x00, 0]
 
     def test_fcvt_non_fpreg_error(self) -> None:
         with pytest.raises(AssemblerError):
