@@ -758,7 +758,7 @@ Tests ERR_FP_FORMAT (code 12) -- always FAULT.
 |---|--------|--------|-------------|
 | 80 | `DB 142, 0x07` | F=true, A=12 | FABS with fmt=7 (reserved) -> FAULT |
 |    | | state=FAULT | ERR_FP_FORMAT |
-| 81 | `DB 142, 0x40` | F=true, A=12 | FABS with phys=1 (v2: invalid) -> FAULT |
+| 81 | `DB 142, 0x80` | F=true, A=12 | FABS with phys=2 (v2: invalid) -> FAULT |
 |    | | state=FAULT | ERR_FP_FORMAT |
 | 82 | `DB 142, 0x05` | F=true, A=12 | FABS with fmt=5 (.N1, reserved 4-bit in v2) -> FAULT |
 |    | | state=FAULT | ERR_FP_FORMAT |

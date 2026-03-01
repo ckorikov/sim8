@@ -402,7 +402,7 @@ SP = SP - 1
 IP = target
 ```
 
-**Return address note:** If `IP + 2 > 255` (e.g., CALL at IP=254), the stored return address wraps modulo 256 per the memory write convention. In practice, executable code should stay below address 232 (I/O region).
+**Return address note:** In theory, if `IP + 2 > 255`, the return address would wrap modulo 256 per the memory write convention. In practice, this is unreachable: the instruction fetch boundary check (`IP + len >= 256`) fires FAULT(5) before CALL executes, so wrapping never occurs. Executable code should stay below address 232 (I/O region).
 
 **RET (Opcode 57):**
 
@@ -591,7 +591,9 @@ The FPU adds a new pipeline stage and extends the cost model.
 | FCLASS | 2 | fpu(2) | Classification only, no memory access |
 | FP reg-reg arith | 3 | fpu(3) | FADD, FSUB, FMUL, FDIV, FCMP (reg-reg) |
 | FSQRT | 4 | fpu(4) | FSQRT |
-| FP move (load/store) | 2 | mem(2) | FMOV |
+| FP move (load/store) | 2 | mem(2) | FMOV (128-131) |
+| FP move (reg-reg) | 1 | reg(1) | FMOV (145) |
+| FP move (immediate) | 1 | reg(1) | FMOV (161-162) |
 | FP binary + mem | 5 | mem(2) + fpu(3), dependency | FADD, FSUB, FMUL, FDIV, FCMP (mem) |
 | FMADD | 6 | mem(2) + fpu(4), dependency | Fused multiply-add |
 | FP conversion | 3 | fpu(3) | FCVT, FITOF, FFTOI |
@@ -610,9 +612,8 @@ FUNCTION decodeFPM(fpm_byte):
     phys = fpm_byte DIV 64
 
     // v2 validation
-    IF phys != 0: FAULT(12)       // ERR_FP_FORMAT: only register 0
-    IF fmt == 7: FAULT(12)        // ERR_FP_FORMAT: reserved code
-    IF fmt >= 5: FAULT(12)        // ERR_FP_FORMAT: reserved 4-bit formats (sub-byte)
+    IF phys > 1: FAULT(12)        // ERR_FP_FORMAT: only registers 0 and 1
+    IF fmt >= 5: FAULT(12)        // ERR_FP_FORMAT: reserved formats (fmt 5-7)
 
     // Position validation
     IF fmt == 0 AND pos != 0: FAULT(12)   // .F: only pos 0
@@ -640,20 +641,21 @@ FUNCTION fpWidth(fmt):
 ### FP Sub-Register Access
 
 ```
-FUNCTION fpRead(fmt, pos):
-    // Read bits from the 32-bit physical register FA
+FUNCTION fpRead(fmt, pos, phys):
+    // Read bits from the selected 32-bit physical register (FA/FB)
     width = fpWidth(fmt)
     bit_offset = pos * width
     mask = (2 ^ width) - 1
-    RETURN (FA DIV (2 ^ bit_offset)) mod (2 ^ width)
+    reg_value = FP[phys]
+    RETURN (reg_value DIV (2 ^ bit_offset)) mod (2 ^ width)
 
-FUNCTION fpWrite(fmt, pos, value):
-    // Write bits to the 32-bit physical register FA
+FUNCTION fpWrite(fmt, pos, phys, value):
+    // Write bits to the selected 32-bit physical register (FA/FB)
     width = fpWidth(fmt)
     bit_offset = pos * width
     mask = (2 ^ width) - 1
     // Clear target bits, then set new value
-    FA = (FA AND NOT (mask * (2 ^ bit_offset))) OR ((value mod (2 ^ width)) * (2 ^ bit_offset))
+    FP[phys] = (FP[phys] AND NOT (mask * (2 ^ bit_offset))) OR ((value mod (2 ^ width)) * (2 ^ bit_offset))
 ```
 
 ### FP Memory Read/Write
@@ -703,7 +705,7 @@ FP arithmetic exceptions never cause FAULT. The operation produces the IEEE 754 
 addr = directAddress(instrByte(2))
 width = fpWidth(fmt)
 value = fpMemRead(addr, width)
-fpWrite(fmt, pos, value)
+fpWrite(fmt, pos, phys, value)
 IP = IP + 3
 ```
 
@@ -714,11 +716,11 @@ IP = IP + 3
 addr = directAddress(instrByte(2))
 width = fpWidth(fmt)
 mem_value = fpMemRead(addr, width)
-reg_value = fpRead(fmt, pos)
+reg_value = fpRead(fmt, pos, phys)
 // Interpret both as FP in the format specified by fmt, add
 result = fp_add(reg_value, mem_value, fmt)  // IEEE 754 add
 // fp_add sets FPSR sticky flags via fpRaiseExceptions
-fpWrite(fmt, pos, result)
+fpWrite(fmt, pos, phys, result)
 IP = IP + 3
 ```
 
@@ -729,7 +731,7 @@ IP = IP + 3
 addr = directAddress(instrByte(2))
 width = fpWidth(fmt)
 mem_value = fpMemRead(addr, width)
-reg_value = fpRead(fmt, pos)
+reg_value = fpRead(fmt, pos, phys)
 // Compare and set integer flags
 IF isNaN(reg_value, fmt) OR isNaN(mem_value, fmt):
     zero = true; carry = true        // Unordered
@@ -749,7 +751,7 @@ IP = IP + 3
 (fmt, pos, phys) = decodeFPM(instrByte(1))
 gpr = instrByte(2)
 IF gpr > 3: FAULT(4)                // ERR_INVALID_REG
-fp_value = fpRead(fmt, pos)
+fp_value = fpRead(fmt, pos, phys)
 // Convert FP to integer with saturation
 int_value = fp_to_uint8(fp_value, fmt, FPCR)  // uses rounding mode
 // fp_to_uint8 sets FPSR flags: Invalid (NaN/Inf) or Inexact

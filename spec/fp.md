@@ -14,7 +14,7 @@ The FPU is a coprocessor extension that adds IEEE 754 floating-point support to 
 | Active formats (v2) | float32 (E8M23), float16 (E5M10), bfloat16 (E8M7), OFP8 (E4M3, E5M2) |
 | Reserved formats | 4-bit (E2M1, E1M2) — sub-byte, incompatible with byte-addressable memory |
 | Control registers | FPCR (rounding mode), FPSR (sticky exception flags) |
-| FP opcodes | 33 (opcodes 128-162 except 163+) |
+| FP opcodes | 35 (opcodes 128-162) |
 | FP fault codes | 1 (ERR_FP_FORMAT, code 12) |
 | Memory byte order | Little-endian |
 
@@ -222,8 +222,7 @@ All FP instructions that touch FP data use a 1-byte **FP Modifier (FPM)** to enc
 The CPU validates the FPM byte on decode. Any of the following conditions triggers FAULT(`ERR_FP_FORMAT`):
 
 - `phys > 1` (v2: only physical registers 0 and 1 exist)
-- `fmt == 7` (reserved format code)
-- `fmt ≥ 5` (reserved 4-bit formats in v2 — sub-byte, not memory-addressable)
+- `fmt ≥ 5` (reserved formats: fmt 5-6 are 4-bit sub-byte, fmt 7 is unassigned)
 - `pos` out of range for the given `fmt` (e.g., `pos > 0` for fmt=0, `pos > 3` for fmt=3/4)
 
 ### Common FPM Values (phys=0)
