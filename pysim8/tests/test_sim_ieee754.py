@@ -445,7 +445,8 @@ def assert_fp_flags(fpsr: int, expected_flags: str, context: str = "") -> None:
 
     mask = 0
     for ch in expected_flags:
-        mask |= FLAG_CHAR_TO_MASK.get(ch, 0)
+        assert ch in FLAG_CHAR_TO_MASK, f"Unknown expected flag: {ch!r}"
+        mask |= FLAG_CHAR_TO_MASK[ch]
     ctx = f" [{context}]" if context else ""
     assert (fpsr & FPSR_KNOWN_MASK) == mask, (
         f"Expected flags {expected_flags!r} (mask={mask:#04x}), "
@@ -555,6 +556,165 @@ def _all_cases():
     for _group_name, cases in _ALL_GROUPS:
         for tc in cases:
             yield pytest.param(tc, id=tc.line[:70])
+
+
+def test_ieee754_case_inventory() -> None:
+    """Guard against accidental parser/input regressions that empty vectors."""
+    total = sum(len(cases) for _, cases in _ALL_GROUPS)
+    assert total >= 10_000
+    assert len(_ADD_CASES) > 0
+    assert len(_ROUND_CASES) > 0
+    assert len(_OVF_UF_CASES) > 0
+    assert len(_DIV_CASES) > 0
+    assert len(_STICKY_CASES) > 0
+    assert len(_SPECIAL_CASES) > 0
+    assert len(_FMA_CASES) == 0
+    assert len(_CONV_CASES) == 0
+
+
+def test_parse_fp_token_special_values() -> None:
+    """Special tokens map to expected Python float values."""
+    assert math.isnan(parse_fp_token("Q"))
+    assert math.isnan(parse_fp_token("S"))
+    assert parse_fp_token("+Inf") == math.inf
+    assert parse_fp_token("-Inf") == -math.inf
+    assert parse_fp_token("+Zero") == 0.0
+    neg_zero = parse_fp_token("-Zero")
+    assert neg_zero == 0.0
+    assert math.copysign(1.0, neg_zero) < 0
+
+
+def test_parse_fp_token_ibm_hex_basic() -> None:
+    """IBM-style hex token parser handles common finite forms."""
+    assert parse_fp_token("+1.000000P+0") == 1.0
+    assert parse_fp_token("-1.000P+0") == -1.0
+    assert parse_fp_token("123") is None
+    assert parse_fp_token("+1.00P+0") is None
+
+
+def test_parse_fptest_line_basic() -> None:
+    """Valid line is parsed into a structured FpTestCase."""
+    line = "b16+ =0 +1.000P+0 +1.000P+0 -> +1.000P+1 x"
+    tc = parse_fptest_line(line)
+    assert tc is not None
+    assert tc.prefix == "b16"
+    assert tc.op == "+"
+    assert tc.rounding == ROUNDING_MAP["=0"]
+    assert len(tc.inputs) == 2
+    assert tc.flags == "x"
+
+
+def test_parse_fptest_line_skip_rules() -> None:
+    """Known unsupported input patterns are intentionally skipped."""
+    assert parse_fptest_line("b32*+ =0 +1.000000P+0 +1.000000P+0 +1.000000P+0 -> +1.000000P+1") is None
+    assert parse_fptest_line("b16+ =0 uv +1.000P+0 +1.000P+0 -> +1.000P+1") is None
+    assert parse_fptest_line("b16+ ?? +1.000P+0 +1.000P+0 -> +1.000P+1") is None
+
+
+def test_helper_encoding_contracts() -> None:
+    """FPM constants and helper program lengths remain stable."""
+    assert _FPM_FA == 0x00
+    assert _FPM_FHA == 0x01
+    assert _FPM_FHB == 0x09
+
+    assert len(_binary_prog(132, _FPM_FA, 0, 0x84)) == 18
+    assert len(_unary_prog(144, _FPM_FA, 0)) == 17
+    assert len(_cmp_prog(_FPM_FA, 0)) == 15
+    assert len(_fma_b16_prog(0)) == 22
+
+
+def test_parse_fptest_line_flag_extraction() -> None:
+    """Raised-exception token after result is captured in tc.flags."""
+    line = "b32+ =0 +1.000000P+0 +1.000000P+0 -> +1.000000P+1 xi"
+    tc = parse_fptest_line(line)
+    assert tc is not None
+    assert tc.flags == "xi"
+
+
+def test_assert_fp_flags_unknown_symbol_rejected() -> None:
+    """Unexpected flag symbol in expected set is rejected immediately."""
+    with pytest.raises(AssertionError, match="Unknown expected flag"):
+        assert_fp_flags(0, "q")
+
+
+def test_run_fp_case_simple_add_b16() -> None:
+    """Handcrafted b16 add case executes and produces deterministic result."""
+    tc = FpTestCase(
+        op="+",
+        prefix="b16",
+        rounding=ROUNDING_MAP["=0"],
+        inputs=[1.0, 2.0],
+        expected=3.0,
+        flags="",
+        line="unit:b16+",
+    )
+    result, fpsr = run_fp_case(tc)
+    assert result == 3.0
+    assert (fpsr & FPSR_KNOWN_MASK) == 0
+
+
+def test_run_fp_case_simple_sqrt_b32() -> None:
+    """Handcrafted b32 sqrt case executes and keeps FPSR clean."""
+    tc = FpTestCase(
+        op="V",
+        prefix="b32",
+        rounding=ROUNDING_MAP["=0"],
+        inputs=[4.0],
+        expected=2.0,
+        flags="",
+        line="unit:b32sqrt",
+    )
+    result, fpsr = run_fp_case(tc)
+    assert result == 2.0
+    assert (fpsr & FPSR_KNOWN_MASK) == 0
+
+
+def test_run_fp_case_div_by_zero_sets_dz_b32() -> None:
+    """Handcrafted b32 division by zero raises DZ and returns +inf."""
+    tc = FpTestCase(
+        op="/",
+        prefix="b32",
+        rounding=ROUNDING_MAP["=0"],
+        inputs=[1.0, 0.0],
+        expected=math.inf,
+        flags="z",
+        line="unit:b32div0",
+    )
+    result, fpsr = run_fp_case(tc)
+    assert result == math.inf
+    assert_fp_flags(fpsr, "z", tc.line)
+
+
+def test_run_fp_case_sqrt_negative_sets_nv_b32() -> None:
+    """Handcrafted b32 sqrt(-1) raises NV and yields NaN."""
+    tc = FpTestCase(
+        op="V",
+        prefix="b32",
+        rounding=ROUNDING_MAP["=0"],
+        inputs=[-1.0],
+        expected=math.nan,
+        flags="i",
+        line="unit:b32sqrt-neg",
+    )
+    result, fpsr = run_fp_case(tc)
+    assert math.isnan(result)
+    assert_fp_flags(fpsr, "i", tc.line)
+
+
+def test_run_fp_case_compare_qc_b32() -> None:
+    """Handcrafted b32 compare case executes via qC branch without FPSR noise."""
+    tc = FpTestCase(
+        op="qC",
+        prefix="b32",
+        rounding=ROUNDING_MAP["=0"],
+        inputs=[1.0, 2.0],
+        expected=0.0,
+        flags="",
+        line="unit:b32qc",
+    )
+    result, fpsr = run_fp_case(tc)
+    assert result == 0.0
+    assert (fpsr & FPSR_KNOWN_MASK) == 0
 
 
 @pytest.mark.parametrize("tc", list(_all_cases()))
