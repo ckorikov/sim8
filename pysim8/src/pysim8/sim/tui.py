@@ -137,22 +137,13 @@ def _make_status(cpu: CPU, filename: str, paused: bool = False) -> Panel:
     if cpu.regs.fpu is not None:
         fpu = cpu.regs.fpu
         row_fp = Text()
-        row_fp.append(" FP32 ", style="dim")
-        row_fp.append(
-            f"{fpu._fp32:08X}",
-            style="bold" if fpu._fp32 else "dim",
-        )
+        for name, val in [("FA", fpu.fa), ("FB", fpu.fb)]:
+            row_fp.append(f" {name} ", style="dim")
+            row_fp.append(f"{val:08X}", style="bold" if val else "dim")
         row_fp.append("  ┊", style="dim")
-        row_fp.append(" FPCR ", style="dim")
-        row_fp.append(
-            f"{fpu.fpcr:02X}",
-            style="bold" if fpu.fpcr else "dim",
-        )
-        row_fp.append(" FPSR ", style="dim")
-        row_fp.append(
-            f"{fpu.fpsr:02X}",
-            style="bold" if fpu.fpsr else "dim",
-        )
+        for name, val in [("FPCR", fpu.fpcr), ("FPSR", fpu.fpsr)]:
+            row_fp.append(f" {name} ", style="dim")
+            row_fp.append(f"{val:02X}", style="bold" if val else "dim")
 
     # Stack rows vertically
     tbl = Table.grid()
@@ -181,7 +172,8 @@ def _make_status(cpu: CPU, filename: str, paused: bool = False) -> Panel:
 
 # ── Keyboard listener ────────────────────────────────────────────────
 
-_PANEL_LINES = 4  # top border + row1 + row2 + bottom border
+_PANEL_LINES_BASE = 4   # top border + row1 + row2 + bottom border
+_PANEL_LINES_FPU = 5    # + row_fp when arch >= 2
 
 
 def _key_listener(state: dict[str, bool]) -> None:
@@ -239,7 +231,8 @@ def run_tui(
     listener.start()
 
     # Push status panel to the bottom of the terminal from the start.
-    pad = console.height - _PANEL_LINES
+    panel_lines = _PANEL_LINES_FPU if arch >= 2 else _PANEL_LINES_BASE
+    pad = console.height - panel_lines
     if pad > 0:
         console.print("\n" * (pad - 1))
 
@@ -290,16 +283,44 @@ def run_tui(
 @click.option("--speed", "-s", default=25, help="Steps per second (0 = max).")
 @click.option("--paused", is_flag=True, help="Start paused (use Space to run).")
 @click.option(
-    "--arch", type=int, default=1,
+    "--arch", type=int, default=2,
     help="Architecture version (1=integer, 2=FPU).",
 )
-def main(program: str, speed: int, paused: bool, arch: int) -> None:
+@click.option("--headless", is_flag=True, help="Run without TUI, print final state.")
+def main(
+    program: str, speed: int, paused: bool, arch: int, headless: bool,
+) -> None:
     """Run a .bin binary in the TUI simulator."""
     path = Path(program)
-    run_tui(
-        list(path.read_bytes()),
-        filename=path.name,
-        speed=speed,
-        paused=paused,
-        arch=arch,
-    )
+    code = list(path.read_bytes())
+
+    if headless:
+        run_headless(code, arch=arch)
+    else:
+        run_tui(
+            code,
+            filename=path.name,
+            speed=speed,
+            paused=paused,
+            arch=arch,
+        )
+
+
+def run_headless(
+    code: list[int], *, arch: int = 2, max_steps: int = 100_000,
+) -> None:
+    """Run program without TUI, print final state and I/O output."""
+    cpu = CPU(arch=arch)
+    cpu.load(code)
+    cpu.run(max_steps=max_steps)
+
+    io_text = cpu.display()
+    if io_text:
+        click.echo(io_text)
+    click.echo(f"State: {cpu.state.value}  Cycles: {cpu.cycles}")
+    if cpu.regs.fpu:
+        fpu = cpu.regs.fpu
+        click.echo(
+            f"FA=0x{fpu.fa:08X} FB=0x{fpu.fb:08X}"
+            f" FPSR=0x{fpu.fpsr:02X}"
+        )

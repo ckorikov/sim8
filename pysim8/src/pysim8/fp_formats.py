@@ -10,6 +10,14 @@ import math
 import struct
 from typing import NamedTuple
 
+from pysim8.isa import (
+    FP_FMT_F as _FMT_F,
+    FP_FMT_H as _FMT_H,
+    FP_FMT_BF as _FMT_BF,
+    FP_FMT_O3 as _FMT_O3,
+    FP_FMT_O2 as _FMT_O2,
+)
+
 __all__ = [
     "FpExceptions",
     "float_to_bytes",
@@ -58,20 +66,13 @@ class FpExceptions(NamedTuple):
 
 NO_EXC = FpExceptions()
 
-# ── Format codes (must match isa.FP_FMT_*) ──────────────────────
-_FMT_F = 0
-_FMT_H = 1
-_FMT_BF = 2
-_FMT_O3 = 3
-_FMT_O2 = 4
-
-
 # ── IEEE 754 boundary constants ──────────────────────────────────
 # Minimum positive normal: 2^-(bias-1)
 _MIN_NORMAL_F32 = 1.1754943508222875e-38   # 2^-126
 _MIN_NORMAL_F16 = 6.103515625e-05          # 2^-14
 # RNE overflow threshold: MAX + half ULP (values at or above round to inf)
 _OVERFLOW_THRESH_F32 = 3.4028235677973366e+38  # (2-2^-23)*2^127 + 2^103
+_OVERFLOW_THRESH_F16 = 65520.0                 # 65504 + 16 (half ULP at max)
 
 
 # ── float32 ──────────────────────────────────────────────────────
@@ -130,7 +131,12 @@ def encode_float16(
     if rm != RoundingMode.RNE:
         return _encode_ieee_directed(value, 5, 10, 15, rm)
 
-    # RNE: use struct.pack for hardware-accurate rounding
+    # RNE: use struct.pack for hardware-accurate rounding.
+    # struct.pack("<e") raises OverflowError above MAX_F16, so we guard here.
+    if abs(value) >= _OVERFLOW_THRESH_F16:
+        sign = -1.0 if value < 0 else 1.0
+        data = struct.pack("<e", math.copysign(math.inf, sign))
+        return data, FpExceptions(overflow=True, inexact=True)
     data = struct.pack("<e", value)
     rt = struct.unpack("<e", data)[0]
     overflow = math.isinf(rt) and not math.isinf(value)
@@ -155,35 +161,19 @@ def decode_float16(data: bytes) -> float:
 
 # ── bfloat16 ─────────────────────────────────────────────────────
 
-def _round_f32_to_bf16(f32_bits: int, rm: int) -> int:
-    """Round float32 bits to bfloat16 (top 16 bits) with rounding."""
-    sign = (f32_bits >> 31) & 1
+def _round_f32_to_bf16(f32_bits: int) -> int:
+    """Round float32 bits to bfloat16 (top 16 bits) with RNE rounding."""
     upper = (f32_bits >> 16) & 0xFFFF
     lower = f32_bits & 0xFFFF
 
-    if rm == RoundingMode.RNE:
-        # Round to nearest, ties to even
-        halfway = 0x8000
-        if lower > halfway:
-            upper += 1
-        elif lower == halfway:
-            # Tie: round to even (bit 0 of upper)
-            if upper & 1:
-                upper += 1
-    elif rm == RoundingMode.RTZ:
-        pass  # truncate = do nothing
-    elif rm == RoundingMode.RDN:
-        # Round toward -Inf: round up magnitude if negative and nonzero
-        if sign and lower != 0:
-            upper += 1
-    elif rm == RoundingMode.RUP:
-        # Round toward +Inf: round up magnitude if positive and nonzero
-        if not sign and lower != 0:
+    # Round to nearest, ties to even
+    halfway = 0x8000
+    if lower > halfway:
+        upper += 1
+    elif lower == halfway:
+        if upper & 1:
             upper += 1
 
-    # Handle carry overflow in upper 16 bits
-    if upper > 0xFFFF:
-        upper = 0x7F80 if not sign else 0xFF80  # overflow to Inf
     return upper
 
 
@@ -202,22 +192,37 @@ def encode_bfloat16(
         if value > 0:
             return b"\x80\x7f", NO_EXC
         return b"\x80\xff", NO_EXC
+    if value == 0.0:
+        # Preserve sign of zero
+        return struct.pack("<f", value)[2:], NO_EXC
+
+    if rm != RoundingMode.RNE:
+        return _encode_ieee_directed(value, 8, 7, 127, rm)
+
+    # RNE: pack to float32, then round upper 16 bits.
+    # Guard overflow: struct.pack("<f") raises for |value| > MAX_F32.
+    if abs(value) >= _OVERFLOW_THRESH_F32:
+        bf16 = 0xFF80 if value < 0 else 0x7F80  # ±Inf
+        return bf16.to_bytes(2, "little"), FpExceptions(
+            overflow=True, inexact=True,
+        )
 
     f32_bytes = struct.pack("<f", value)
     f32_bits = int.from_bytes(f32_bytes, "little")
     lower = f32_bits & 0xFFFF
 
-    upper = _round_f32_to_bf16(f32_bits, rm)
+    upper = _round_f32_to_bf16(f32_bits)
     data = upper.to_bytes(2, "little")
 
     # Check if rounding caused overflow to Inf
     rt = decode_bfloat16(data)
     overflow = math.isinf(rt) and not math.isinf(value)
     inexact = lower != 0
-    # Underflow: result is subnormal bf16
+    # Underflow: result is subnormal bf16 or flushed to zero
     bf_exp = (upper >> 7) & 0xFF
     bf_mant = upper & 0x7F
-    underflow = bf_exp == 0 and bf_mant != 0 and value != 0.0
+    flushed = rt == 0.0 and value != 0.0
+    underflow = (bf_exp == 0 and bf_mant != 0) or flushed
 
     return data, FpExceptions(
         overflow=overflow,
@@ -396,7 +401,7 @@ def _overflow_result(
         byte_val = (sign << (exp_bits + mant_bits)) | (max_exp << mant_bits)
         return byte_val, FpExceptions(overflow=True, inexact=True)
     max_mant = (1 << mant_bits) - 1
-    if nan_pattern is not None:
+    if nan_pattern is not None: 
         max_mant -= 1
     byte_val = (
         (sign << (exp_bits + mant_bits))
@@ -430,11 +435,8 @@ def _encode_mini_float(
     else:
         max_normal_biased = max_exp
 
-    # Compute unbiased exponent
-    if abs_val > 0:
-        log2_val = math.floor(math.log2(abs_val))
-    else:
-        log2_val = 0
+    # Compute unbiased exponent (abs_val > 0 guaranteed by callers)
+    log2_val = math.floor(math.log2(abs_val))
 
     biased_exp = log2_val + bias
 
@@ -451,9 +453,6 @@ def _encode_mini_float(
         if mant_int >= (1 << mant_bits):
             biased_exp = 1
             mant_int -= 1 << mant_bits
-        inexact = abs_val != mant_frac * scale or (
-            mant_int / (1 << mant_bits)
-        ) * scale != abs_val
         underflow = True
     elif biased_exp > max_normal_biased:
         return _overflow_result(
@@ -463,7 +462,8 @@ def _encode_mini_float(
     else:
         # Normal number
         significand = abs_val / (2**log2_val)  # 1.xxx
-        mant_frac = significand - 1.0
+        # Clamp to [0, 1) — float64 division may produce tiny negative
+        mant_frac = max(0.0, significand - 1.0)
         mant_int = _round_mantissa(
             mant_frac, mant_bits, rm, sign, is_denorm=False,
         )
@@ -476,11 +476,11 @@ def _encode_mini_float(
                     sign, exp_bits, mant_bits, max_exp,
                     max_normal_biased, has_inf, nan_pattern, rm,
                 )
-        # Check for E4M3 NaN collision
-        if not has_inf and nan_pattern is not None:
+        # Check for E4M3 NaN collision (defensive — currently unreachable
+        # because encode_ofp8_e4m3 catches overflow before _encode_mini_float)
+        if not has_inf and nan_pattern is not None: 
             candidate = (biased_exp << mant_bits) | mant_int
             if candidate == (nan_pattern & ((1 << (exp_bits + mant_bits)) - 1)):
-                # Step down by one mantissa unit
                 mant_int -= 1
         underflow = False
         inexact = False
@@ -569,13 +569,11 @@ def _round_mantissa(
         if sign:
             return floor_val + 1
         return floor_val
-    elif rm == RoundingMode.RUP:
-        # Toward +Inf: if positive, round away from zero (up magnitude)
+    else:
+        # RUP: toward +Inf — if positive, round away from zero
         if not sign:
             return floor_val + 1
         return floor_val
-
-    return floor_val
 
 
 # ── Dispatcher functions ─────────────────────────────────────────

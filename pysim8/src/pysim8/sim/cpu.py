@@ -250,7 +250,8 @@ class CPU(HandlersMixin, HandlersFpMixin):
             "ZF": r.flags.z, "CF": r.flags.c, "FF": r.flags.f,
         }
         if r.fpu is not None:
-            snap["FP32"] = r.fpu._fp32
+            snap["FA"] = r.fpu.fa
+            snap["FB"] = r.fpu.fb
             snap["FPCR"] = r.fpu.fpcr
             snap["FPSR"] = r.fpu.fpsr
         return snap
