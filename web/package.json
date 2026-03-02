@@ -1,0 +1,19 @@
+{
+  "name": "sim8-web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild sim.js --bundle --format=iife --outfile=sim.bundle.js",
+    "deploy": "npm run build && mkdir -p ../docs && cp index.html sim.css sim.bundle.js ../docs/",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "esbuild": "^0.27.3",
+    "vitest": "^3.0.0"
+  },
+  "dependencies": {
+    "puppeteer-core": "^24.0.0"
+  }
+}
