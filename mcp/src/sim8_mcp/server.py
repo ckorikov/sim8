@@ -42,7 +42,7 @@ def _parse_hex(code_hex: str) -> list[int] | str:
 def _cpu_state(cpu: CPU) -> dict[str, Any]:
     """Serialize CPU state to a JSON-friendly dict."""
     r = cpu.regs
-    return {
+    result: dict[str, Any] = {
         "state": cpu.state.value,
         "registers": {
             "A": r.a, "B": r.b, "C": r.c, "D": r.d,
@@ -51,11 +51,17 @@ def _cpu_state(cpu: CPU) -> dict[str, Any]:
         "flags": {"Z": r.flags.z, "C": r.flags.c, "F": r.flags.f},
         "display": cpu.display(),
     }
+    if r.fpu is not None:
+        result["fpu"] = {
+            "FA": r.fpu.fa, "FB": r.fpu.fb,
+            "FPCR": r.fpu.fpcr, "FPSR": r.fpu.fpsr,
+        }
+    return result
 
 
-def _run_cpu(code: list[int], max_steps: int) -> dict[str, Any]:
+def _run_cpu(code: list[int], max_steps: int, arch: int = 2) -> dict[str, Any]:
     """Load code into CPU, run, return state dict."""
-    cpu = CPU()
+    cpu = CPU(arch=arch)
     try:
         cpu.load(code)
     except ValueError as e:
@@ -70,17 +76,18 @@ def _run_cpu(code: list[int], max_steps: int) -> dict[str, Any]:
 
 
 @mcp.tool()
-def assemble_source(source: str) -> dict[str, Any]:
+def assemble_source(source: str, arch: int = 2) -> dict[str, Any]:
     """Assemble source code into machine code.
 
     Args:
         source: Assembly source text.
+        arch: Architecture version (1 = integer-only, 2 = with FPU). Default 2.
 
     Returns:
         Dict with code_hex, labels, and mapping (code position -> source line).
     """
     try:
-        result = assemble(source)
+        result = assemble(source, arch=arch)
     except AsmError as e:
         return {"error": f"line {e.line}: {e.message}"}
     return {
@@ -91,30 +98,36 @@ def assemble_source(source: str) -> dict[str, Any]:
 
 
 @mcp.tool()
-def run_program(source: str, max_steps: int = 100_000) -> dict[str, Any]:
+def run_program(
+    source: str, max_steps: int = 100_000, arch: int = 2,
+) -> dict[str, Any]:
     """Assemble source code and run the program to completion.
 
     Args:
         source: Assembly source text.
         max_steps: Maximum number of CPU steps before stopping.
+        arch: Architecture version (1 = integer-only, 2 = with FPU). Default 2.
 
     Returns:
         Final CPU state (registers, flags, display) or assembler error.
     """
     try:
-        result = assemble(source)
+        result = assemble(source, arch=arch)
     except AsmError as e:
         return {"error": f"line {e.line}: {e.message}"}
-    return _run_cpu(result.code, max_steps)
+    return _run_cpu(result.code, max_steps, arch=arch)
 
 
 @mcp.tool()
-def run_binary(code_hex: str, max_steps: int = 100_000) -> dict[str, Any]:
+def run_binary(
+    code_hex: str, max_steps: int = 100_000, arch: int = 2,
+) -> dict[str, Any]:
     """Run a pre-assembled binary.
 
     Args:
         code_hex: Hex-encoded machine code bytes.
         max_steps: Maximum number of CPU steps before stopping.
+        arch: Architecture version (1 = integer-only, 2 = with FPU). Default 2.
 
     Returns:
         Final CPU state (registers, flags, display).
@@ -122,7 +135,7 @@ def run_binary(code_hex: str, max_steps: int = 100_000) -> dict[str, Any]:
     parsed = _parse_hex(code_hex)
     if isinstance(parsed, str):
         return {"error": parsed}
-    return _run_cpu(parsed, max_steps)
+    return _run_cpu(parsed, max_steps, arch=arch)
 
 
 @mcp.tool()

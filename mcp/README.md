@@ -82,25 +82,30 @@ Verify with `/mcp` in Claude Code to check the server is connected and all 5 too
 
 ## Tools
 
+All tools that create or run code accept an optional `arch` parameter:
+
+- `arch=1` — integer-only CPU (v1)
+- `arch=2` — with FPU coprocessor (v2, **default**)
+
 ### `assemble_source`
 
 Assemble source code into machine code.
 
-- **Input:** `source` — assembly text
+- **Input:** `source` — assembly text, `arch` (default 2)
 - **Output:** `code_hex` (hex string), `labels` (label table), `mapping` (code position -> source line)
 
 ### `run_program`
 
 Assemble and run a program to completion (HLT / FAULT / step limit).
 
-- **Input:** `source` — assembly text, `max_steps` (default 100,000)
+- **Input:** `source` — assembly text, `max_steps` (default 100,000), `arch` (default 2)
 - **Output:** final CPU state
 
 ### `run_binary`
 
 Run a pre-assembled binary.
 
-- **Input:** `code_hex` — hex-encoded machine code, `max_steps` (default 100,000)
+- **Input:** `code_hex` — hex-encoded machine code, `max_steps` (default 100,000), `arch` (default 2)
 - **Output:** final CPU state
 
 ### `disassemble`
@@ -126,9 +131,16 @@ Read a section of the CPU specification.
   "state": "HALTED",
   "registers": {"A": 42, "B": 0, "C": 0, "D": 0, "SP": 231, "DP": 0, "IP": 5},
   "flags": {"Z": false, "C": false, "F": false},
+  "fpu": {"FA": 0, "FB": 0, "FPCR": 0, "FPSR": 0},
   "display": ""
 }
 ```
+
+The `fpu` field is only present when `arch=2`. It contains:
+
+- `FA`, `FB` — 32-bit FP registers (raw integer representation)
+- `FPCR` — FP control register (rounding mode)
+- `FPSR` — FP status register (sticky exception flags)
 
 Possible `state` values: `IDLE`, `RUNNING`, `HALTED`, `FAULT`.
 

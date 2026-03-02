@@ -88,6 +88,45 @@ def test_run_program_fault() -> None:
     assert result["flags"]["F"] is True
 
 
+def test_run_program_fpu_state() -> None:
+    result = run_program("FMOV.H FHA, 1.0\nHLT")
+    assert result["state"] == "HALTED"
+    assert "fpu" in result
+    assert result["fpu"]["FA"] != 0
+    assert "FPCR" in result["fpu"]
+    assert "FPSR" in result["fpu"]
+
+
+def test_assemble_fp_instruction() -> None:
+    result = assemble_source("FADD.H FHA, FHB\nHLT")
+    assert "error" not in result
+    assert len(result["code_hex"]) > 0
+
+
+# ── arch=1 (integer-only, no FPU) ─────────────────────────────────
+
+
+def test_run_program_arch1_no_fpu() -> None:
+    result = run_program("MOV A, 42\nHLT", arch=1)
+    assert result["state"] == "HALTED"
+    assert result["registers"]["A"] == 42
+    assert "fpu" not in result
+
+
+def test_assemble_arch1() -> None:
+    result = assemble_source("MOV A, 1\nHLT", arch=1)
+    assert "error" not in result
+
+
+def test_run_binary_arch1() -> None:
+    asm_result = assemble_source("MOV A, 5\nHLT", arch=1)
+    assert "error" not in asm_result
+    result = run_binary(asm_result["code_hex"], arch=1)
+    assert result["state"] == "HALTED"
+    assert result["registers"]["A"] == 5
+    assert "fpu" not in result
+
+
 # ── run_binary ────────────────────────────────────────────────────
 
 

@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.13"
 
 [[package]]
@@ -950,7 +950,13 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pytest" }]
+dev = [
+    { name = "hypothesis", specifier = ">=6.151.9" },
+    { name = "ml-dtypes", specifier = ">=0.5.4" },
+    { name = "numpy", specifier = ">=2.4.2" },
+    { name = "pytest" },
+    { name = "pytest-cov", specifier = ">=7.0.0" },
+]
 
 [[package]]
 name = "pytest"
