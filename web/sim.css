@@ -1,0 +1,249 @@
+/* sim8 v2 — Styles */
+* { box-sizing: border-box; }
+
+/* ── Theme via CSS custom properties ── */
+:root {
+  --t-bg: #1e1e1e;
+  --t-surface: #2a2a2a;
+  --t-nav: #222222;
+  --t-border: #3a3a3a;
+  --t-dim: #666666;
+  --t-mid: #999999;
+  --t-text: #cccccc;
+  --t-bright: #ffffff;
+  --t-canvas: #1e1e1e;
+  --t-label-bg: rgba(255,255,255,0.03);
+  --t-instr-bg: rgba(255,255,255,0.06);
+  --t-marker-text: #1e1e1e;
+  --t-hover-bg: rgba(204,85,0,0.1);
+  /* accents — dark: muted neon */
+  --a-orange: #cc5500;
+  --a-yellow: #ccaa00;
+  --a-green:  #3a9a3a;
+  --a-red:    #cc4444;
+  --a-blue:   #4488cc;
+  --a-orange-a20: rgba(204,85,0,0.2);
+  --a-green-a40: rgba(58,154,58,0.4);
+
+  /* ── Layout sizes (for resizable diagram) ── */
+  --s-split: 38%;
+  --s-diagram-w: 840px;
+  --s-block-radius: 4px;
+  --s-block-font: 11px;
+  --s-hdr-font: 10px;
+  --s-hdr-pad: 12px 16px 8px;
+  --s-body-pad: 12px 16px;
+  --s-body-compact-pad: 8px 16px 12px;
+  --s-port: 8px;
+  --s-reg-gap: 4px;
+  --s-label-font: 8px;
+  --s-row-gap: 10px;
+  --s-wire-gap: 56px;
+  --s-cpu-w: 312px;
+  --s-fpu-w: 360px;
+  --s-mem-w: 544px;
+  --s-disp-w: 544px;
+  --s-cpu-x: 48px;
+  --s-fpu-x: 432px;
+  --s-top-y: 32px;
+  --s-mem-cell-w: 28px;
+  --s-mem-cell-h: 20px;
+  --s-mem-cell-font: 10px;
+  --s-mem-hdr-w: 28px;
+  --s-mem-row-w: 24px;
+  --s-disp-char-w: 20px;
+  --s-disp-char-h: 24px;
+  --s-ri-label-font: 8px;
+  --s-ri-label-pad: 3px 5px;
+  --s-ri-val-font: 11px;
+  --s-ri-val-pad: 3px 6px;
+  --s-fb-pad: 4px 6px;
+  --s-fb-font: 9px;
+  --s-flag-min-w: 22px;
+  --s-tab-font: 9px;
+  --s-tab-pad: 2px 8px;
+  --s-page-btn: 20px;
+  --s-fp-cell-h: 22px;
+}
+:root.light {
+  --t-bg: #e8e6e3;
+  --t-surface: #dddad6;
+  --t-nav: #d4d1cc;
+  --t-border: #b5b2ad;
+  --t-dim: #8a8784;
+  --t-mid: #6b6966;
+  --t-text: #3a3836;
+  --t-bright: #1a1918;
+  --t-canvas: #e2e0dc;
+  --t-label-bg: rgba(0,0,0,0.04);
+  --t-instr-bg: rgba(0,0,0,0.04);
+  --t-marker-text: #ffffff;
+  --t-hover-bg: rgba(120,60,15,0.08);
+  /* accents — light: muted earth tones */
+  --a-orange: #8a5a30;
+  --a-yellow: #7a6210;
+  --a-green:  #3a7a50;
+  --a-red:    #9a4040;
+  --a-blue:   #3a6090;
+  --a-orange-a20: rgba(138,90,48,0.15);
+  --a-green-a40: rgba(58,122,80,0.30);
+}
+
+body {
+  font-family: 'JetBrains Mono', monospace;
+  background: var(--t-bg);
+  color: var(--t-text);
+}
+
+/* ── Wire animation ── */
+@keyframes dash-flow { from { stroke-dashoffset: 20; } to { stroke-dashoffset: 0; } }
+.x6-edge path[stroke-dasharray] { opacity: 0.3; transition: opacity 0.2s; }
+.x6-edge.wire-active path[stroke-dasharray] {
+  opacity: 1; animation: dash-flow 0.4s linear infinite;
+}
+
+/* ── Hardware block ── */
+.hw-block {
+  position: absolute;
+  background: var(--t-surface);
+  border: 1px solid var(--t-border);
+  border-radius: var(--s-block-radius);
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--t-text);
+  font-size: var(--s-block-font);
+  overflow: hidden;
+  z-index: 2;
+}
+
+.hw-hdr {
+  font-size: var(--s-hdr-font); font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--t-dim);
+  padding: var(--s-hdr-pad);
+  display: flex; align-items: center; gap: 8px;
+  border-bottom: 1px solid var(--t-border);
+}
+.hw-hdr .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+
+.hw-body {
+  padding: var(--s-body-pad);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+}
+
+.hw-port {
+  position: absolute; width: var(--s-port); height: var(--s-port);
+  border-radius: 50%; z-index: 3;
+  border: 1.5px solid var(--t-surface);
+}
+
+/* ── Memory cell ── */
+.mem-cell {
+  width: var(--s-mem-cell-w); height: var(--s-mem-cell-h);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: var(--s-mem-cell-font); color: var(--t-dim);
+  border: 1px solid transparent;
+  transition: all 0.1s;
+}
+.mem-cell:hover { border-color: var(--a-orange); color: var(--t-bright); background: var(--t-hover-bg); }
+.mem-cell.instr   { color: var(--t-mid); }
+.mem-cell.instr-start { background: var(--t-instr-bg); color: var(--t-mid); }
+.mem-cell.stack    { color: var(--a-yellow); }
+.mem-cell.io       { color: var(--a-green); }
+.mem-cell.marker-ip { background: var(--a-orange); color: var(--t-marker-text); font-weight: 700; }
+.mem-cell.marker-sp { background: var(--a-yellow); color: var(--t-marker-text); font-weight: 700; }
+.mem-cell.marker-a  { border-color: var(--a-green); }
+.mem-cell.marker-b  { border-color: var(--a-blue); }
+.mem-cell.marker-c  { border-color: var(--a-orange); }
+.mem-cell.marker-d  { border-color: var(--a-red); }
+
+/* ── Register rows ── */
+.rr { display: flex; gap: var(--s-reg-gap); margin-bottom: 4px; flex-wrap: wrap; justify-content: center; }
+.ri {
+  display: flex; align-items: center; gap: 0;
+  border: 1px solid var(--t-border); border-radius: 2px; overflow: hidden;
+}
+.ri-l {
+  font-size: var(--s-ri-label-font); color: var(--t-dim); padding: var(--s-ri-label-pad);
+  background: var(--t-label-bg); border-right: 1px solid var(--t-border);
+}
+.ri-v { font-weight: 700; font-size: var(--s-ri-val-font); padding: var(--s-ri-val-pad); }
+
+/* ── Flag badge ── */
+.fb {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: var(--s-fb-pad); font-size: var(--s-fb-font); font-weight: 700;
+  border: 1px solid var(--t-border); border-radius: 2px;
+}
+.fb-on  { border-color: var(--a-green); color: var(--a-green); }
+.fb-off { color: var(--t-dim); }
+
+/* ── Console char ── */
+.cc {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: var(--s-disp-char-w); height: var(--s-disp-char-h); font-size: var(--s-block-font);
+  border: 1px solid var(--t-border); color: var(--t-dim);
+  flex-shrink: 0;
+}
+.cc.on { color: var(--a-green); text-shadow: 0 0 4px var(--a-green-a40); }
+
+/* ── Memory headers ── */
+.mh { width: var(--s-mem-hdr-w); font-size: var(--s-fb-font); color: var(--t-dim); display: inline-flex; align-items: center; justify-content: center; height: var(--s-mem-cell-h); }
+.mr { width: var(--s-mem-row-w); font-size: var(--s-fb-font); color: var(--t-dim); display: inline-flex; align-items: center; justify-content: flex-end; padding-right: 4px; height: var(--s-mem-cell-h); }
+
+/* ── FPU register map ── */
+.fp-map { width: 100%; border-collapse: collapse; }
+.fp-map td {
+  border: 1px solid var(--t-border); text-align: center; font-size: var(--s-fb-font);
+  height: var(--s-fp-cell-h); padding: 0 2px; white-space: nowrap;
+}
+.fp-map .fp-lbl { color: var(--a-orange); font-size: 7px; font-weight: 700; display: block; line-height: 1; }
+.fp-map .fp-val { color: var(--t-text); font-size: 9px; font-weight: 700; display: block; line-height: 1.2; }
+.fp-map .fp-w { color: var(--t-dim); font-size: 7px; background: var(--t-label-bg); }
+
+/* ── Format tabs ── */
+.ft { cursor: pointer; padding: var(--s-tab-pad); font-size: var(--s-tab-font); border: 1px solid var(--t-border); border-radius: 2px; color: var(--t-dim); background: none; }
+.ft.act { border-color: var(--a-orange); color: var(--a-orange); }
+
+/* ── Page buttons ── */
+.pb {
+  width: var(--s-page-btn); height: var(--s-page-btn); font-size: var(--s-mem-cell-font);
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--t-border); background: none; color: var(--t-dim); cursor: pointer; border-radius: 2px;
+}
+.pb:hover { border-color: var(--a-orange); color: var(--a-orange); }
+
+/* ── X6 wire canvas overlay ── */
+#wire-canvas {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  z-index: 1; pointer-events: none;
+}
+#wire-canvas svg { pointer-events: none; }
+
+/* ── Split drag handle ── */
+#split-handle {
+  width: 5px; cursor: col-resize; flex-shrink: 0;
+  background: var(--t-border);
+  transition: background 0.15s;
+}
+#split-handle:hover, #split-handle.active {
+  background: var(--a-orange);
+}
+
+/* ── CodeMirror syntax highlighting via CSS vars ── */
+.cm-hl-kw  { color: var(--a-orange) !important; font-weight: 700; }
+.cm-hl-var { color: var(--a-yellow) !important; }
+.cm-hl-num { color: var(--a-blue) !important; }
+.cm-hl-str { color: var(--a-green) !important; }
+.cm-hl-cmt { color: var(--t-dim) !important; font-style: italic; }
+.cm-hl-brk { color: var(--t-mid) !important; }
+.cm-hl-lbl { color: var(--t-text) !important; font-weight: 500; }
+.cm-exec-line { background: rgba(204,85,0,0.15) !important; }
+.cm-exec-gutter { width: 16px; }
+.cm-exec-arrow { color: var(--a-orange); font-size: 10px; line-height: 1; }
+:root.light .cm-exec-line { background: rgba(138,90,48,0.18) !important; }
+
+/* ── Error display ── */
+#asm-error {
+  font-size: 10px; padding: 4px 16px; color: var(--a-red);
+  white-space: pre-wrap; max-height: 60px; overflow-y: auto;
+}

@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="business">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>sim8 v2 — Hardware Simulator</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="sim.css">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@antv/x6@2.19.2/dist/index.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: { extend: { fontFamily: { mono: ["'JetBrains Mono'", 'monospace'] } } }
+    }
+  </script>
+</head>
+
+<body class="h-screen flex flex-col overflow-hidden">
+
+  <!-- NAVBAR -->
+  <nav class="flex items-center gap-3 px-4 py-2 border-b flex-shrink-0" style="background:var(--t-nav);border-color:var(--t-border);">
+    <span class="text-xs font-bold tracking-widest uppercase" style="color:var(--t-dim);">sim8</span>
+    <span class="text-xs font-bold" style="color:var(--a-orange);">v2</span>
+
+    <div class="w-px h-4 mx-1" style="background:var(--t-border);"></div>
+
+    <div class="flex gap-1">
+      <button class="btn btn-xs btn-ghost rounded-sm gap-1" style="border:1px solid var(--t-border);color:var(--a-green);" id="btn-run" data-state="run">
+        <svg class="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 16 16"><polygon points="3,1 13,8 3,15"/></svg>
+        <span>run</span>
+      </button>
+      <button class="btn btn-xs btn-ghost rounded-sm gap-1" style="border:1px solid var(--t-border);color:var(--t-text);" id="btn-step">
+        <svg class="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 16 16"><path d="M3,1 L9,8 L3,15 M9,1 L15,8 L9,15"/></svg>
+        step
+      </button>
+      <button class="btn btn-xs btn-ghost rounded-sm" style="border:1px solid var(--t-border);color:var(--t-dim);" id="btn-reset">reset</button>
+    </div>
+
+    <div class="w-px h-4 mx-1" style="background:var(--t-border);"></div>
+
+    <select class="bg-transparent text-xs px-2 py-0.5 rounded-sm focus:outline-none" style="border:1px solid var(--t-border);color:var(--t-dim);" id="speed-select">
+      <option>1 hz</option><option selected>4 hz</option><option>8 hz</option><option>16 hz</option>
+    </select>
+
+    <div class="w-px h-4 mx-1" style="background:var(--t-border);"></div>
+
+    <span class="text-xs" style="color:var(--t-dim);" id="nav-cycles">0 cycles</span>
+
+    <div class="flex-1"></div>
+
+    <button class="btn btn-xs btn-ghost rounded-sm gap-1" style="border:1px solid var(--t-border);color:var(--t-dim);" id="btn-theme">
+      <svg id="theme-icon-light" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+      <svg id="theme-icon-dark" class="w-3 h-3 hidden" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/></svg>
+      <span id="theme-label">light</span>
+    </button>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="flex-1 flex overflow-hidden">
+
+    <!-- LEFT: Code Editor -->
+    <section class="flex flex-col overflow-hidden" id="left-panel" style="background:var(--t-nav);width:var(--s-split);flex-shrink:0;">
+      <div class="px-4 py-2 flex items-center justify-between flex-shrink-0" style="border-bottom:1px solid var(--t-border);">
+        <span class="text-[10px] font-bold uppercase tracking-widest" style="color:var(--t-dim);">code</span>
+        <a href="../spec/isa.md" target="_blank" class="text-[10px] no-underline uppercase tracking-wider" style="color:var(--a-orange);">isa ref</a>
+      </div>
+
+      <div id="editor-container" class="flex-1 overflow-hidden" style="background:var(--t-canvas);"></div>
+
+      <div id="asm-error" class="hidden"></div>
+
+      <div class="p-2 flex-shrink-0" style="border-top:1px solid var(--t-border);">
+        <button class="btn btn-sm btn-block border-none hover:brightness-110 rounded-sm font-bold uppercase text-xs tracking-wider" style="background:var(--a-orange);color:var(--t-bg);" id="btn-assemble">assemble</button>
+      </div>
+
+      <details id="labels-details" style="border-top:1px solid var(--t-border);">
+        <summary class="px-4 py-2 text-[10px] font-bold uppercase tracking-widest cursor-pointer" style="color:var(--t-dim);">labels</summary>
+        <div class="px-4 py-3">
+          <table class="w-full text-xs" style="border-collapse:collapse;">
+            <thead><tr class="text-[9px] uppercase" style="border-bottom:1px solid var(--t-border);color:var(--t-dim);">
+              <th class="text-left py-1.5 font-normal">name</th><th class="text-left py-1.5 font-normal">addr</th>
+              <th class="text-left py-1.5 font-normal">val</th><th class="text-left py-1.5 font-normal">chr</th>
+            </tr></thead>
+            <tbody id="labels-body" style="color:var(--t-text);"></tbody>
+          </table>
+        </div>
+      </details>
+    </section>
+
+    <!-- DRAG HANDLE -->
+    <div id="split-handle"></div>
+
+    <!-- RIGHT: Hardware Diagram -->
+    <section id="diagram-section" class="relative overflow-auto flex-1" style="background:var(--t-canvas); display:flex; align-items:flex-start; justify-content:center; padding:16px 0;">
+      <div id="diagram-container" style="position:relative; width:var(--s-diagram-w); height:870px; flex-shrink:0; transform-origin:top center;">
+
+        <!-- X6 wire canvas (SVG only, behind blocks) -->
+        <div id="wire-canvas"></div>
+
+        <!-- CPU Block -->
+        <div class="hw-block" id="blk-cpu" style="left:var(--s-cpu-x);top:var(--s-top-y);width:var(--s-cpu-w);">
+          <div class="hw-hdr" style="justify-content:space-between;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span id="cpu-state-icon" style="display:inline-flex;align-items:center;color:var(--a-green);"></span>
+              cpu
+            </div>
+            <div style="display:flex;align-items:center;gap:4px;" id="cpu-fmt-tabs">
+              <span style="font-size:var(--s-tab-font);color:var(--t-dim);font-weight:400;text-transform:none;letter-spacing:0;">view:</span>
+              <button class="ft act" data-cfmt="hex">hex</button>
+              <button class="ft" data-cfmt="dec">dec</button>
+            </div>
+          </div>
+          <div class="hw-body" style="padding:var(--s-body-compact-pad);gap:0;align-items:flex-start;">
+            <div style="width:100%;margin-bottom:var(--s-row-gap);">
+              <div style="font-size:var(--s-label-font);color:var(--t-dim);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;">registers</div>
+              <div class="rr" id="cpu-regs" style="margin-bottom:0;justify-content:flex-start;"></div>
+            </div>
+            <div style="width:100%;display:flex;justify-content:space-between;align-items:flex-end;">
+              <div>
+                <div style="font-size:var(--s-label-font);color:var(--t-dim);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;">pointers</div>
+                <div class="rr" id="cpu-ptrs" style="margin-bottom:0;justify-content:flex-start;"></div>
+              </div>
+              <div>
+                <div style="font-size:var(--s-label-font);color:var(--t-dim);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;">flags</div>
+                <div class="rr" id="cpu-flags" style="margin-bottom:0;"></div>
+              </div>
+            </div>
+          </div>
+          <div class="hw-port" id="port-cpu-bottom" style="bottom:-4px;left:50%;transform:translateX(-50%);background:var(--a-yellow);"></div>
+          <div class="hw-port" id="port-cpu-right" style="right:-4px;top:50%;transform:translateY(-50%);background:var(--a-orange);"></div>
+        </div>
+
+        <!-- FPU Block -->
+        <div class="hw-block" id="blk-fpu" style="left:var(--s-fpu-x);top:var(--s-top-y);width:var(--s-fpu-w);">
+          <div class="hw-hdr" style="justify-content:space-between;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div class="dot" style="background:var(--a-orange);"></div>
+              fpu
+            </div>
+            <div style="display:flex;align-items:center;gap:4px;" id="fpu-fmt-tabs">
+              <span style="font-size:var(--s-tab-font);color:var(--t-dim);font-weight:400;text-transform:none;letter-spacing:0;">view:</span>
+              <button class="ft act" data-ffmt="hex">hex</button>
+              <button class="ft" data-ffmt="dec">dec</button>
+              <button class="ft" data-ffmt="fp32">f32</button>
+              <button class="ft" data-ffmt="fp16">f16</button>
+              <button class="ft" data-ffmt="fp8">f8</button>
+            </div>
+          </div>
+          <div class="hw-body" style="padding:var(--s-body-compact-pad);gap:0;">
+            <div style="width:100%;margin-bottom:6px;">
+              <div style="font-size:var(--s-label-font);color:var(--t-dim);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;">fa <span id="fpu-fa-info" style="color:var(--t-dim);text-transform:none;"></span></div>
+              <div id="fpu-fa-bytes" style="display:flex;justify-content:center;"></div>
+            </div>
+            <div style="width:100%;margin-bottom:6px;">
+              <div style="font-size:var(--s-label-font);color:var(--t-dim);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;">fb <span id="fpu-fb-info" style="color:var(--t-dim);text-transform:none;"></span></div>
+              <div id="fpu-fb-bytes" style="display:flex;justify-content:center;"></div>
+            </div>
+            <div style="width:100%;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+              <div>
+                <div style="font-size:var(--s-label-font);color:var(--t-dim);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;">rounding</div>
+                <div class="rr" id="fpu-rm" style="margin-bottom:0;"></div>
+              </div>
+              <div>
+                <div style="font-size:var(--s-label-font);color:var(--t-dim);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;">status</div>
+                <div class="rr" id="fpu-flags" style="margin-bottom:0;"></div>
+              </div>
+            </div>
+          </div>
+          <div class="hw-port" id="port-fpu-left" style="left:-4px;top:50%;transform:translateY(-50%);background:var(--a-orange);"></div>
+        </div>
+
+        <!-- Memory Block -->
+        <div class="hw-block" id="blk-mem" style="left:var(--s-cpu-x);top:288px;width:var(--s-mem-w);">
+          <div class="hw-hdr" style="justify-content:space-between;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div class="dot" style="background:var(--a-yellow);"></div>
+              memory
+              <span style="font-weight:400;color:var(--t-dim);">64k</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:20px;">
+              <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:9px;color:var(--t-dim);font-weight:400;text-transform:none;letter-spacing:0;">
+                <input type="checkbox" checked id="chk-instr" style="width:10px;height:10px;accent-color:var(--a-orange);">
+                instructions
+              </label>
+              <div style="display:flex;align-items:center;gap:4px;" id="fmt-tabs">
+                <span style="font-size:9px;color:var(--t-dim);font-weight:400;text-transform:none;letter-spacing:0;">view:</span>
+                <button class="ft act" data-fmt="hex">hex</button>
+                <button class="ft" data-fmt="dec">dec</button>
+              </div>
+              <div style="display:flex;align-items:center;gap:4px;">
+                <span style="font-size:9px;color:var(--t-dim);font-weight:400;text-transform:none;letter-spacing:0;">page:</span>
+                <button class="pb" id="page-prev">&lsaquo;</button>
+                <span style="font-size:9px;color:var(--t-text);min-width:40px;text-align:center;font-weight:400;text-transform:none;letter-spacing:0;" id="page-num">0/255</span>
+                <button class="pb" id="page-next">&rsaquo;</button>
+              </div>
+            </div>
+          </div>
+          <div class="hw-body" id="mem-grid"></div>
+          <div class="hw-port" id="port-mem-top" style="top:-4px;left:50%;transform:translateX(-50%);background:var(--a-yellow);"></div>
+          <div class="hw-port" id="port-mem-bottom" style="bottom:-4px;left:50%;transform:translateX(-50%);background:var(--a-green);"></div>
+        </div>
+
+        <!-- Display Block -->
+        <div class="hw-block" id="blk-disp" style="left:var(--s-cpu-x);top:752px;width:var(--s-disp-w);">
+          <div class="hw-hdr" style="justify-content:center;">
+            <div class="dot" style="background:var(--a-green);"></div>
+            display
+          </div>
+          <div class="hw-body" id="disp-chars"></div>
+          <div class="hw-port" id="port-disp-top" style="top:-4px;left:50%;transform:translateX(-50%);background:var(--a-green);"></div>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <script src="sim.bundle.js"></script>
+</body>
+</html>
