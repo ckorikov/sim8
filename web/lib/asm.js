@@ -187,48 +187,53 @@ function _tryConst(token, line) {
   return null;
 }
 
-function _resolveFpImmSuffix(suffixStr, line) {
-  if (suffixStr == null) return null;
-  const suffix = suffixStr.slice(1).toUpperCase(); // strip leading _
+// ── Shared float parsing ─────────────────────────────────────────
+
+function _resolveFloatSuffix(suffixStr, line, defaultFmt, rejectNarrow) {
+  if (suffixStr == null) return defaultFmt;
+  const suffix = suffixStr.slice(1).toUpperCase();
   if (!(suffix in FP_DB_SUFFIX_TO_FMT)) {
     throw new AsmError('Invalid float literal', line);
   }
-  return FP_DB_SUFFIX_TO_FMT[suffix];
+  const fmt = FP_DB_SUFFIX_TO_FMT[suffix];
+  if (rejectNarrow && (fmt === FP_FMT_N1 || fmt === FP_FMT_N2)) {
+    throw new AsmError(
+      `Unsupported float format for DB: ${suffixStr.slice(1)}`, line
+    );
+  }
+  return fmt;
 }
 
-function _tryFpImm(token, line) {
+function _parseFloatValue(token, line, tag, defaultFmt, rejectNarrow) {
   let m = _RE_FLOAT_SPECIAL.exec(token);
   if (m) {
-    const signStr = m[1];
-    const name = m[2];
-    const suffixStr = m[3] || null;
-    const fmt = _resolveFpImmSuffix(suffixStr, line);
+    const fmt = _resolveFloatSuffix(m[3] || null, line, defaultFmt, rejectNarrow);
     let val;
-    if (name.toLowerCase() === 'inf') {
-      val = signStr === '-' ? -Infinity : Infinity;
+    if (m[2].toLowerCase() === 'inf') {
+      val = m[1] === '-' ? -Infinity : Infinity;
     } else {
       val = NaN;
-      if (signStr === '-') val = -val;
+      if (m[1] === '-') val = -val;
     }
-    return { tag: TAG_FP_IMM, value: val, fmt };
+    return { tag, value: val, fmt };
   }
 
   m = _RE_FLOAT.exec(token);
   if (m) {
-    const signStr = m[1];
-    const num = m[2];
-    const exp = m[3] || '';
-    const suffixStr = m[4] || null;
-    const fmt = _resolveFpImmSuffix(suffixStr, line);
-    const text = (signStr || '') + num + exp;
+    const fmt = _resolveFloatSuffix(m[4] || null, line, defaultFmt, rejectNarrow);
+    const text = (m[1] || '') + m[2] + (m[3] || '');
     const val = parseFloat(text);
     if (Number.isNaN(val) && text.toLowerCase() !== 'nan') {
       throw new AsmError('Invalid float literal', line);
     }
-    return { tag: TAG_FP_IMM, value: val, fmt };
+    return { tag, value: val, fmt };
   }
 
   return null;
+}
+
+function _tryFpImm(token, line) {
+  return _parseFloatValue(token, line, TAG_FP_IMM, null, false);
 }
 
 function _tryLabel(token, _line) {
@@ -258,54 +263,8 @@ function _parseOperand(token, line) {
 
 // ── Float literal for DB ─────────────────────────────────────────
 
-function _resolveDbFloatSuffix(suffixStr, line) {
-  if (suffixStr == null) return FP_FMT_F;
-  const suffix = suffixStr.slice(1).toUpperCase();
-  if (!(suffix in FP_DB_SUFFIX_TO_FMT)) {
-    throw new AsmError('Invalid float literal', line);
-  }
-  const fmt = FP_DB_SUFFIX_TO_FMT[suffix];
-  if (fmt === FP_FMT_N1 || fmt === FP_FMT_N2) {
-    throw new AsmError(
-      `Unsupported float format for DB: ${suffixStr.slice(1)}`, line
-    );
-  }
-  return fmt;
-}
-
 function _parseFloatLiteral(token, line) {
-  let m = _RE_FLOAT_SPECIAL.exec(token);
-  if (m) {
-    const signStr = m[1];
-    const name = m[2];
-    const suffixStr = m[3] || null;
-    const fmt = _resolveDbFloatSuffix(suffixStr, line);
-    let val;
-    if (name.toLowerCase() === 'inf') {
-      val = signStr === '-' ? -Infinity : Infinity;
-    } else {
-      val = NaN;
-      if (signStr === '-') val = -val;
-    }
-    return { tag: TAG_FLOAT, value: val, fmt };
-  }
-
-  m = _RE_FLOAT.exec(token);
-  if (m) {
-    const signStr = m[1];
-    const num = m[2];
-    const exp = m[3] || '';
-    const suffixStr = m[4] || null;
-    const fmt = _resolveDbFloatSuffix(suffixStr, line);
-    const text = (signStr || '') + num + exp;
-    const val = parseFloat(text);
-    if (Number.isNaN(val) && text.toLowerCase() !== 'nan') {
-      throw new AsmError('Invalid float literal', line);
-    }
-    return { tag: TAG_FLOAT, value: val, fmt };
-  }
-
-  return null;
+  return _parseFloatValue(token, line, TAG_FLOAT, FP_FMT_F, true);
 }
 
 // ── DB operand parsing ───────────────────────────────────────────

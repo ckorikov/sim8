@@ -31,19 +31,23 @@ function setRunUI(running) {
   updateRunBtnColor();
 }
 
+function tick() {
+  const cost = _onStep();
+  if (!cost) { stopRun(); return; }
+  runTimer = setTimeout(tick, getSpeedMs() * cost);
+}
+
 function startRun() {
   if (runTimer) return;
   if (cpu.state === CpuState.HALTED || cpu.state === CpuState.FAULT) {
     _onReset();
   }
   setRunUI(true);
-  runTimer = setInterval(() => {
-    if (!_onStep()) stopRun();
-  }, getSpeedMs());
+  tick();
 }
 
 export function stopRun() {
-  if (runTimer) { clearInterval(runTimer); runTimer = null; }
+  if (runTimer) { clearTimeout(runTimer); runTimer = null; }
   if (cpu.state === CpuState.RUNNING) {
     cpu.state = CpuState.IDLE;
   }

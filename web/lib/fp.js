@@ -582,7 +582,7 @@ function _encodeMiniFloat(absVal, sign, expBits, mantBits, bias,
     biasedExp = 0;
     const scale = Math.pow(2, 1 - bias);
     const mantFrac = absVal / scale;
-    mantInt = _roundMantissa(mantFrac, mantBits, rm, sign, true);
+    mantInt = _roundMantissa(mantFrac, mantBits, rm, sign);
     // Check if rounding promoted to normal
     if (mantInt >= (1 << mantBits)) {
       biasedExp = 1;
@@ -596,7 +596,7 @@ function _encodeMiniFloat(absVal, sign, expBits, mantBits, bias,
     // Normal number
     const significand = absVal / Math.pow(2, log2Val);  // 1.xxx
     const mantFrac = Math.max(0.0, significand - 1.0);
-    mantInt = _roundMantissa(mantFrac, mantBits, rm, sign, false);
+    mantInt = _roundMantissa(mantFrac, mantBits, rm, sign);
     // Rounding may cause mantissa overflow
     if (mantInt >= (1 << mantBits)) {
       mantInt = 0;
@@ -652,7 +652,7 @@ function _encodeIeeeDirected(value, expBits, mantBits, bias, rm) {
   return { data, exc: mExc };
 }
 
-function _roundMantissa(frac, mantBits, rm, sign, _isDenorm) {
+function _roundMantissa(frac, mantBits, rm, sign) {
   const scale = 1 << mantBits;
   const scaled = frac * scale;
   const floorVal = Math.floor(scaled);

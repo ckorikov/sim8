@@ -201,9 +201,7 @@ export const Reg = Object.freeze({
   A: 0, B: 1, C: 2, D: 3, SP: 4, DP: 5,
 });
 
-export const REGISTERS = Object.freeze({
-  A: 0, B: 1, C: 2, D: 3, SP: 4, DP: 5,
-});
+export const REGISTERS = Reg;
 
 export const GPR_CODES = new Set([0, 1, 2, 3]);
 export const STACK_CODES = new Set([0, 1, 2, 3, 4]);
