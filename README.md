@@ -2,6 +2,8 @@
 
 Simulator of an 8-bit computer with CPU and peripherals. Formally verified with TLA+.
 
+[**Web Simulator**](https://ckorikov.github.io/sim8/)
+
 ## Structure
 
 ```
