@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { assemble } from '../asm.js';
-import { CPU, CpuState, ErrorCode } from '../core.js';
+import { assemble } from '../lib/asm.js';
+import { CPU, CpuState, ErrorCode } from '../lib/core.js';
 
 /** Assemble source, load into CPU, run, return CPU. */
 function runAsm(source) {

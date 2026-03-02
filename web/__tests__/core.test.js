@@ -3,9 +3,9 @@ import {
   CpuState, ErrorCode, CpuFault,
   MEMORY_SIZE, PAGE_SIZE, IO_START, SP_INIT,
   Memory, CPU,
-} from '../core.js';
-import { encodeFloat32, decodeFloat32, encodeFloat16 } from '../fp.js';
-import { Op, Reg, encodeFpm, encodeRegaddr, FP_FMT_F, FP_FMT_H, FP_FMT_O3 } from '../isa.js';
+} from '../lib/core.js';
+import { encodeFloat32, decodeFloat32, encodeFloat16 } from '../lib/fp.js';
+import { Op, Reg, encodeFpm, encodeRegaddr, FP_FMT_F, FP_FMT_H, FP_FMT_O3 } from '../lib/isa.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
