@@ -33,7 +33,7 @@ jobs:
 
       - name: Run tests
         working-directory: web
-        run: npm test
+        run: npm run test:ci
 
       - name: Build
         working-directory: web
