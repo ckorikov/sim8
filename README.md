@@ -24,6 +24,8 @@ formal/         TLA+ formal model and tests
 
 pysim8/         Python toolchain (assembler, simulator, disassembler)
 
+web/            Browser simulator (vanilla JS, esbuild)
+
 mcp/            MCP server (LLM tool access to assembler, simulator, disassembler)
 ```
 
@@ -56,12 +58,34 @@ Python implementation: assembler, TUI simulator, and disassembler. Requires Pyth
 cd pysim8 && uv sync
 
 uv run pysim8-asm program.asm       # assemble → program.bin
+uv run pysim8-asm - --binary        # stdin → raw bytes to stdout
 uv run pysim8 program.bin           # run in TUI
+uv run pysim8 --headless prog.bin   # run without TUI, print state
+uv run pysim8 --json prog.bin       # full state as JSON
 uv run pysim8-disasm program.bin    # disassemble
 uv run pytest                       # tests
 ```
 
+Unix pipe (assemble + run in one command):
+
+```bash
+echo "MOV A, 42\nHLT" | uv run pysim8-asm - --binary | uv run pysim8 --json -
+```
+
 See [pysim8/README.md](pysim8/README.md) for details.
+
+## Web Simulator
+
+Browser-based hardware diagram simulator. Vanilla JS, bundled with esbuild, served via GitHub Pages.
+
+```bash
+cd web && npm install
+
+npm test           # vitest (unit + integration + cross-validation vs pysim8)
+npm run build      # esbuild → docs/sim.bundle.js
+```
+
+See [web/](web/) for source structure.
 
 ## MCP Server
 
