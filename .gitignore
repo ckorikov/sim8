@@ -72,7 +72,7 @@ instance/
 docs/_build/
 
 # Web build output (deployed via CI)
-/docs/
+web/dist/
 
 # PyBuilder
 .pybuilder/
