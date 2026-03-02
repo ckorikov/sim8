@@ -6,12 +6,12 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { assemble, AsmError } from '../asm.js';
+import { assemble, AsmError } from '../lib/asm.js';
 import {
   Op, Reg, encodeFpm, encodeRegaddr,
   FP_FMT_F, FP_FMT_H, FP_FMT_BF, FP_FMT_O3, FP_FMT_O2,
-} from '../isa.js';
-import { encodeFloat32, encodeFloat16 } from '../fp.js';
+} from '../lib/isa.js';
+import { encodeFloat32, encodeFloat16 } from '../lib/fp.js';
 
 // ── Helpers ─────────────────────────────────────────────────────────
 

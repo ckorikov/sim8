@@ -9,7 +9,7 @@ import {
   FP_FMT_N1, FP_FMT_N2, FP_FMT_WIDTH, FP_FMT_MAX_POS,
   FP_REGISTERS, FP_SUFFIX_TO_FMT, FP_WIDTH_REGS,
   encodeFpm, decodeFpm, validateFpm,
-} from '../isa.js';
+} from '../lib/isa.js';
 
 // ── Opcode enum ──────────────────────────────────────────────────
 

@@ -9,10 +9,10 @@ import {
   floatToBytes, bytesToFloat,
   fpAdd, fpSub, fpMul, fpDiv, fpSqrt,
   fpCmp, fpAbs, fpNeg, fpClassify,
-} from '../fp.js';
+} from '../lib/fp.js';
 import {
   FP_FMT_F, FP_FMT_H, FP_FMT_BF, FP_FMT_O3, FP_FMT_O2,
-} from '../isa.js';
+} from '../lib/isa.js';
 
 // ── Helpers ────────────────────────────────────────────────────────
 
