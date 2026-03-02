@@ -32,11 +32,19 @@ export function getEditorSource() {
 
 export async function initEditor(container, defaultCode) {
   try {
-    const { EditorView, basicSetup } = await import('https://esm.sh/codemirror');
-    const { EditorState, StateEffect, StateField } = await import('https://esm.sh/@codemirror/state');
-    const { Decoration, GutterMarker, gutter } = await import('https://esm.sh/@codemirror/view');
-    const { StreamLanguage, HighlightStyle, syntaxHighlighting } = await import('https://esm.sh/@codemirror/language');
-    const { tags } = await import('https://esm.sh/@lezer/highlight');
+    const [
+      { EditorView, basicSetup },
+      { EditorState, StateEffect, StateField },
+      { Decoration, GutterMarker, gutter },
+      { StreamLanguage, HighlightStyle, syntaxHighlighting },
+      { tags },
+    ] = await Promise.all([
+      import('https://esm.sh/codemirror'),
+      import('https://esm.sh/@codemirror/state'),
+      import('https://esm.sh/@codemirror/view'),
+      import('https://esm.sh/@codemirror/language'),
+      import('https://esm.sh/@lezer/highlight'),
+    ]);
 
     const setExecLine = StateEffect.define();
     cmExecEffect = setExecLine;

@@ -91,10 +91,10 @@ function doAssemble(source) {
 // ── Step / Reset ───────────────────────────────────────────────
 
 function stepCPU() {
-  if (cpu.state === CpuState.FAULT || cpu.state === CpuState.HALTED) return false;
+  if (cpu.state === CpuState.FAULT || cpu.state === CpuState.HALTED) return 0;
 
-  const prevIp = cpu.ip;
-  const opcode = cpu.mem.get(prevIp);
+  const prevCycles = cpu.cycles;
+  const opcode = cpu.mem.get(cpu.ip);
   const wasRunning = cpu.step();
 
   if (BY_CODE_FP[opcode] !== undefined) {
@@ -105,7 +105,7 @@ function stepCPU() {
   flashWire(WIRE_IO);
 
   renderAll();
-  return wasRunning;
+  return wasRunning ? cpu.cycles - prevCycles : 0;
 }
 
 function resetCPU() {
