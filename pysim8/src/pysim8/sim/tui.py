@@ -279,7 +279,7 @@ def run_tui(
 
 
 @click.command()
-@click.argument("program", type=click.Path(exists=True))
+@click.argument("program", default="-")
 @click.option("--speed", "-s", default=25, help="Steps per second (0 = max).")
 @click.option("--paused", is_flag=True, help="Start paused (use Space to run).")
 @click.option(
@@ -287,19 +287,32 @@ def run_tui(
     help="Architecture version (1=integer, 2=FPU).",
 )
 @click.option("--headless", is_flag=True, help="Run without TUI, print final state.")
+@click.option("--json", "json_out", is_flag=True, help="Output full state as JSON (implies --headless).")
 def main(
-    program: str, speed: int, paused: bool, arch: int, headless: bool,
+    program: str, speed: int, paused: bool, arch: int,
+    headless: bool, json_out: bool,
 ) -> None:
-    """Run a .bin binary in the TUI simulator."""
-    path = Path(program)
-    code = list(path.read_bytes())
+    """Run a .bin binary in the TUI simulator.
+
+    Use '-' as PROGRAM to read binary from stdin (requires --headless).
+    """
+    if json_out:
+        headless = True
+
+    if program == "-":
+        if not headless:
+            click.echo("Error: stdin requires --headless", err=True)
+            raise SystemExit(1)
+        code = list(click.get_binary_stream("stdin").read())
+    else:
+        code = list(Path(program).read_bytes())
 
     if headless:
-        run_headless(code, arch=arch)
+        run_headless(code, arch=arch, json_out=json_out)
     else:
         run_tui(
             code,
-            filename=path.name,
+            filename=Path(program).name,
             speed=speed,
             paused=paused,
             arch=arch,
@@ -308,11 +321,38 @@ def main(
 
 def run_headless(
     code: list[int], *, arch: int = 2, max_steps: int = 100_000,
+    json_out: bool = False,
 ) -> None:
     """Run program without TUI, print final state and I/O output."""
+    import json as _json
+
     cpu = CPU(arch=arch)
     cpu.load(code)
     cpu.run(max_steps=max_steps)
+
+    if json_out:
+        state: dict = {
+            "code": code,
+            "state": cpu.state.value,
+            "steps": cpu.steps,
+            "cycles": cpu.cycles,
+            "regs": {
+                "a": cpu.a, "b": cpu.b, "c": cpu.c, "d": cpu.d,
+                "sp": cpu.sp, "dp": cpu.dp, "ip": cpu.ip,
+            },
+            "flags": {
+                "z": cpu.zero, "c": cpu.carry, "f": cpu.fault,
+            },
+            "display": cpu.display(),
+        }
+        if cpu.regs.fpu is not None:
+            fpu = cpu.regs.fpu
+            state["fpu"] = {
+                "fa": fpu.fa, "fb": fpu.fb,
+                "fpcr": fpu.fpcr, "fpsr": fpu.fpsr,
+            }
+        click.echo(_json.dumps(state))
+        return
 
     io_text = cpu.display()
     if io_text:
