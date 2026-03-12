@@ -64,8 +64,8 @@ MemoryInByte == \A i \in DOMAIN memory: memory[i] \in BYTE
 \* Step counter bounded
 StepsBounded == step_count <= MAX_STEPS
 
-\* Cycles bounded: max cost per instruction is 6 (FMADD)
-CyclesBounded == cycles <= MAX_STEPS * 6
+\* Cycles bounded: max cost per instruction is 8 (FP32 FMADD = mem(4)+fpu_ma(4))
+CyclesBounded == cycles <= MAX_STEPS * 8
 
 \* Cycles are monotonically non-negative
 CyclesNonNeg == cycles >= 0
@@ -156,7 +156,7 @@ Step ==
             \/ ExecFMADD_A_159 \/ ExecFMADD_I_160
             \/ ExecFMOV_161 \/ ExecFMOV_162
             \/ ExecInvalid
-    /\ cycles' = IF state' = "RUNNING" THEN cycles + Cost(memory[IP]) ELSE cycles
+    /\ cycles' = IF state' = "RUNNING" THEN cycles + Cost(memory[IP], memory[IP+1]) ELSE cycles
 
 \* Reset signal: from HALTED or FAULT back to IDLE
 Reset ==

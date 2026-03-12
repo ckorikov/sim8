@@ -182,19 +182,29 @@ InstrSize(op) ==
     ELSE IF op \in {OP_FMADD_A, OP_FMADD_I, OP_FMOV_FI16} THEN 4
     ELSE 3  \* MOV 1-8, ADD/SUB/CMP, AND/OR/XOR, SHL/SHR, FP 3-byte
 
+\* FP memory cost: proportional to bytes transferred (fmt = fpm mod 8)
+\* fmt 0=F32(4B), 1=F16(2B), 2=BF16(2B), 3=OFP8-E4M3(1B), 4=OFP8-E5M2(1B)
+FmtMemCost(fpm) ==
+    LET fmt == fpm % 8
+    IN  IF fmt = 0 THEN 4
+        ELSE IF fmt \in {1, 2} THEN 2
+        ELSE 1
+
 \* Instruction cost (pipeline model)
-\* Stages: reg_writeback=0, simple_alu=1, mem=2, expensive_alu=2
-\* Independent: max.  Dependent (data dependency): sum.
-Cost(op) ==
+\* Axes: operation complexity (fpu=2, fpu_c=3, reg=1) x memory bandwidth (FmtMemCost).
+\* fpm = memory[IP+1] (FPM byte); ignored for non-FP and format-agnostic ops.
+Cost(op, fpm) ==
     IF op = OP_HLT THEN 0
-    ELSE IF op \in {OP_FSTAT, OP_FCFG, OP_FSCFG, OP_FCLR, OP_FMOV_RR, OP_FMOV_FI8, OP_FMOV_FI16} THEN 1
-    ELSE IF op \in {OP_FMOV_FA, OP_FMOV_FI, OP_FMOV_AF, OP_FMOV_IF} THEN 2
-    ELSE IF op \in {OP_FABS, OP_FNEG, OP_FCVT, OP_FITOF, OP_FFTOI} THEN 3
-    ELSE IF op = OP_FCLASS THEN 2
-    ELSE IF op \in {OP_FADD_RR, OP_FSUB_RR, OP_FMUL_RR, OP_FDIV_RR, OP_FCMP_RR} THEN 3
-    ELSE IF op = OP_FSQRT THEN 4
-    ELSE IF op \in (132..141) THEN 5
-    ELSE IF op \in {OP_FMADD_A, OP_FMADD_I} THEN 6
+    ELSE IF op \in {OP_FSTAT, OP_FCFG, OP_FSCFG, OP_FCLR,
+                    OP_FMOV_RR, OP_FMOV_FI8, OP_FMOV_FI16, OP_FCLASS} THEN 1
+    ELSE IF op \in {OP_FMOV_FA, OP_FMOV_FI, OP_FMOV_AF, OP_FMOV_IF} THEN FmtMemCost(fpm)
+    ELSE IF op \in {OP_FABS, OP_FNEG, OP_FCVT, OP_FITOF, OP_FFTOI} THEN 2
+    ELSE IF op \in {OP_FADD_RR, OP_FSUB_RR, OP_FMUL_RR, OP_FCMP_RR} THEN 2
+    ELSE IF op \in {OP_FDIV_RR, OP_FSQRT} THEN 3
+    ELSE IF op \in {OP_FADD_A, OP_FADD_I, OP_FSUB_A, OP_FSUB_I,
+                    OP_FMUL_A, OP_FMUL_I, OP_FCMP_A, OP_FCMP_I} THEN FmtMemCost(fpm) + 2
+    ELSE IF op \in {OP_FDIV_A, OP_FDIV_I} THEN FmtMemCost(fpm) + 3
+    ELSE IF op \in {OP_FMADD_A, OP_FMADD_I} THEN FmtMemCost(fpm) + 4
     ELSE IF op \in {OP_PUSH_I, OP_PUSH_A,
                     OP_MUL_I, OP_MUL_A,
                     OP_DIV_I, OP_DIV_A} THEN 4   \* mem(2)+mem(2) or mem(2)+alu(2)

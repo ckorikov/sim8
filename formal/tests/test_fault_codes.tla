@@ -17,7 +17,8 @@ TestProgram == <<
 \* Fault code is valid when fault occurs
 FaultCodeInvariant == (state = "FAULT") =>
     (A \in {ERR_DIV_ZERO, ERR_STACK_OVERFLOW, ERR_STACK_UNDERFLOW,
-            ERR_INVALID_REG, ERR_PAGE_BOUNDARY, ERR_INVALID_OPCODE})
+            ERR_INVALID_REG, ERR_PAGE_BOUNDARY, ERR_INVALID_OPCODE,
+            ERR_FP_FORMAT})
 
 \* Running state means F flag is false
 RunningMeansNoFault == (state = "RUNNING") => (F = FALSE)
