@@ -323,8 +323,6 @@ Per-instruction exception lists below document only **IEEE 754 arithmetic except
 
 **IEEE 754 exceptions:** None (raw bit transfer).
 
-**Cost:** 1 tick.
-
 ### FADD — FP Addition (Opcodes 132-133)
 
 | Opcode | Operands      | Bytes | Encoding                | Description |
@@ -444,8 +442,6 @@ Per-instruction exception lists below document only **IEEE 754 arithmetic except
 **Flags:** No flags affected.
 
 **IEEE 754 exceptions:** None (raw bit transfer).
-
-**Cost:** 1 tick.
 
 ### FCVT — FP Format Conversion (Opcode 146)
 
@@ -569,8 +565,6 @@ Per-instruction exception lists below document only **IEEE 754 arithmetic except
 
 **NaN propagation:** When both operands are NaN, propagate the dst operand's NaN (dst is always the "first" operand).
 
-**Cost:** 3 ticks.
-
 ### FCLASS — FP Classify (Opcode 158)
 
 | Opcode | Operands | Bytes | Encoding           | Description |
@@ -602,8 +596,6 @@ Exactly one of bits 0-5 is set per classification. Bit 6 (NEG) is set independen
 
 **IEEE 754 exceptions:** None.
 
-**Cost:** 2 ticks.
-
 ### FMADD — FP Fused Multiply-Accumulate (Opcodes 159-160)
 
 | Opcode | Operands               | Bytes | Encoding                         | Description |
@@ -631,8 +623,6 @@ Exactly one of bits 0-5 is set per classification. Bit 6 (NEG) is set independen
 - **ERR_FP_FORMAT (12):** Invalid FPM byte, or dst_fmt != src_fmt.
 - **ERR_PAGE_BOUNDARY (5):** Multi-byte memory access crosses page boundary.
 - **ERR_INVALID_REG (4):** Invalid register code for indirect variant (opcode 160).
-
-**Cost:** 6 ticks.
 
 ## 7.7 FP Exception Model
 

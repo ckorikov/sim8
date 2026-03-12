@@ -815,30 +815,30 @@ Tests that FP instructions report correct cycle costs.
 
 | # | Source | Verify | Description |
 |---|--------|--------|-------------|
-| 90 | `FABS.F FA` | cost=3 | FP unary cost |
+| 90 | `FABS.F FA` | cost=2 | FP unary cost |
 |    | `HLT` | | |
-| 91 | `FSQRT.F FA` | cost=4 | FSQRT cost |
+| 91 | `FSQRT.F FA` | cost=3 | FSQRT cost |
 |    | `HLT` | | |
-| 92 | `FMOV.F FA, [d]` | cost=2 | FP load cost |
+| 92 | `FMOV.F FA, [d]` | cost=4 | FP32 load cost (4 bytes) |
 |    | `HLT` | | |
 |    | `d: DB 0.0` | | |
-| 93 | `FADD.F FA, [d]` | cost=5 | FP binary + mem cost |
+| 93 | `FADD.F FA, [d]` | cost=6 | FP32 binary + mem cost |
 |    | `HLT` | | |
 |    | `d: DB 0.0` | | |
 | 94 | `FCLR` | cost=1 | FP control cost |
 |    | `HLT` | | |
-| 95 | `FCVT.H.F FHA, FA` | cost=3 | FP conversion cost |
+| 95 | `FCVT.H.F FHA, FA` | cost=2 | FP conversion cost |
 |    | `HLT` | | |
-| 96 | `FITOF.F FA, A` | cost=3 | Integer-to-FP conversion cost |
+| 96 | `FITOF.F FA, A` | cost=2 | Integer-to-FP conversion cost |
 |    | `HLT` | | |
 | 145 | `FMOV.F FA, [d]` | | FA = 1.0 |
-|     | `FADD.F FA, FA` | cost=3 | FP reg-reg cost |
+|     | `FADD.F FA, FA` | cost=2 | FP reg-reg cost |
 |     | `HLT` | | |
 |     | `d: DB 1.0` | | |
-| 146 | `FCLASS.F A, FA` | cost=2 | FCLASS cost |
+| 146 | `FCLASS.F A, FA` | cost=1 | FCLASS cost |
 |     | `HLT` | | |
 | 147 | `FMOV.F FA, [d]` | | FA = 1.0 |
-|     | `FMADD.F FA, FA, [d]` | cost=6 | FMADD cost |
+|     | `FMADD.F FA, FA, [d]` | cost=7 | FP32 FMADD cost |
 |     | `HLT` | | |
 |     | `d: DB 1.0` | | |
 

@@ -572,34 +572,25 @@ An override replaces the cost for **all** variants of the given mnemonic.
 
 ## 4.6 FPU Pipeline
 
-The FPU adds a new pipeline stage and extends the cost model.
+Two independent axes determine FP cost:
+- **Operation complexity** — `fpu(2)`: basic arithmetic (FADD–FCMP rr, FABS, FNEG, FCVT, FITOF, FFTOI); `fpu_d(3)`: FDIV and FSQRT (higher latency); `fpu_ma(4)`: FMADD (multiply-add, two FPU stages); `reg(1)`: trivial (no FPU arithmetic).
+- **Memory bandwidth** — `mem(fmt)`: FP32=4, FP16/BF16=2, OFP8=1 ticks (proportional to bytes transferred).
 
-### FPU Pipeline Stage
-
-| Stage | Latency | Notes |
-|-------|---------|-------|
-| FPU (classify) | 2 | FCLASS — bit inspection, no arithmetic |
-| FPU (basic) | 3 | FABS, FNEG, FCVT, FITOF, FFTOI |
-| FPU (FSQRT) | 4 | Square root is more expensive |
-| FPU (FMADD) | 4 | Fused multiply-add (FPU portion) |
+Operations without memory access have the same cost for all formats.
 
 ### FP Cost Assignment
 
-| Category | Cost | Rule | Examples |
-|----------|------|------|---------|
-| FP unary (no mem) | 3 | fpu(3) | FABS, FNEG |
-| FCLASS | 2 | fpu(2) | Classification only, no memory access |
-| FP reg-reg arith | 3 | fpu(3) | FADD, FSUB, FMUL, FDIV, FCMP (reg-reg) |
-| FSQRT | 4 | fpu(4) | FSQRT |
-| FP move (load/store) | 2 | mem(2) | FMOV (128-131) |
-| FP move (reg-reg) | 1 | reg(1) | FMOV (145) |
-| FP move (immediate) | 1 | reg(1) | FMOV (161-162) |
-| FP binary + mem | 5 | mem(2) + fpu(3), dependency | FADD, FSUB, FMUL, FDIV, FCMP (mem) |
-| FMADD | 6 | mem(2) + fpu(4), dependency | Fused multiply-add |
-| FP conversion | 3 | fpu(3) | FCVT, FITOF, FFTOI |
-| FP control | 1 | reg(1) | FSTAT, FCFG, FSCFG, FCLR |
+| Category | FP32 | FP16/BF16 | OFP8 | Rule |
+|----------|------|-----------|------|------|
+| FP arithmetic (no mem): FABS, FNEG, FADD–FMUL rr, FCMP rr, FCVT, FITOF, FFTOI | 2 | 2 | 2 | `fpu(2)` |
+| FDIV rr, FSQRT | 3 | 3 | 3 | `fpu_d(3)` |
+| FMOV load/store | 4 | 2 | 1 | `mem(fmt)` |
+| FP binary + mem: FADD–FMUL mem, FCMP mem | 6 | 4 | 3 | `mem(fmt) + fpu(2)` |
+| FDIV mem | 7 | 5 | 4 | `mem(fmt) + fpu_d(3)` |
+| FMADD | 8 | 6 | 5 | `mem(fmt) + fpu_ma(4)` |
+| Trivial: FMOV rr/imm, FCLASS, FSTAT, FCFG, FSCFG, FCLR | 1 | 1 | 1 | `reg(1)` |
 
-**Scheduling:** FP binary operations with memory (FADD, FSUB, FMUL, FDIV, FCMP, opcodes 132-141) read memory first (2 ticks), then perform the FP computation (3 ticks). These are sequential (data dependency) so cost = 2 + 3 = 5. Reg-reg variants (153-157) skip the memory stage: cost = 3. FMADD reads memory (2 ticks) then performs the fused multiply-add (4 ticks): cost = 2 + 4 = 6.
+**Scheduling:** memory and FPU stages are sequential (data dependency). FP binary+mem: `mem(fmt) + fpu(2)`. FDIV mem: `mem(fmt) + fpu_d(3)`. FMADD: `mem(fmt) + fpu_ma(4)`.
 
 ## 4.7 FPU Pseudocode
 

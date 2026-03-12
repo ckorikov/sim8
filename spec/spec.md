@@ -140,8 +140,9 @@ IEEE 754 floating-point coprocessor extension. Key additions from v1:
 
 **Cost model extension:**
 
-- FP unary: 3 ticks, FCLASS: 2 ticks, FSQRT: 4 ticks, FP move (mem): 2 ticks, FP move (reg-reg/imm): 1 tick
-- FP binary + mem: 5 ticks, FP reg-reg: 3 ticks, FMADD: 6 ticks
-- FP conversion: 3 ticks, FP control: 1 tick
+- FP arithmetic (no mem): 2 ticks; FSQRT/FMADD (FPU portion): 3 ticks; trivial (FMOV rr/imm, FCLASS, control): 1 tick
+- Memory: format-dependent — FP32=4, FP16/BF16=2, OFP8=1 ticks
+- FP binary+mem: FP32=6, FP16/BF16=4, OFP8=3; FMADD: FP32=7, FP16/BF16=5, OFP8=4
+- See [uarch.md §4.6](uarch.md#46-fpu-pipeline) for the complete model
 
 **Totals:** 109 opcodes assigned (74 integer + 35 FP), 147 free, 7 error codes
