@@ -39,14 +39,14 @@ describe('Op', () => {
   });
 
   it('FP opcodes start at 128', () => {
-    for (const insn of ISA_FP) {
-      expect(insn.op).toBeGreaterThanOrEqual(128);
+    for (const instr of ISA_FP) {
+      expect(instr.op).toBeGreaterThanOrEqual(128);
     }
   });
 
   it('integer opcodes are < 128', () => {
-    for (const insn of ISA) {
-      expect(insn.op).toBeLessThan(128);
+    for (const instr of ISA) {
+      expect(instr.op).toBeLessThan(128);
     }
   });
 });
@@ -255,7 +255,7 @@ describe('FP_REGISTERS', () => {
 
 // ── Instruction definitions ──────────────────────────────────────
 
-describe('InsnDef', () => {
+describe('InstrDef', () => {
   it('HLT has size 1 and cost 0', () => {
     const hlt = BY_CODE[Op.HLT];
     expect(hlt.mnemonic).toBe('HLT');
@@ -287,13 +287,13 @@ describe('InsnDef', () => {
   });
 
   it('FMOV_FP_IMM16 has size 4 (opcode + fpm + 2-byte imm)', () => {
-    const insn = BY_CODE_FP[Op.FMOV_FP_IMM16];
-    expect(insn.size).toBe(4);
+    const instr = BY_CODE_FP[Op.FMOV_FP_IMM16];
+    expect(instr.size).toBe(4);
   });
 
   it('FMADD has size 4 (opcode + fpm + fpm + addr)', () => {
-    const insn = BY_CODE_FP[Op.FMADD_FP_FP_ADDR];
-    expect(insn.size).toBe(4);
+    const instr = BY_CODE_FP[Op.FMADD_FP_FP_ADDR];
+    expect(instr.size).toBe(4);
   });
 });
 
@@ -305,8 +305,8 @@ describe('BY_CODE', () => {
   });
 
   it('every entry has matching op key', () => {
-    for (const [code, insn] of Object.entries(BY_CODE)) {
-      expect(insn.op).toBe(Number(code));
+    for (const [code, instr] of Object.entries(BY_CODE)) {
+      expect(instr.op).toBe(Number(code));
     }
   });
 });

@@ -581,21 +581,21 @@ function _findInsn(mnemonic, operands, line, table) {
     throw new AsmError(`Invalid instruction: ${mnemonic}`, line);
   }
 
-  for (const insn of candidates) {
-    if (insn.sig.length !== operands.length) continue;
+  for (const instr of candidates) {
+    if (instr.sig.length !== operands.length) continue;
     let allMatch = true;
-    for (let i = 0; i < insn.sig.length; i++) {
-      if (!_operandMatches(operands[i], insn.sig[i])) {
+    for (let i = 0; i < instr.sig.length; i++) {
+      if (!_operandMatches(operands[i], instr.sig[i])) {
         allMatch = false;
         break;
       }
     }
-    if (allMatch) return insn;
+    if (allMatch) return instr;
   }
 
   let maxArity = 0;
-  for (const insn of candidates) {
-    if (insn.sig.length > maxArity) maxArity = insn.sig.length;
+  for (const instr of candidates) {
+    if (instr.sig.length > maxArity) maxArity = instr.sig.length;
   }
   if (operands.length > maxArity) {
     throw new AsmError(`${mnemonic}: too many arguments`, line);
@@ -659,12 +659,12 @@ function _validateFpRegWidth(reg, fmt, line) {
 
 // ── FP instruction encoding ──────────────────────────────────────
 
-function _encodeFpInstruction(insn, operands, dstSuffix, srcSuffix, line) {
+function _encodeFpInstruction(instr, operands, dstSuffix, srcSuffix, line) {
   const dstFmt = dstSuffix ? _validateFpSuffix(dstSuffix, line) : null;
   const srcFmt = srcSuffix ? _validateFpSuffix(srcSuffix, line) : null;
 
   // FCVT special case: dual suffix
-  if (insn.op === Op.FCVT_FP_FP) {
+  if (instr.op === Op.FCVT_FP_FP) {
     if (dstFmt === srcFmt) {
       throw new AsmError('FCVT with identical formats (use FMOV)', line);
     }
@@ -674,7 +674,7 @@ function _encodeFpInstruction(insn, operands, dstSuffix, srcSuffix, line) {
     _validateFpRegWidth(srcReg, srcFmt, line);
     const dstFpm = encodeFpm(dstReg.phys, dstReg.pos, dstFmt);
     const srcFpm = encodeFpm(srcReg.phys, srcReg.pos, srcFmt);
-    return [insn.op, dstFpm, srcFpm];
+    return [instr.op, dstFpm, srcFpm];
   }
 
   // Separate FP reg operands from non-FP operands
@@ -695,7 +695,7 @@ function _encodeFpInstruction(insn, operands, dstSuffix, srcSuffix, line) {
   // Encode non-FP bytes
   const nonFpBytes = nonFpOps.map(op => _encodeOperand(op));
 
-  return [insn.op, ...fpmBytes, ...nonFpBytes];
+  return [instr.op, ...fpmBytes, ...nonFpBytes];
 }
 
 // ── FMOV immediate encoding ─────────────────────────────────────
@@ -751,16 +751,16 @@ function _encodeInstruction(mnemonic, operands, line, dstSuffix, srcSuffix, arch
       return _encodeFmovImm(operands, dstSuffix, line);
     }
 
-    const insn = _findInsn(mnemonic, operands, line, BY_MNEMONIC_FP);
+    const instr = _findInsn(mnemonic, operands, line, BY_MNEMONIC_FP);
     if (FP_CONTROL_MNEMONICS.has(mnemonic)) {
       // Control: no FPM, just opcode + operand bytes
-      return [insn.op, ...operands.map(op => _encodeOperand(op))];
+      return [instr.op, ...operands.map(op => _encodeOperand(op))];
     }
-    return _encodeFpInstruction(insn, operands, dstSuffix, srcSuffix, line);
+    return _encodeFpInstruction(instr, operands, dstSuffix, srcSuffix, line);
   }
 
-  const insn = _findInsn(mnemonic, operands, line, BY_MNEMONIC);
-  return [insn.op, ...operands.map(op => _encodeOperand(op))];
+  const instr = _findInsn(mnemonic, operands, line, BY_MNEMONIC);
+  return [instr.op, ...operands.map(op => _encodeOperand(op))];
 }
 
 // ── Two-pass assembly ────────────────────────────────────────────

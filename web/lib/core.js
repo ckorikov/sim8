@@ -341,9 +341,11 @@ export class CPU {
     }
 
     const allIsa = arch < 2 ? ISA : ISA.concat(ISA_FP);
+    this._instrDef = {};
     this._opCost = {};
     for (const d of allIsa) {
-      this._opCost[d.op] = d.cost;
+      this._instrDef[d.op] = d;
+      if (!d.formatDep) this._opCost[d.op] = d.cost;
     }
   }
 
@@ -362,9 +364,9 @@ export class CPU {
       this.state = CpuState.RUNNING;
     }
 
-    let insn;
+    let instr;
     try {
-      insn = decode(this.mem, this.regs.ip, this._arch);
+      instr = decode(this.mem, this.regs.ip, this._arch);
     } catch (e) {
       if (e instanceof CpuFault) {
         this._enterFault(e.code);
@@ -373,14 +375,14 @@ export class CPU {
       throw e;
     }
 
-    if (insn.op === Op.HLT) {
+    if (instr.op === Op.HLT) {
       this.state = CpuState.HALTED;
       return false;
     }
 
     try {
-      const handler = this._dispatch[insn.op];
-      handler(insn);
+      const handler = this._dispatch[instr.op];
+      handler(instr);
     } catch (e) {
       if (e instanceof CpuFault) {
         this._enterFault(e.code);
@@ -390,7 +392,7 @@ export class CPU {
     }
 
     this._steps += 1;
-    this._cycles += (this._opCost[insn.op] || 1);
+    this._cycles += this._computeCost(instr);
     return this.state === CpuState.RUNNING;
   }
 
@@ -441,6 +443,22 @@ export class CPU {
     this.state = CpuState.FAULT;
   }
 
+  // ── Cost accounting ────────────────────────────────────────────
+
+  // Cycle cost per FP format for memory-accessing FP instructions.
+  // Derived from FP_FMT_WIDTH (fmt 0..4): bits / 8 = bytes transferred.
+  static _FP_FMT_MEM_COST = Array.from({ length: 5 }, (_, fmt) => FP_FMT_WIDTH[fmt] / 8);
+
+  _computeCost(instr) {
+    const op = instr.op;
+    const d = this._instrDef[op];
+    if (d?.formatDep) {
+      const fmt = instr.operands[0] % 8;
+      return (CPU._FP_FMT_MEM_COST[fmt] ?? 4) + d.cost;
+    }
+    return this._opCost[op] ?? 1;
+  }
+
   // ── Address resolution ─────────────────────────────────────────
 
   _directAddr(offset) {
@@ -489,43 +507,43 @@ export class CPU {
 
   // ── Source resolvers ───────────────────────────────────────────
 
-  _srcRegaddr(insn) {
-    return this.mem.get(this._indirectAddr(insn.operands[1]));
+  _srcRegaddr(instr) {
+    return this.mem.get(this._indirectAddr(instr.operands[1]));
   }
 
-  _srcAddr(insn) {
-    return this.mem.get(this._directAddr(insn.operands[1]));
+  _srcAddr(instr) {
+    return this.mem.get(this._directAddr(instr.operands[1]));
   }
 
-  _srcConst(insn) {
-    return insn.operands[1];
+  _srcConst(instr) {
+    return instr.operands[1];
   }
 
-  _srcStkReg(insn) {
-    const code = this._decodeGprOrSp(insn.operands[1]);
+  _srcStkReg(instr) {
+    const code = this._decodeGprOrSp(instr.operands[1]);
     return this.regs.read(code);
   }
 
-  _srcGprReg(insn) {
-    const code = this._decodeGpr(insn.operands[1]);
+  _srcGprReg(instr) {
+    const code = this._decodeGpr(instr.operands[1]);
     return this.regs.read(code);
   }
 
-  _srcMuldivReg(insn) {
-    const code = this._decodeGpr(insn.operands[0]);
+  _srcMuldivReg(instr) {
+    const code = this._decodeGpr(instr.operands[0]);
     return this.regs.read(code);
   }
 
-  _srcMuldivRegaddr(insn) {
-    return this.mem.get(this._indirectAddr(insn.operands[0]));
+  _srcMuldivRegaddr(instr) {
+    return this.mem.get(this._indirectAddr(instr.operands[0]));
   }
 
-  _srcMuldivAddr(insn) {
-    return this.mem.get(this._directAddr(insn.operands[0]));
+  _srcMuldivAddr(instr) {
+    return this.mem.get(this._directAddr(instr.operands[0]));
   }
 
-  _srcMuldivConst(insn) {
-    return insn.operands[0];
+  _srcMuldivConst(instr) {
+    return instr.operands[0];
   }
 
   // ── Stack helpers ──────────────────────────────────────────────
@@ -549,9 +567,9 @@ export class CPU {
   // ── Handler factories ──────────────────────────────────────────
 
   _makeAlu2op(aluFn, resolveSrc, writeback = true) {
-    return (insn) => {
-      const destCode = this._decodeGprOrSp(insn.operands[0]);
-      const right = resolveSrc(insn);
+    return (instr) => {
+      const destCode = this._decodeGprOrSp(instr.operands[0]);
+      const right = resolveSrc(instr);
       const left = this.regs.read(destCode);
       const [result, carry, zero] = aluFn(left, right);
       this.regs.flags.c = carry;
@@ -559,27 +577,27 @@ export class CPU {
       if (writeback) {
         this.regs.write(destCode, result);
       }
-      this.regs.ip += insn.size;
+      this.regs.ip += instr.size;
     };
   }
 
   _makeBitwise2op(aluFn, resolveSrc) {
-    return (insn) => {
-      const destCode = this._decodeGpr(insn.operands[0]);
-      const right = resolveSrc(insn);
+    return (instr) => {
+      const destCode = this._decodeGpr(instr.operands[0]);
+      const right = resolveSrc(instr);
       const left = this.regs.read(destCode);
       const [result, zero] = aluFn(left, right);
       this.regs.flags.c = false;
       this.regs.flags.z = zero;
       this.regs.write(destCode, result);
-      this.regs.ip += insn.size;
+      this.regs.ip += instr.size;
     };
   }
 
   _makeShift2op(aluFn, resolveSrc) {
-    return (insn) => {
-      const destCode = this._decodeGpr(insn.operands[0]);
-      const count = resolveSrc(insn);
+    return (instr) => {
+      const destCode = this._decodeGpr(instr.operands[0]);
+      const count = resolveSrc(instr);
       const value = this.regs.read(destCode);
       if (count === 0) {
         this.regs.flags.z = value === 0;
@@ -589,41 +607,41 @@ export class CPU {
         this.regs.flags.z = zero;
         this.regs.write(destCode, result);
       }
-      this.regs.ip += insn.size;
+      this.regs.ip += instr.size;
     };
   }
 
   _makeJcc(condition, isReg) {
-    return (insn) => {
+    return (instr) => {
       let target;
       if (isReg) {
-        const code = this._decodeGpr(insn.operands[0]);
+        const code = this._decodeGpr(instr.operands[0]);
         target = this.regs.read(code);
       } else {
-        target = insn.operands[0];
+        target = instr.operands[0];
       }
       if (condition()) {
         this.regs.ip = target;
       } else {
-        this.regs.ip += insn.size;
+        this.regs.ip += instr.size;
       }
     };
   }
 
   _makeMuldiv(aluFn, resolveSrc) {
-    return (insn) => {
-      const right = resolveSrc(insn);
+    return (instr) => {
+      const right = resolveSrc(instr);
       const [result, carry, zero] = aluFn(this.regs.a, right);
       this.regs.flags.c = carry;
       this.regs.flags.z = zero;
       this.regs.a = result;
-      this.regs.ip += insn.size;
+      this.regs.ip += instr.size;
     };
   }
 
   _makeDiv(resolveSrc) {
-    return (insn) => {
-      const right = resolveSrc(insn);
+    return (instr) => {
+      const right = resolveSrc(instr);
       if (right === 0) {
         throw new CpuFault(ErrorCode.DIV_ZERO, this.regs.ip);
       }
@@ -631,7 +649,7 @@ export class CPU {
       this.regs.flags.c = carry;
       this.regs.flags.z = zero;
       this.regs.a = result;
-      this.regs.ip += insn.size;
+      this.regs.ip += instr.size;
     };
   }
 
@@ -641,48 +659,48 @@ export class CPU {
     const d = this._dispatch;
 
     // -- MOV variants --
-    d[Op.MOV_REG_REG] = (insn) => {
-      const dest = this._decodeMovReg(insn.operands[0]);
-      const src = this._decodeMovReg(insn.operands[1]);
+    d[Op.MOV_REG_REG] = (instr) => {
+      const dest = this._decodeMovReg(instr.operands[0]);
+      const src = this._decodeMovReg(instr.operands[1]);
       this.regs.write(dest, this.regs.read(src));
-      this.regs.ip += insn.size;
+      this.regs.ip += instr.size;
     };
-    d[Op.MOV_REG_ADDR] = (insn) => {
-      const dest = this._decodeMovReg(insn.operands[0]);
-      this.regs.write(dest, this.mem.get(this._directAddr(insn.operands[1])));
-      this.regs.ip += insn.size;
+    d[Op.MOV_REG_ADDR] = (instr) => {
+      const dest = this._decodeMovReg(instr.operands[0]);
+      this.regs.write(dest, this.mem.get(this._directAddr(instr.operands[1])));
+      this.regs.ip += instr.size;
     };
-    d[Op.MOV_REG_REGADDR] = (insn) => {
-      const dest = this._decodeMovReg(insn.operands[0]);
-      this.regs.write(dest, this.mem.get(this._indirectAddr(insn.operands[1])));
-      this.regs.ip += insn.size;
+    d[Op.MOV_REG_REGADDR] = (instr) => {
+      const dest = this._decodeMovReg(instr.operands[0]);
+      this.regs.write(dest, this.mem.get(this._indirectAddr(instr.operands[1])));
+      this.regs.ip += instr.size;
     };
-    d[Op.MOV_ADDR_REG] = (insn) => {
-      const addr = this._directAddr(insn.operands[0]);
-      const src = this._decodeMovReg(insn.operands[1]);
+    d[Op.MOV_ADDR_REG] = (instr) => {
+      const addr = this._directAddr(instr.operands[0]);
+      const src = this._decodeMovReg(instr.operands[1]);
       this.mem.set(addr, this.regs.read(src));
-      this.regs.ip += insn.size;
+      this.regs.ip += instr.size;
     };
-    d[Op.MOV_REGADDR_REG] = (insn) => {
-      const addr = this._indirectAddr(insn.operands[0]);
-      const src = this._decodeMovReg(insn.operands[1]);
+    d[Op.MOV_REGADDR_REG] = (instr) => {
+      const addr = this._indirectAddr(instr.operands[0]);
+      const src = this._decodeMovReg(instr.operands[1]);
       this.mem.set(addr, this.regs.read(src));
-      this.regs.ip += insn.size;
+      this.regs.ip += instr.size;
     };
-    d[Op.MOV_REG_CONST] = (insn) => {
-      const dest = this._decodeMovReg(insn.operands[0]);
-      this.regs.write(dest, insn.operands[1]);
-      this.regs.ip += insn.size;
+    d[Op.MOV_REG_CONST] = (instr) => {
+      const dest = this._decodeMovReg(instr.operands[0]);
+      this.regs.write(dest, instr.operands[1]);
+      this.regs.ip += instr.size;
     };
-    d[Op.MOV_ADDR_CONST] = (insn) => {
-      const addr = this._directAddr(insn.operands[0]);
-      this.mem.set(addr, insn.operands[1]);
-      this.regs.ip += insn.size;
+    d[Op.MOV_ADDR_CONST] = (instr) => {
+      const addr = this._directAddr(instr.operands[0]);
+      this.mem.set(addr, instr.operands[1]);
+      this.regs.ip += instr.size;
     };
-    d[Op.MOV_REGADDR_CONST] = (insn) => {
-      const addr = this._indirectAddr(insn.operands[0]);
-      this.mem.set(addr, insn.operands[1]);
-      this.regs.ip += insn.size;
+    d[Op.MOV_REGADDR_CONST] = (instr) => {
+      const addr = this._indirectAddr(instr.operands[0]);
+      this.mem.set(addr, instr.operands[1]);
+      this.regs.ip += instr.size;
     };
 
     // -- ADD / SUB (4 variants each) --
@@ -699,21 +717,21 @@ export class CPU {
     }
 
     // -- INC / DEC --
-    d[Op.INC_REG] = (insn) => {
-      const code = this._decodeGprOrSp(insn.operands[0]);
+    d[Op.INC_REG] = (instr) => {
+      const code = this._decodeGprOrSp(instr.operands[0]);
       const [result, carry, zero] = ALU.inc(this.regs.read(code));
       this.regs.flags.c = carry;
       this.regs.flags.z = zero;
       this.regs.write(code, result);
-      this.regs.ip += insn.size;
+      this.regs.ip += instr.size;
     };
-    d[Op.DEC_REG] = (insn) => {
-      const code = this._decodeGprOrSp(insn.operands[0]);
+    d[Op.DEC_REG] = (instr) => {
+      const code = this._decodeGprOrSp(instr.operands[0]);
       const [result, carry, zero] = ALU.dec(this.regs.read(code));
       this.regs.flags.c = carry;
       this.regs.flags.z = zero;
       this.regs.write(code, result);
-      this.regs.ip += insn.size;
+      this.regs.ip += instr.size;
     };
 
     // -- CMP (4 variants, SUB without writeback) --
@@ -723,12 +741,12 @@ export class CPU {
     d[Op.CMP_REG_CONST] = this._makeAlu2op(ALU.sub, srcC, false);
 
     // -- JMP --
-    d[Op.JMP_REG] = (insn) => {
-      const code = this._decodeGpr(insn.operands[0]);
+    d[Op.JMP_REG] = (instr) => {
+      const code = this._decodeGpr(instr.operands[0]);
       this.regs.ip = this.regs.read(code);
     };
-    d[Op.JMP_ADDR] = (insn) => {
-      this.regs.ip = insn.operands[0];
+    d[Op.JMP_ADDR] = (instr) => {
+      this.regs.ip = instr.operands[0];
     };
 
     // -- Conditional jumps --
@@ -754,43 +772,43 @@ export class CPU {
     );
 
     // -- PUSH (4 variants) --
-    d[Op.PUSH_REG] = (insn) => {
-      const code = this._decodeGpr(insn.operands[0]);
+    d[Op.PUSH_REG] = (instr) => {
+      const code = this._decodeGpr(instr.operands[0]);
       this._doPush(this.regs.read(code));
-      this.regs.ip += insn.size;
+      this.regs.ip += instr.size;
     };
-    d[Op.PUSH_REGADDR] = (insn) => {
-      const addr = this._indirectAddr(insn.operands[0]);
+    d[Op.PUSH_REGADDR] = (instr) => {
+      const addr = this._indirectAddr(instr.operands[0]);
       this._doPush(this.mem.get(addr));
-      this.regs.ip += insn.size;
+      this.regs.ip += instr.size;
     };
-    d[Op.PUSH_ADDR] = (insn) => {
-      const addr = this._directAddr(insn.operands[0]);
+    d[Op.PUSH_ADDR] = (instr) => {
+      const addr = this._directAddr(instr.operands[0]);
       this._doPush(this.mem.get(addr));
-      this.regs.ip += insn.size;
+      this.regs.ip += instr.size;
     };
-    d[Op.PUSH_CONST] = (insn) => {
-      this._doPush(insn.operands[0]);
-      this.regs.ip += insn.size;
+    d[Op.PUSH_CONST] = (instr) => {
+      this._doPush(instr.operands[0]);
+      this.regs.ip += instr.size;
     };
 
     // -- POP --
-    d[Op.POP_REG] = (insn) => {
-      const code = this._decodeGpr(insn.operands[0]);
+    d[Op.POP_REG] = (instr) => {
+      const code = this._decodeGpr(instr.operands[0]);
       this.regs.write(code, this._doPop());
-      this.regs.ip += insn.size;
+      this.regs.ip += instr.size;
     };
 
     // -- CALL / RET --
-    d[Op.CALL_REG] = (insn) => {
-      const code = this._decodeGpr(insn.operands[0]);
+    d[Op.CALL_REG] = (instr) => {
+      const code = this._decodeGpr(instr.operands[0]);
       const target = this.regs.read(code);
-      this._doPush(this.regs.ip + insn.size);
+      this._doPush(this.regs.ip + instr.size);
       this.regs.ip = target;
     };
-    d[Op.CALL_ADDR] = (insn) => {
-      const target = insn.operands[0];
-      this._doPush(this.regs.ip + insn.size);
+    d[Op.CALL_ADDR] = (instr) => {
+      const target = instr.operands[0];
+      this._doPush(this.regs.ip + instr.size);
       this.regs.ip = target;
     };
     d[Op.RET] = (_insn) => {
@@ -829,13 +847,13 @@ export class CPU {
     }
 
     // -- NOT --
-    d[Op.NOT_REG] = (insn) => {
-      const code = this._decodeGpr(insn.operands[0]);
+    d[Op.NOT_REG] = (instr) => {
+      const code = this._decodeGpr(instr.operands[0]);
       const [result, zero] = ALU.not_op(this.regs.read(code));
       this.regs.flags.c = false;
       this.regs.flags.z = zero;
       this.regs.write(code, result);
-      this.regs.ip += insn.size;
+      this.regs.ip += instr.size;
     };
 
     // -- Shift: SHL/SHR (4 variants each) --
@@ -919,36 +937,36 @@ export class CPU {
     const d = this._dispatch;
 
     // -- FMOV load/store (128-131) --
-    d[Op.FMOV_FP_ADDR] = (insn) => {
-      this._fmovLoad(insn, this._directAddr(insn.operands[1]));
+    d[Op.FMOV_FP_ADDR] = (instr) => {
+      this._fmovLoad(instr, this._directAddr(instr.operands[1]));
     };
-    d[Op.FMOV_FP_REGADDR] = (insn) => {
-      this._fmovLoad(insn, this._indirectAddr(insn.operands[1]));
+    d[Op.FMOV_FP_REGADDR] = (instr) => {
+      this._fmovLoad(instr, this._indirectAddr(instr.operands[1]));
     };
-    d[Op.FMOV_ADDR_FP] = (insn) => {
-      this._fmovStore(insn, this._directAddr(insn.operands[1]));
+    d[Op.FMOV_ADDR_FP] = (instr) => {
+      this._fmovStore(instr, this._directAddr(instr.operands[1]));
     };
-    d[Op.FMOV_REGADDR_FP] = (insn) => {
-      this._fmovStore(insn, this._indirectAddr(insn.operands[1]));
+    d[Op.FMOV_REGADDR_FP] = (instr) => {
+      this._fmovStore(instr, this._indirectAddr(instr.operands[1]));
     };
 
     // -- FMOV immediate (161-162) --
-    d[Op.FMOV_FP_IMM8] = (insn) => {
-      const [phys, pos, fmt] = this._validateFpm(insn.operands[0]);
+    d[Op.FMOV_FP_IMM8] = (instr) => {
+      const [phys, pos, fmt] = this._validateFpm(instr.operands[0]);
       if (fmt !== FP_FMT_O3 && fmt !== FP_FMT_O2) {
         throw new CpuFault(ErrorCode.FP_FORMAT, this.regs.ip);
       }
-      this._fpu.writeBits(pos, fmt, insn.operands[1], phys);
-      this.regs.ip += insn.size;
+      this._fpu.writeBits(pos, fmt, instr.operands[1], phys);
+      this.regs.ip += instr.size;
     };
-    d[Op.FMOV_FP_IMM16] = (insn) => {
-      const [phys, pos, fmt] = this._validateFpm(insn.operands[0]);
+    d[Op.FMOV_FP_IMM16] = (instr) => {
+      const [phys, pos, fmt] = this._validateFpm(instr.operands[0]);
       if (fmt !== FP_FMT_H && fmt !== FP_FMT_BF) {
         throw new CpuFault(ErrorCode.FP_FORMAT, this.regs.ip);
       }
-      const imm16 = insn.operands[1] | (insn.operands[2] << 8);
+      const imm16 = instr.operands[1] | (instr.operands[2] << 8);
       this._fpu.writeBits(pos, fmt, imm16, phys);
-      this.regs.ip += insn.size;
+      this.regs.ip += instr.size;
     };
 
     // -- FP arith mem (132-141) --
@@ -967,51 +985,51 @@ export class CPU {
     d[Op.FCMP_FP_REGADDR] = this._makeFpCmpMem(iAddr);
 
     // -- Unary (142-144) --
-    d[Op.FABS_FP] = (insn) => this._fpUnaryBitwise(insn, fpAbs);
-    d[Op.FNEG_FP] = (insn) => this._fpUnaryBitwise(insn, fpNeg);
-    d[Op.FSQRT_FP] = (insn) => {
-      const [phys, pos, fmt] = this._validateFpm(insn.operands[0]);
+    d[Op.FABS_FP] = (instr) => this._fpUnaryBitwise(instr, fpAbs);
+    d[Op.FNEG_FP] = (instr) => this._fpUnaryBitwise(instr, fpNeg);
+    d[Op.FSQRT_FP] = (instr) => {
+      const [phys, pos, fmt] = this._validateFpm(instr.operands[0]);
       const val = this._fpReadReg(pos, fmt, phys);
       const { result, exc } = fpSqrt(val, fmt, this._fpu.roundingMode);
       this._fpu.accumulateExceptions(exc);
       this._fpWriteReg(pos, fmt, result, phys);
-      this.regs.ip += insn.size;
+      this.regs.ip += instr.size;
     };
 
     // -- FMOV reg-reg (145) --
-    d[Op.FMOV_RR] = (insn) => {
-      const [dstPhys, dstPos, dstFmt] = this._validateFpm(insn.operands[0]);
-      const [srcPhys, srcPos, srcFmt] = this._validateFpm(insn.operands[1]);
+    d[Op.FMOV_RR] = (instr) => {
+      const [dstPhys, dstPos, dstFmt] = this._validateFpm(instr.operands[0]);
+      const [srcPhys, srcPos, srcFmt] = this._validateFpm(instr.operands[1]);
       if (dstFmt !== srcFmt) {
         throw new CpuFault(ErrorCode.FP_FORMAT, this.regs.ip);
       }
       const raw = this._fpu.readBits(srcPos, srcFmt, srcPhys);
       this._fpu.writeBits(dstPos, dstFmt, raw, dstPhys);
-      this.regs.ip += insn.size;
+      this.regs.ip += instr.size;
     };
 
     // -- FCVT (146) --
-    d[Op.FCVT_FP_FP] = (insn) => {
-      const [dstPhys, dstPos, dstFmt] = this._validateFpm(insn.operands[0]);
-      const [srcPhys, srcPos, srcFmt] = this._validateFpm(insn.operands[1]);
+    d[Op.FCVT_FP_FP] = (instr) => {
+      const [dstPhys, dstPos, dstFmt] = this._validateFpm(instr.operands[0]);
+      const [srcPhys, srcPos, srcFmt] = this._validateFpm(instr.operands[1]);
       const srcVal = this._fpReadReg(srcPos, srcFmt, srcPhys);
       this._fpWriteReg(dstPos, dstFmt, srcVal, dstPhys);
-      this.regs.ip += insn.size;
+      this.regs.ip += instr.size;
     };
 
     // -- FITOF (147) --
-    d[Op.FITOF_FP_GPR] = (insn) => {
-      const [phys, pos, fmt] = this._validateFpm(insn.operands[0]);
-      const gpr = this._decodeGpr(insn.operands[1]);
+    d[Op.FITOF_FP_GPR] = (instr) => {
+      const [phys, pos, fmt] = this._validateFpm(instr.operands[0]);
+      const gpr = this._decodeGpr(instr.operands[1]);
       const intVal = this.regs.read(gpr);
       this._fpWriteReg(pos, fmt, intVal, phys);
-      this.regs.ip += insn.size;
+      this.regs.ip += instr.size;
     };
 
     // -- FFTOI (148) --
-    d[Op.FFTOI_GPR_FP] = (insn) => {
-      const [phys, pos, fmt] = this._validateFpm(insn.operands[0]);
-      const gpr = this._decodeGpr(insn.operands[1]);
+    d[Op.FFTOI_GPR_FP] = (instr) => {
+      const [phys, pos, fmt] = this._validateFpm(instr.operands[0]);
+      const gpr = this._decodeGpr(instr.operands[1]);
       const fpVal = this._fpReadReg(pos, fmt, phys);
 
       let excInvalid = false;
@@ -1050,34 +1068,34 @@ export class CPU {
         inexact: excInexact,
       });
       this.regs.write(gpr, result);
-      this.regs.ip += insn.size;
+      this.regs.ip += instr.size;
     };
 
     // -- FSTAT (149) --
-    d[Op.FSTAT_GPR] = (insn) => {
-      const gpr = this._decodeGpr(insn.operands[0]);
+    d[Op.FSTAT_GPR] = (instr) => {
+      const gpr = this._decodeGpr(instr.operands[0]);
       this.regs.write(gpr, this._fpu.fpsr);
-      this.regs.ip += insn.size;
+      this.regs.ip += instr.size;
     };
 
     // -- FCFG (150) --
-    d[Op.FCFG_GPR] = (insn) => {
-      const gpr = this._decodeGpr(insn.operands[0]);
+    d[Op.FCFG_GPR] = (instr) => {
+      const gpr = this._decodeGpr(instr.operands[0]);
       this.regs.write(gpr, this._fpu.fpcr);
-      this.regs.ip += insn.size;
+      this.regs.ip += instr.size;
     };
 
     // -- FSCFG (151) --
-    d[Op.FSCFG_GPR] = (insn) => {
-      const gpr = this._decodeGpr(insn.operands[0]);
+    d[Op.FSCFG_GPR] = (instr) => {
+      const gpr = this._decodeGpr(instr.operands[0]);
       this._fpu.fpcr = this.regs.read(gpr) & 0x03;
-      this.regs.ip += insn.size;
+      this.regs.ip += instr.size;
     };
 
     // -- FCLR (152) --
-    d[Op.FCLR] = (insn) => {
+    d[Op.FCLR] = (instr) => {
       this._fpu.fpsr = 0;
-      this.regs.ip += insn.size;
+      this.regs.ip += instr.size;
     };
 
     // -- Reg-reg arith (153-156) --
@@ -1087,9 +1105,9 @@ export class CPU {
     d[Op.FDIV_RR] = this._makeFpArithRR(fpDiv);
 
     // -- FCMP_RR (157) --
-    d[Op.FCMP_RR] = (insn) => {
-      const [dstPhys, dstPos, dstFmt] = this._validateFpm(insn.operands[0]);
-      const [srcPhys, srcPos, srcFmt] = this._validateFpm(insn.operands[1]);
+    d[Op.FCMP_RR] = (instr) => {
+      const [dstPhys, dstPos, dstFmt] = this._validateFpm(instr.operands[0]);
+      const [srcPhys, srcPos, srcFmt] = this._validateFpm(instr.operands[1]);
       if (dstFmt !== srcFmt) {
         throw new CpuFault(ErrorCode.FP_FORMAT, this.regs.ip);
       }
@@ -1099,64 +1117,64 @@ export class CPU {
       this._fpu.accumulateExceptions(exc);
       this.regs.flags.z = zero;
       this.regs.flags.c = carry;
-      this.regs.ip += insn.size;
+      this.regs.ip += instr.size;
     };
 
     // -- FCLASS (158) --
-    d[Op.FCLASS_GPR_FP] = (insn) => {
-      const [phys, pos, fmt] = this._validateFpm(insn.operands[0]);
-      const gpr = this._decodeGpr(insn.operands[1]);
+    d[Op.FCLASS_GPR_FP] = (instr) => {
+      const [phys, pos, fmt] = this._validateFpm(instr.operands[0]);
+      const gpr = this._decodeGpr(instr.operands[1]);
       const raw = this._fpu.readBits(pos, fmt, phys);
       const width = FP_FMT_WIDTH[fmt];
       const data = intToBytesLE(raw, width / 8);
       const val = bytesToFloat(data, fmt);
       const mask = fpClassify(val, raw, width, fmt);
       this.regs.write(gpr, mask);
-      this.regs.ip += insn.size;
+      this.regs.ip += instr.size;
     };
 
     // -- FMADD (159-160) --
-    d[Op.FMADD_FP_FP_ADDR] = (insn) => {
-      this._doFmadd(insn, this._directAddr(insn.operands[2]));
+    d[Op.FMADD_FP_FP_ADDR] = (instr) => {
+      this._doFmadd(instr, this._directAddr(instr.operands[2]));
     };
-    d[Op.FMADD_FP_FP_REGADDR] = (insn) => {
-      this._doFmadd(insn, this._indirectAddr(insn.operands[2]));
+    d[Op.FMADD_FP_FP_REGADDR] = (instr) => {
+      this._doFmadd(instr, this._indirectAddr(instr.operands[2]));
     };
   }
 
   // ── FP handler factories ───────────────────────────────────────
 
   _makeFpArithMem(arithFn, resolveAddr) {
-    return (insn) => {
-      const [phys, pos, fmt] = this._validateFpm(insn.operands[0]);
-      const addr = resolveAddr(insn.operands[1]);
+    return (instr) => {
+      const [phys, pos, fmt] = this._validateFpm(instr.operands[0]);
+      const addr = resolveAddr(instr.operands[1]);
       const regVal = this._fpReadReg(pos, fmt, phys);
       const memVal = this._fpReadMem(addr, fmt);
       const { result, exc } = arithFn(regVal, memVal, fmt, this._fpu.roundingMode);
       this._fpu.accumulateExceptions(exc);
       this._fpWriteReg(pos, fmt, result, phys);
-      this.regs.ip += insn.size;
+      this.regs.ip += instr.size;
     };
   }
 
   _makeFpCmpMem(resolveAddr) {
-    return (insn) => {
-      const [phys, pos, fmt] = this._validateFpm(insn.operands[0]);
-      const addr = resolveAddr(insn.operands[1]);
+    return (instr) => {
+      const [phys, pos, fmt] = this._validateFpm(instr.operands[0]);
+      const addr = resolveAddr(instr.operands[1]);
       const regVal = this._fpReadReg(pos, fmt, phys);
       const memVal = this._fpReadMem(addr, fmt);
       const { zero, carry, exc } = fpCmp(regVal, memVal);
       this._fpu.accumulateExceptions(exc);
       this.regs.flags.z = zero;
       this.regs.flags.c = carry;
-      this.regs.ip += insn.size;
+      this.regs.ip += instr.size;
     };
   }
 
   _makeFpArithRR(arithFn) {
-    return (insn) => {
-      const [dstPhys, dstPos, dstFmt] = this._validateFpm(insn.operands[0]);
-      const [srcPhys, srcPos, srcFmt] = this._validateFpm(insn.operands[1]);
+    return (instr) => {
+      const [dstPhys, dstPos, dstFmt] = this._validateFpm(instr.operands[0]);
+      const [srcPhys, srcPos, srcFmt] = this._validateFpm(instr.operands[1]);
       if (dstFmt !== srcFmt) {
         throw new CpuFault(ErrorCode.FP_FORMAT, this.regs.ip);
       }
@@ -1165,39 +1183,39 @@ export class CPU {
       const { result, exc } = arithFn(dstVal, srcVal, dstFmt, this._fpu.roundingMode);
       this._fpu.accumulateExceptions(exc);
       this._fpWriteReg(dstPos, dstFmt, result, dstPhys);
-      this.regs.ip += insn.size;
+      this.regs.ip += instr.size;
     };
   }
 
   // ── FP individual handlers ─────────────────────────────────────
 
-  _fmovLoad(insn, addr) {
-    const [phys, pos, fmt] = this._validateFpm(insn.operands[0]);
+  _fmovLoad(instr, addr) {
+    const [phys, pos, fmt] = this._validateFpm(instr.operands[0]);
     const data = this._fpReadMemRaw(addr, fmt);
     const raw = intFromBytesLE(data);
     this._fpu.writeBits(pos, fmt, raw, phys);
-    this.regs.ip += insn.size;
+    this.regs.ip += instr.size;
   }
 
-  _fmovStore(insn, addr) {
-    const [phys, pos, fmt] = this._validateFpm(insn.operands[0]);
+  _fmovStore(instr, addr) {
+    const [phys, pos, fmt] = this._validateFpm(instr.operands[0]);
     const raw = this._fpu.readBits(pos, fmt, phys);
     const data = intToBytesLE(raw, FP_FMT_WIDTH[fmt] / 8);
     this._fpWriteMemRaw(addr, fmt, data);
-    this.regs.ip += insn.size;
+    this.regs.ip += instr.size;
   }
 
-  _fpUnaryBitwise(insn, fn) {
-    const [phys, pos, fmt] = this._validateFpm(insn.operands[0]);
+  _fpUnaryBitwise(instr, fn) {
+    const [phys, pos, fmt] = this._validateFpm(instr.operands[0]);
     const raw = this._fpu.readBits(pos, fmt, phys);
     const result = fn(raw, FP_FMT_WIDTH[fmt]);
     this._fpu.writeBits(pos, fmt, result, phys);
-    this.regs.ip += insn.size;
+    this.regs.ip += instr.size;
   }
 
-  _doFmadd(insn, addr) {
-    const [dstPhys, dstPos, dstFmt] = this._validateFpm(insn.operands[0]);
-    const [srcPhys, srcPos, srcFmt] = this._validateFpm(insn.operands[1]);
+  _doFmadd(instr, addr) {
+    const [dstPhys, dstPos, dstFmt] = this._validateFpm(instr.operands[0]);
+    const [srcPhys, srcPos, srcFmt] = this._validateFpm(instr.operands[1]);
     if (dstFmt !== srcFmt) {
       throw new CpuFault(ErrorCode.FP_FORMAT, this.regs.ip);
     }
@@ -1221,6 +1239,6 @@ export class CPU {
       inexact: mulExc.inexact || addExc.inexact,
     });
     this._fpWriteReg(dstPos, dstFmt, result, dstPhys);
-    this.regs.ip += insn.size;
+    this.regs.ip += instr.size;
   }
 }

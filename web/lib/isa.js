@@ -222,11 +222,11 @@ export const OpType = Object.freeze({
 
 const _OPTYPE_BYTES = { [OpType.FP_IMM16]: 2 };
 
-// ── InsnDef ──────────────────────────────────────────────────────
+// ── InstrDef ──────────────────────────────────────────────────────
 
-function insn(op, mnemonic, sig, cost = 1) {
+function instr(op, mnemonic, sig, cost = 1, formatDep = false) {
   const size = 1 + sig.reduce((s, ot) => s + (_OPTYPE_BYTES[ot] || 1), 0);
-  return Object.freeze({ op, mnemonic, sig: Object.freeze(sig), cost, size });
+  return Object.freeze({ op, mnemonic, sig: Object.freeze(sig), cost, size, formatDep });
 }
 
 // Shorthands
@@ -238,160 +238,160 @@ const _FP = OpType.FP_REG;
 
 export const ISA = Object.freeze([
   // HLT (0)
-  insn(Op.HLT, 'HLT', [], 0),
+  instr(Op.HLT, 'HLT', [], 0),
   // MOV (1-8)
-  insn(Op.MOV_REG_REG, 'MOV', [_REG, _REG]),
-  insn(Op.MOV_REG_ADDR, 'MOV', [_REG, _MEM], 2),
-  insn(Op.MOV_REG_REGADDR, 'MOV', [_REG, _IADDR], 2),
-  insn(Op.MOV_ADDR_REG, 'MOV', [_MEM, _REG], 2),
-  insn(Op.MOV_REGADDR_REG, 'MOV', [_IADDR, _REG], 2),
-  insn(Op.MOV_REG_CONST, 'MOV', [_REG, _IMM]),
-  insn(Op.MOV_ADDR_CONST, 'MOV', [_MEM, _IMM], 2),
-  insn(Op.MOV_REGADDR_CONST, 'MOV', [_IADDR, _IMM], 2),
+  instr(Op.MOV_REG_REG, 'MOV', [_REG, _REG]),
+  instr(Op.MOV_REG_ADDR, 'MOV', [_REG, _MEM], 2),
+  instr(Op.MOV_REG_REGADDR, 'MOV', [_REG, _IADDR], 2),
+  instr(Op.MOV_ADDR_REG, 'MOV', [_MEM, _REG], 2),
+  instr(Op.MOV_REGADDR_REG, 'MOV', [_IADDR, _REG], 2),
+  instr(Op.MOV_REG_CONST, 'MOV', [_REG, _IMM]),
+  instr(Op.MOV_ADDR_CONST, 'MOV', [_MEM, _IMM], 2),
+  instr(Op.MOV_REGADDR_CONST, 'MOV', [_IADDR, _IMM], 2),
   // ADD (10-13)
-  insn(Op.ADD_REG_REG, 'ADD', [_STK, _STK]),
-  insn(Op.ADD_REG_REGADDR, 'ADD', [_STK, _IADDR], 3),
-  insn(Op.ADD_REG_ADDR, 'ADD', [_STK, _MEM], 3),
-  insn(Op.ADD_REG_CONST, 'ADD', [_STK, _IMM]),
+  instr(Op.ADD_REG_REG, 'ADD', [_STK, _STK]),
+  instr(Op.ADD_REG_REGADDR, 'ADD', [_STK, _IADDR], 3),
+  instr(Op.ADD_REG_ADDR, 'ADD', [_STK, _MEM], 3),
+  instr(Op.ADD_REG_CONST, 'ADD', [_STK, _IMM]),
   // SUB (14-17)
-  insn(Op.SUB_REG_REG, 'SUB', [_STK, _STK]),
-  insn(Op.SUB_REG_REGADDR, 'SUB', [_STK, _IADDR], 3),
-  insn(Op.SUB_REG_ADDR, 'SUB', [_STK, _MEM], 3),
-  insn(Op.SUB_REG_CONST, 'SUB', [_STK, _IMM]),
+  instr(Op.SUB_REG_REG, 'SUB', [_STK, _STK]),
+  instr(Op.SUB_REG_REGADDR, 'SUB', [_STK, _IADDR], 3),
+  instr(Op.SUB_REG_ADDR, 'SUB', [_STK, _MEM], 3),
+  instr(Op.SUB_REG_CONST, 'SUB', [_STK, _IMM]),
   // INC / DEC (18-19)
-  insn(Op.INC_REG, 'INC', [_STK]),
-  insn(Op.DEC_REG, 'DEC', [_STK]),
+  instr(Op.INC_REG, 'INC', [_STK]),
+  instr(Op.DEC_REG, 'DEC', [_STK]),
   // CMP (20-23)
-  insn(Op.CMP_REG_REG, 'CMP', [_STK, _STK]),
-  insn(Op.CMP_REG_REGADDR, 'CMP', [_STK, _IADDR], 3),
-  insn(Op.CMP_REG_ADDR, 'CMP', [_STK, _MEM], 3),
-  insn(Op.CMP_REG_CONST, 'CMP', [_STK, _IMM]),
+  instr(Op.CMP_REG_REG, 'CMP', [_STK, _STK]),
+  instr(Op.CMP_REG_REGADDR, 'CMP', [_STK, _IADDR], 3),
+  instr(Op.CMP_REG_ADDR, 'CMP', [_STK, _MEM], 3),
+  instr(Op.CMP_REG_CONST, 'CMP', [_STK, _IMM]),
   // JMP (30-31)
-  insn(Op.JMP_REG, 'JMP', [_GPR]),
-  insn(Op.JMP_ADDR, 'JMP', [_IMM]),
+  instr(Op.JMP_REG, 'JMP', [_GPR]),
+  instr(Op.JMP_ADDR, 'JMP', [_IMM]),
   // JC (32-33)
-  insn(Op.JC_REG, 'JC', [_GPR]),
-  insn(Op.JC_ADDR, 'JC', [_IMM]),
+  instr(Op.JC_REG, 'JC', [_GPR]),
+  instr(Op.JC_ADDR, 'JC', [_IMM]),
   // JNC (34-35)
-  insn(Op.JNC_REG, 'JNC', [_GPR]),
-  insn(Op.JNC_ADDR, 'JNC', [_IMM]),
+  instr(Op.JNC_REG, 'JNC', [_GPR]),
+  instr(Op.JNC_ADDR, 'JNC', [_IMM]),
   // JZ (36-37)
-  insn(Op.JZ_REG, 'JZ', [_GPR]),
-  insn(Op.JZ_ADDR, 'JZ', [_IMM]),
+  instr(Op.JZ_REG, 'JZ', [_GPR]),
+  instr(Op.JZ_ADDR, 'JZ', [_IMM]),
   // JNZ (38-39)
-  insn(Op.JNZ_REG, 'JNZ', [_GPR]),
-  insn(Op.JNZ_ADDR, 'JNZ', [_IMM]),
+  instr(Op.JNZ_REG, 'JNZ', [_GPR]),
+  instr(Op.JNZ_ADDR, 'JNZ', [_IMM]),
   // JA (40-41)
-  insn(Op.JA_REG, 'JA', [_GPR]),
-  insn(Op.JA_ADDR, 'JA', [_IMM]),
+  instr(Op.JA_REG, 'JA', [_GPR]),
+  instr(Op.JA_ADDR, 'JA', [_IMM]),
   // JNA (42-43)
-  insn(Op.JNA_REG, 'JNA', [_GPR]),
-  insn(Op.JNA_ADDR, 'JNA', [_IMM]),
+  instr(Op.JNA_REG, 'JNA', [_GPR]),
+  instr(Op.JNA_ADDR, 'JNA', [_IMM]),
   // PUSH (50-53)
-  insn(Op.PUSH_REG, 'PUSH', [_GPR], 2),
-  insn(Op.PUSH_REGADDR, 'PUSH', [_IADDR], 4),
-  insn(Op.PUSH_ADDR, 'PUSH', [_MEM], 4),
-  insn(Op.PUSH_CONST, 'PUSH', [_IMM], 2),
+  instr(Op.PUSH_REG, 'PUSH', [_GPR], 2),
+  instr(Op.PUSH_REGADDR, 'PUSH', [_IADDR], 4),
+  instr(Op.PUSH_ADDR, 'PUSH', [_MEM], 4),
+  instr(Op.PUSH_CONST, 'PUSH', [_IMM], 2),
   // POP (54)
-  insn(Op.POP_REG, 'POP', [_GPR], 2),
+  instr(Op.POP_REG, 'POP', [_GPR], 2),
   // CALL (55-56)
-  insn(Op.CALL_REG, 'CALL', [_GPR], 2),
-  insn(Op.CALL_ADDR, 'CALL', [_IMM], 2),
+  instr(Op.CALL_REG, 'CALL', [_GPR], 2),
+  instr(Op.CALL_ADDR, 'CALL', [_IMM], 2),
   // RET (57)
-  insn(Op.RET, 'RET', [], 2),
+  instr(Op.RET, 'RET', [], 2),
   // MUL (60-63)
-  insn(Op.MUL_REG, 'MUL', [_GPR], 2),
-  insn(Op.MUL_REGADDR, 'MUL', [_IADDR], 4),
-  insn(Op.MUL_ADDR, 'MUL', [_MEM], 4),
-  insn(Op.MUL_CONST, 'MUL', [_IMM], 2),
+  instr(Op.MUL_REG, 'MUL', [_GPR], 2),
+  instr(Op.MUL_REGADDR, 'MUL', [_IADDR], 4),
+  instr(Op.MUL_ADDR, 'MUL', [_MEM], 4),
+  instr(Op.MUL_CONST, 'MUL', [_IMM], 2),
   // DIV (64-67)
-  insn(Op.DIV_REG, 'DIV', [_GPR], 2),
-  insn(Op.DIV_REGADDR, 'DIV', [_IADDR], 4),
-  insn(Op.DIV_ADDR, 'DIV', [_MEM], 4),
-  insn(Op.DIV_CONST, 'DIV', [_IMM], 2),
+  instr(Op.DIV_REG, 'DIV', [_GPR], 2),
+  instr(Op.DIV_REGADDR, 'DIV', [_IADDR], 4),
+  instr(Op.DIV_ADDR, 'DIV', [_MEM], 4),
+  instr(Op.DIV_CONST, 'DIV', [_IMM], 2),
   // AND (70-73)
-  insn(Op.AND_REG_REG, 'AND', [_GPR, _GPR]),
-  insn(Op.AND_REG_REGADDR, 'AND', [_GPR, _IADDR], 3),
-  insn(Op.AND_REG_ADDR, 'AND', [_GPR, _MEM], 3),
-  insn(Op.AND_REG_CONST, 'AND', [_GPR, _IMM]),
+  instr(Op.AND_REG_REG, 'AND', [_GPR, _GPR]),
+  instr(Op.AND_REG_REGADDR, 'AND', [_GPR, _IADDR], 3),
+  instr(Op.AND_REG_ADDR, 'AND', [_GPR, _MEM], 3),
+  instr(Op.AND_REG_CONST, 'AND', [_GPR, _IMM]),
   // OR (74-77)
-  insn(Op.OR_REG_REG, 'OR', [_GPR, _GPR]),
-  insn(Op.OR_REG_REGADDR, 'OR', [_GPR, _IADDR], 3),
-  insn(Op.OR_REG_ADDR, 'OR', [_GPR, _MEM], 3),
-  insn(Op.OR_REG_CONST, 'OR', [_GPR, _IMM]),
+  instr(Op.OR_REG_REG, 'OR', [_GPR, _GPR]),
+  instr(Op.OR_REG_REGADDR, 'OR', [_GPR, _IADDR], 3),
+  instr(Op.OR_REG_ADDR, 'OR', [_GPR, _MEM], 3),
+  instr(Op.OR_REG_CONST, 'OR', [_GPR, _IMM]),
   // XOR (78-81)
-  insn(Op.XOR_REG_REG, 'XOR', [_GPR, _GPR]),
-  insn(Op.XOR_REG_REGADDR, 'XOR', [_GPR, _IADDR], 3),
-  insn(Op.XOR_REG_ADDR, 'XOR', [_GPR, _MEM], 3),
-  insn(Op.XOR_REG_CONST, 'XOR', [_GPR, _IMM]),
+  instr(Op.XOR_REG_REG, 'XOR', [_GPR, _GPR]),
+  instr(Op.XOR_REG_REGADDR, 'XOR', [_GPR, _IADDR], 3),
+  instr(Op.XOR_REG_ADDR, 'XOR', [_GPR, _MEM], 3),
+  instr(Op.XOR_REG_CONST, 'XOR', [_GPR, _IMM]),
   // NOT (82)
-  insn(Op.NOT_REG, 'NOT', [_GPR]),
+  instr(Op.NOT_REG, 'NOT', [_GPR]),
   // SHL (90-93)
-  insn(Op.SHL_REG_REG, 'SHL', [_GPR, _GPR]),
-  insn(Op.SHL_REG_REGADDR, 'SHL', [_GPR, _IADDR], 3),
-  insn(Op.SHL_REG_ADDR, 'SHL', [_GPR, _MEM], 3),
-  insn(Op.SHL_REG_CONST, 'SHL', [_GPR, _IMM]),
+  instr(Op.SHL_REG_REG, 'SHL', [_GPR, _GPR]),
+  instr(Op.SHL_REG_REGADDR, 'SHL', [_GPR, _IADDR], 3),
+  instr(Op.SHL_REG_ADDR, 'SHL', [_GPR, _MEM], 3),
+  instr(Op.SHL_REG_CONST, 'SHL', [_GPR, _IMM]),
   // SHR (94-97)
-  insn(Op.SHR_REG_REG, 'SHR', [_GPR, _GPR]),
-  insn(Op.SHR_REG_REGADDR, 'SHR', [_GPR, _IADDR], 3),
-  insn(Op.SHR_REG_ADDR, 'SHR', [_GPR, _MEM], 3),
-  insn(Op.SHR_REG_CONST, 'SHR', [_GPR, _IMM]),
+  instr(Op.SHR_REG_REG, 'SHR', [_GPR, _GPR]),
+  instr(Op.SHR_REG_REGADDR, 'SHR', [_GPR, _IADDR], 3),
+  instr(Op.SHR_REG_ADDR, 'SHR', [_GPR, _MEM], 3),
+  instr(Op.SHR_REG_CONST, 'SHR', [_GPR, _IMM]),
 ]);
 
 // ── FP ISA ───────────────────────────────────────────────────────
 
 export const ISA_FP = Object.freeze([
-  // FMOV (128-131)
-  insn(Op.FMOV_FP_ADDR, 'FMOV', [_FP, _MEM], 2),
-  insn(Op.FMOV_FP_REGADDR, 'FMOV', [_FP, _IADDR], 2),
-  insn(Op.FMOV_ADDR_FP, 'FMOV', [_MEM, _FP], 2),
-  insn(Op.FMOV_REGADDR_FP, 'FMOV', [_IADDR, _FP], 2),
-  // FADD (132-133)
-  insn(Op.FADD_FP_ADDR, 'FADD', [_FP, _MEM], 5),
-  insn(Op.FADD_FP_REGADDR, 'FADD', [_FP, _IADDR], 5),
-  // FSUB (134-135)
-  insn(Op.FSUB_FP_ADDR, 'FSUB', [_FP, _MEM], 5),
-  insn(Op.FSUB_FP_REGADDR, 'FSUB', [_FP, _IADDR], 5),
-  // FMUL (136-137)
-  insn(Op.FMUL_FP_ADDR, 'FMUL', [_FP, _MEM], 5),
-  insn(Op.FMUL_FP_REGADDR, 'FMUL', [_FP, _IADDR], 5),
-  // FDIV (138-139)
-  insn(Op.FDIV_FP_ADDR, 'FDIV', [_FP, _MEM], 5),
-  insn(Op.FDIV_FP_REGADDR, 'FDIV', [_FP, _IADDR], 5),
-  // FCMP (140-141)
-  insn(Op.FCMP_FP_ADDR, 'FCMP', [_FP, _MEM], 5),
-  insn(Op.FCMP_FP_REGADDR, 'FCMP', [_FP, _IADDR], 5),
+  // FMOV (128-131) — format-dependent: mem(fmt) + overhead(0)
+  instr(Op.FMOV_FP_ADDR, 'FMOV', [_FP, _MEM], 0, true),
+  instr(Op.FMOV_FP_REGADDR, 'FMOV', [_FP, _IADDR], 0, true),
+  instr(Op.FMOV_ADDR_FP, 'FMOV', [_MEM, _FP], 0, true),
+  instr(Op.FMOV_REGADDR_FP, 'FMOV', [_IADDR, _FP], 0, true),
+  // FADD (132-133) — format-dependent: mem(fmt) + overhead(2)
+  instr(Op.FADD_FP_ADDR, 'FADD', [_FP, _MEM], 2, true),
+  instr(Op.FADD_FP_REGADDR, 'FADD', [_FP, _IADDR], 2, true),
+  // FSUB (134-135) — format-dependent: mem(fmt) + overhead(2)
+  instr(Op.FSUB_FP_ADDR, 'FSUB', [_FP, _MEM], 2, true),
+  instr(Op.FSUB_FP_REGADDR, 'FSUB', [_FP, _IADDR], 2, true),
+  // FMUL (136-137) — format-dependent: mem(fmt) + overhead(2)
+  instr(Op.FMUL_FP_ADDR, 'FMUL', [_FP, _MEM], 2, true),
+  instr(Op.FMUL_FP_REGADDR, 'FMUL', [_FP, _IADDR], 2, true),
+  // FDIV (138-139) — format-dependent: mem(fmt) + overhead(3)
+  instr(Op.FDIV_FP_ADDR, 'FDIV', [_FP, _MEM], 3, true),
+  instr(Op.FDIV_FP_REGADDR, 'FDIV', [_FP, _IADDR], 3, true),
+  // FCMP (140-141) — format-dependent: mem(fmt) + overhead(2)
+  instr(Op.FCMP_FP_ADDR, 'FCMP', [_FP, _MEM], 2, true),
+  instr(Op.FCMP_FP_REGADDR, 'FCMP', [_FP, _IADDR], 2, true),
   // Unary (142-144)
-  insn(Op.FABS_FP, 'FABS', [_FP], 3),
-  insn(Op.FNEG_FP, 'FNEG', [_FP], 3),
-  insn(Op.FSQRT_FP, 'FSQRT', [_FP], 4),
+  instr(Op.FABS_FP, 'FABS', [_FP], 2),
+  instr(Op.FNEG_FP, 'FNEG', [_FP], 2),
+  instr(Op.FSQRT_FP, 'FSQRT', [_FP], 3),
   // FMOV reg-reg (145)
-  insn(Op.FMOV_RR, 'FMOV', [_FP, _FP], 1),
+  instr(Op.FMOV_RR, 'FMOV', [_FP, _FP], 1),
   // FCVT (146)
-  insn(Op.FCVT_FP_FP, 'FCVT', [_FP, _FP], 3),
+  instr(Op.FCVT_FP_FP, 'FCVT', [_FP, _FP], 2),
   // FITOF (147)
-  insn(Op.FITOF_FP_GPR, 'FITOF', [_FP, _GPR], 3),
+  instr(Op.FITOF_FP_GPR, 'FITOF', [_FP, _GPR], 2),
   // FFTOI (148) — assembly order: GPR, FP; encoding: [148, fpm, gpr]
-  insn(Op.FFTOI_GPR_FP, 'FFTOI', [_GPR, _FP], 3),
+  instr(Op.FFTOI_GPR_FP, 'FFTOI', [_GPR, _FP], 2),
   // Control (149-152)
-  insn(Op.FSTAT_GPR, 'FSTAT', [_GPR], 1),
-  insn(Op.FCFG_GPR, 'FCFG', [_GPR], 1),
-  insn(Op.FSCFG_GPR, 'FSCFG', [_GPR], 1),
-  insn(Op.FCLR, 'FCLR', [], 1),
+  instr(Op.FSTAT_GPR, 'FSTAT', [_GPR], 1),
+  instr(Op.FCFG_GPR, 'FCFG', [_GPR], 1),
+  instr(Op.FSCFG_GPR, 'FSCFG', [_GPR], 1),
+  instr(Op.FCLR, 'FCLR', [], 1),
   // Reg-reg (153-157)
-  insn(Op.FADD_RR, 'FADD', [_FP, _FP], 3),
-  insn(Op.FSUB_RR, 'FSUB', [_FP, _FP], 3),
-  insn(Op.FMUL_RR, 'FMUL', [_FP, _FP], 3),
-  insn(Op.FDIV_RR, 'FDIV', [_FP, _FP], 3),
-  insn(Op.FCMP_RR, 'FCMP', [_FP, _FP], 3),
+  instr(Op.FADD_RR, 'FADD', [_FP, _FP], 2),
+  instr(Op.FSUB_RR, 'FSUB', [_FP, _FP], 2),
+  instr(Op.FMUL_RR, 'FMUL', [_FP, _FP], 2),
+  instr(Op.FDIV_RR, 'FDIV', [_FP, _FP], 3),
+  instr(Op.FCMP_RR, 'FCMP', [_FP, _FP], 2),
   // FCLASS (158)
-  insn(Op.FCLASS_GPR_FP, 'FCLASS', [_GPR, _FP], 2),
-  // FMADD (159-160)
-  insn(Op.FMADD_FP_FP_ADDR, 'FMADD', [_FP, _FP, _MEM], 6),
-  insn(Op.FMADD_FP_FP_REGADDR, 'FMADD', [_FP, _FP, _IADDR], 6),
+  instr(Op.FCLASS_GPR_FP, 'FCLASS', [_GPR, _FP], 1),
+  // FMADD (159-160) — format-dependent: mem(fmt) + overhead(4)
+  instr(Op.FMADD_FP_FP_ADDR, 'FMADD', [_FP, _FP, _MEM], 4, true),
+  instr(Op.FMADD_FP_FP_REGADDR, 'FMADD', [_FP, _FP, _IADDR], 4, true),
   // FMOV immediate (161-162)
-  insn(Op.FMOV_FP_IMM8, 'FMOV', [_FP, OpType.FP_IMM8], 1),
-  insn(Op.FMOV_FP_IMM16, 'FMOV', [_FP, OpType.FP_IMM16], 1),
+  instr(Op.FMOV_FP_IMM8, 'FMOV', [_FP, OpType.FP_IMM8], 1),
+  instr(Op.FMOV_FP_IMM16, 'FMOV', [_FP, OpType.FP_IMM16], 1),
 ]);
 
 // ── REGADDR encoding ─────────────────────────────────────────────
