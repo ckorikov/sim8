@@ -37,3 +37,7 @@ class Memory:
     def reset(self) -> None:
         """Zero-fill memory in-place."""
         self._data[:] = b"\x00" * MEMORY_SIZE
+
+    def used_bytes(self) -> int:
+        """Count non-zero bytes excluding the I/O region (232–255 of page 0)."""
+        return sum(1 for addr, b in enumerate(self._data) if b != 0 and not (addr < PAGE_SIZE and addr >= IO_START))

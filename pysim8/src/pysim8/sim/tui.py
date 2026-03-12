@@ -133,8 +133,10 @@ def _make_status(cpu: CPU, filename: str, paused: bool = False) -> Panel:
         row1.append(f" {name}", style="dim")
         row1.append(str(int(val)), style="bold yellow" if val else "dim")
     row1.append("  ┊", style="dim")
-    row1.append(" cycles ", style="dim")
+    row1.append(str(cpu.peak_mem) + "B", style="bold" if cpu.peak_mem else "dim")
+    row1.append(" ┊ ", style="dim")
     row1.append(str(cpu.cycles), style="bold" if cpu.cycles else "dim")
+    row1.append(" cycles", style="dim")
 
     # ── Row 2: I/O output ──
     io_padded = io_raw.ljust(_IO_SIZE).replace(" ", "·") if io_raw else "·" * _IO_SIZE
@@ -359,6 +361,7 @@ def run_headless(
             "state": cpu.state.value,
             "steps": cpu.steps,
             "cycles": cpu.cycles,
+            "peak_mem": cpu.peak_mem,
             "regs": {
                 "a": cpu.a,
                 "b": cpu.b,
@@ -389,7 +392,7 @@ def run_headless(
     io_text = cpu.display()
     if io_text:
         click.echo(io_text)
-    click.echo(f"State: {cpu.state.value}  Cycles: {cpu.cycles}")
+    click.echo(f"State: {cpu.state.value}  {cpu.peak_mem}B | {cpu.cycles} cycles")
     if cpu.regs.fpu:
         fpu = cpu.regs.fpu
         click.echo(f"FA=0x{fpu.fa:08X} FB=0x{fpu.fb:08X} FPSR=0x{fpu.fpsr:02X}")

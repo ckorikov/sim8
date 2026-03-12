@@ -41,6 +41,7 @@ class CPU(HandlersMixin, HandlersFpMixin):
         "_cost_overrides",
         "_arch",
         "_instr_def",
+        "_peak_mem",
     )
 
     def __init__(
@@ -56,6 +57,7 @@ class CPU(HandlersMixin, HandlersFpMixin):
         self._tracer = tracer
         self._steps = 0
         self._cycles = 0
+        self._peak_mem = 0
         self._arch = arch
         self._dispatch: dict[Op, Handler] = {}
         self._build_dispatch()
@@ -130,6 +132,9 @@ class CPU(HandlersMixin, HandlersFpMixin):
 
         self._steps += 1
         self._cycles += cost
+        used = self.mem.used_bytes()
+        if used > self._peak_mem:
+            self._peak_mem = used
 
         if tracer is not None:
             self._trace(
@@ -156,6 +161,7 @@ class CPU(HandlersMixin, HandlersFpMixin):
         self.state = CpuState.IDLE
         self._steps = 0
         self._cycles = 0
+        self._peak_mem = 0
 
     @property
     def tracer(self) -> TraceCallback | None:
@@ -172,6 +178,11 @@ class CPU(HandlersMixin, HandlersFpMixin):
     @property
     def cycles(self) -> int:
         return self._cycles
+
+    @property
+    def peak_mem(self) -> int:
+        """Peak non-zero byte count (excluding I/O region) since last reset."""
+        return self._peak_mem
 
     # Convenience properties
     @property
