@@ -14,7 +14,7 @@ import { renderMemory } from "./ui/mem.js";
 import { renderDisplay } from "./ui/display.js";
 import { renderLabels } from "./ui/labels.js";
 import { setupControls, stopRun, isRunning, updateRunBtnColor } from "./controls.js";
-import { initEditor, highlightExecLine, getEditorSource } from "./editor.js";
+import { initEditor, highlightExecLine, getEditorSource, getBreakpoints } from "./editor.js";
 import { flashWire, initWires, updateWireColors, WIRE_DATA, WIRE_FP, WIRE_IO } from "./wires.js";
 import { fitDiagram, setupSplitHandle, adjustBlockPositions } from "./layout.js";
 
@@ -135,6 +135,8 @@ setupControls({
     onStep: () => stepCPU(),
     onReset: () => resetCPU(),
     renderCPU,
+    getBreakpoints,
+    getExecLine: () => asm.mapping[cpu.ip],
 });
 
 // ── Assemble button ────────────────────────────────────────────

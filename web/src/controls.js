@@ -12,7 +12,8 @@ const speedSel = document.getElementById("speed-select");
 let runTimer = null;
 let stepTimer = null;
 
-let _onStep, _onReset, _renderCPU;
+let _onStep, _onReset, _renderCPU, _getBreakpoints, _getExecLine;
+let _skipBpOnce = false;
 
 export function updateRunBtnColor() {
     btnRun.style.color = btnRun.dataset.state === "run" ? cssVar("--a-green") : cssVar("--a-red");
@@ -33,6 +34,14 @@ function setRunUI(running) {
 }
 
 function tick() {
+    if (!_skipBpOnce) {
+        const execLine = _getExecLine?.();
+        if (execLine !== undefined && _getBreakpoints?.().has(execLine)) {
+            stopRun();
+            return;
+        }
+    }
+    _skipBpOnce = false;
     const cost = _onStep();
     if (!cost) {
         stopRun();
@@ -46,6 +55,7 @@ function startRun() {
     if (cpu.state === CpuState.HALTED || cpu.state === CpuState.FAULT) {
         _onReset();
     }
+    _skipBpOnce = true;
     setRunUI(true);
     tick();
 }
@@ -70,10 +80,12 @@ export function isRunning() {
     return runTimer !== null;
 }
 
-export function setupControls({ onStep, onReset, renderCPU }) {
+export function setupControls({ onStep, onReset, renderCPU, getBreakpoints, getExecLine }) {
     _onStep = onStep;
     _onReset = onReset;
     _renderCPU = renderCPU;
+    _getBreakpoints = getBreakpoints;
+    _getExecLine = getExecLine;
 
     btnRun.addEventListener("click", () => {
         if (runTimer) stopRun();
@@ -87,6 +99,7 @@ export function setupControls({ onStep, onReset, renderCPU }) {
             clearTimeout(stepTimer);
             stepTimer = null;
         }
+        // Skip BP check on step — user explicitly requested one step
         const cost = _onStep();
         if (cpu.state === CpuState.RUNNING && cost > 0) {
             stepTimer = setTimeout(() => {
@@ -103,8 +116,8 @@ export function setupControls({ onStep, onReset, renderCPU }) {
 
     speedSel.addEventListener("change", () => {
         if (runTimer) {
-            stopRun();
-            startRun();
+            clearTimeout(runTimer);
+            runTimer = setTimeout(tick, getSpeedMs());
         }
     });
 }
