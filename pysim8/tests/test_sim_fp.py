@@ -522,58 +522,22 @@ class TestFcfgFscfg:
 # ── FCLASS ───────────────────────────────────────────────────────────
 
 
-class TestFclass:
-    def test_fclass_zero(self) -> None:
-        """FCLASS of +0.0 returns bit 0 (ZERO)."""
-        cpu = CPU(arch=2)
-        cpu.load([0] * 256)
-        _store_f32(cpu, 0x80, 0.0)
-        fpm_fa = encode_fpm(0, 0, FP_FMT_F)
-        cpu.mem[0] = 128
-        cpu.mem[1] = fpm_fa
-        cpu.mem[2] = 0x80
-        cpu.mem[3] = 158
-        cpu.mem[4] = fpm_fa
-        cpu.mem[5] = 0
-        cpu.mem[6] = 0
-        cpu.run()
-        _assert_halted_steps(cpu, 2)
-        assert cpu.a & 0x01 != 0
-
-    def test_fclass_normal(self) -> None:
-        """FCLASS of 1.0 returns bit 2 (NORM)."""
-        cpu = CPU(arch=2)
-        cpu.load([0] * 256)
-        _store_f32(cpu, 0x80, 1.0)
-        fpm_fa = encode_fpm(0, 0, FP_FMT_F)
-        cpu.mem[0] = 128
-        cpu.mem[1] = fpm_fa
-        cpu.mem[2] = 0x80
-        cpu.mem[3] = 158
-        cpu.mem[4] = fpm_fa
-        cpu.mem[5] = 0
-        cpu.mem[6] = 0
-        cpu.run()
-        _assert_halted_steps(cpu, 2)
-        assert cpu.a & 0x04 != 0
-
-    def test_fclass_negative(self) -> None:
-        """FCLASS of -1.0 has NORM + NEG bits."""
-        cpu = CPU(arch=2)
-        cpu.load([0] * 256)
-        _store_f32(cpu, 0x80, -1.0)
-        fpm_fa = encode_fpm(0, 0, FP_FMT_F)
-        cpu.mem[0] = 128
-        cpu.mem[1] = fpm_fa
-        cpu.mem[2] = 0x80
-        cpu.mem[3] = 158
-        cpu.mem[4] = fpm_fa
-        cpu.mem[5] = 0
-        cpu.mem[6] = 0
-        cpu.run()
-        _assert_halted_steps(cpu, 2)
-        assert cpu.a & 0x04 != 0
-        assert cpu.a & 0x40 != 0
+@pytest.mark.parametrize("value,mask", [
+    pytest.param( 0.0,  0x01,        id="zero"),
+    pytest.param( 1.0,  0x04,        id="normal"),
+    pytest.param(-1.0,  0x04 | 0x40, id="negative"),
+])
+def test_fclass(value: float, mask: int) -> None:
+    """FCLASS sets expected classification bits in A."""
+    cpu = CPU(arch=2)
+    cpu.load([0] * 256)
+    _store_f32(cpu, 0x80, value)
+    fpm_fa = encode_fpm(0, 0, FP_FMT_F)
+    cpu.mem[0] = 128; cpu.mem[1] = fpm_fa; cpu.mem[2] = 0x80
+    cpu.mem[3] = 158; cpu.mem[4] = fpm_fa; cpu.mem[5] = 0; cpu.mem[6] = 0
+    cpu.run()
+    _assert_halted_steps(cpu, 2)
+    assert cpu.a & mask == mask
 
 
 # ── FCMP_RR ──────────────────────────────────────────────────────────
@@ -676,35 +640,21 @@ class TestFsqrt:
 # ── FMOV Immediate (161-162) ─────────────────────────────────────────
 
 
+@pytest.mark.parametrize("src,slot,fmt,expected_bits", [
+    pytest.param("FMOV.O3 FQA, 1.5\nHLT", 0, 3, 0x3C,   id="imm8_o3"),
+    pytest.param("FMOV.O2 FQB, 1.0\nHLT", 1, 4, 0x3C,   id="imm8_o2"),
+    pytest.param("FMOV.H FHA, 1.5\nHLT",  0, 1, 0x3E00, id="imm16_h"),
+    pytest.param("FMOV.BF FHB, 1.0\nHLT", 1, 2, 0x3F80, id="imm16_bf"),
+])
+def test_fmov_imm_load(src: str, slot: int, fmt: int, expected_bits: int) -> None:
+    """FMOV immediate encodes correctly into the target FP register slot."""
+    cpu = run(src)
+    _assert_halted_steps(cpu, 1)
+    assert cpu.regs.fpu is not None
+    assert cpu.regs.fpu.read_bits(slot, fmt) == expected_bits
+
+
 class TestFmovImm:
-    def test_fmov_imm8_o3(self) -> None:
-        """FMOV.O3 FQA, 1.5 loads 0x3C into quarter-reg 0."""
-        cpu = run("FMOV.O3 FQA, 1.5\nHLT")
-        _assert_halted_steps(cpu, 1)
-        assert cpu.regs.fpu is not None
-        assert cpu.regs.fpu.read_bits(0, 3) == 0x3C
-
-    def test_fmov_imm8_o2(self) -> None:
-        """FMOV.O2 FQB, 1.0 loads 0x3C into quarter-reg 1."""
-        cpu = run("FMOV.O2 FQB, 1.0\nHLT")
-        _assert_halted_steps(cpu, 1)
-        assert cpu.regs.fpu is not None
-        assert cpu.regs.fpu.read_bits(1, 4) == 0x3C
-
-    def test_fmov_imm16_h(self) -> None:
-        """FMOV.H FHA, 1.5 loads 0x3E00 into half-reg 0."""
-        cpu = run("FMOV.H FHA, 1.5\nHLT")
-        _assert_halted_steps(cpu, 1)
-        assert cpu.regs.fpu is not None
-        assert cpu.regs.fpu.read_bits(0, 1) == 0x3E00
-
-    def test_fmov_imm16_bf(self) -> None:
-        """FMOV.BF FHB, 1.0 loads 0x3F80 into half-reg 1."""
-        cpu = run("FMOV.BF FHB, 1.0\nHLT")
-        _assert_halted_steps(cpu, 1)
-        assert cpu.regs.fpu is not None
-        assert cpu.regs.fpu.read_bits(1, 2) == 0x3F80
-
     def test_fmov_imm_no_fpsr_change(self) -> None:
         """FMOV immediate does not modify FPSR."""
         cpu = run("FMOV.O3 FQA, 1.5\nFSTAT A\nHLT")
@@ -1204,7 +1154,74 @@ class TestFmovRr:
             "val: DB 1.5_h"
         )
         _assert_halted_steps(cpu, 2)
-        assert cpu.cycles == 3
+        assert cpu.cycles == 3  # FMOV.H load(2) + FMOV rr(1)
+
+
+_FP_COST_CASES = [
+    # (id, source, steps, cycles)
+    # ── FMOV load ────────────────────────────────────────────────────
+    ("fmov_load_fp32",  "FMOV.F FA, [val]\nHLT\nval: DB 1.0_f",    1,  4),
+    ("fmov_load_fp16",  "FMOV.H FHA, [val]\nHLT\nval: DB 1.0_h",   1,  2),
+    ("fmov_load_bf16",  "FMOV.BF FHA, [val]\nHLT\nval: DB 1.0_bf", 1,  2),
+    ("fmov_load_ofp8",  "FMOV.O3 FQA, [val]\nHLT\nval: DB 1.0_o3", 1,  1),
+    # ── FMOV store ───────────────────────────────────────────────────
+    ("fmov_store_fp32", "FMOV.F FA, [src]\nFMOV.F [dst], FA\nHLT\nsrc: DB 1.0_f\ndst: DB 0, 0, 0, 0", 2,  8),
+    ("fmov_store_fp16", "FMOV.H FHA, 1.0\nFMOV.H [dst], FHA\nHLT\ndst: DB 0, 0",                      2,  3),
+    ("fmov_store_bf16", "FMOV.BF FHA, 1.0\nFMOV.BF [dst], FHA\nHLT\ndst: DB 0, 0",                    2,  3),
+    ("fmov_store_ofp8", "FMOV.O3 FQA, 1.0\nFMOV.O3 [dst], FQA\nHLT\ndst: DB 0",                      2,  2),
+    # ── FDIV rr (format-independent, fpu_d=3) ────────────────────────
+    ("fdiv_rr_fp16",    "FMOV.H FHA, 2.0\nFMOV.H FHB, 4.0\nFDIV.H FHB, FHA\nHLT",                    3,  5),
+    ("fdiv_rr_fp32",    "FMOV.F FA, [num]\nFMOV.F FB, [den]\nFDIV.F FA, FB\nHLT\nnum: DB 6.0_f\nden: DB 2.0_f", 3, 11),
+    ("fdiv_rr_ofp8",    "FMOV.O3 FQA, 6.0\nFMOV.O3 FQB, 2.0\nFDIV.O3 FQA, FQB\nHLT",                3,  5),
+    # ── FDIV mem (mem(fmt) + fpu_d=3) ────────────────────────────────
+    ("fdiv_mem_fp32",   "FMOV.F FA, [num]\nFDIV.F FA, [den]\nHLT\nnum: DB 6.0_f\nden: DB 2.0_f",      2, 11),
+    ("fdiv_mem_fp16",   "FMOV.H FHA, 6.0\nFDIV.H FHA, [val]\nHLT\nval: DB 2.0_h",                     2,  6),
+    ("fdiv_mem_bf16",   "FMOV.BF FHA, 6.0\nFDIV.BF FHA, [val]\nHLT\nval: DB 2.0_bf",                  2,  6),
+    ("fdiv_mem_ofp8",   "FMOV.O3 FQA, 6.0\nFDIV.O3 FQA, [val]\nHLT\nval: DB 2.0_o3",                 2,  5),
+    # ── FMADD mem (mem(fmt) + fpu_ma=4) ──────────────────────────────
+    ("fmadd_mem_fp32",  "FMOV.F FA, [x]\nFMOV.F FB, [y]\nFMADD.F FA, FB, [z]\nHLT\nx: DB 2.0_f\ny: DB 3.0_f\nz: DB 1.0_f", 3, 16),
+    ("fmadd_mem_fp16",  "FMOV.H FHA, 2.0\nFMOV.H FHB, 3.0\nFMADD.H FHA, FHB, [val]\nHLT\nval: DB 1.0_h",  3,  8),
+    ("fmadd_mem_bf16",  "FMOV.BF FHA, 2.0\nFMOV.BF FHB, 3.0\nFMADD.BF FHA, FHB, [val]\nHLT\nval: DB 1.0_bf", 3, 8),
+    ("fmadd_mem_ofp8",  "FMOV.O3 FQA, 2.0\nFMOV.O3 FQB, 3.0\nFMADD.O3 FQA, FQB, [val]\nHLT\nval: DB 1.0_o3", 3, 7),
+    # ── FADD mem (mem(fmt) + fpu=2) ──────────────────────────────────
+    ("fadd_mem_fp32",   "FMOV.F FA, [src]\nFADD.F FA, [src]\nHLT\nsrc: DB 1.0_f",                     2, 10),
+    ("fadd_mem_fp16",   "FMOV.H FHA, 1.0\nFADD.H FHA, [val]\nHLT\nval: DB 1.0_h",                     2,  5),
+    ("fadd_mem_bf16",   "FMOV.BF FHA, 1.0\nFADD.BF FHA, [val]\nHLT\nval: DB 1.0_bf",                  2,  5),
+    ("fadd_mem_ofp8",   "FMOV.O3 FQA, 1.0\nFADD.O3 FQA, [val]\nHLT\nval: DB 1.0_o3",                 2,  4),
+    # ── FSUB mem ─────────────────────────────────────────────────────
+    ("fsub_mem_fp16",   "FMOV.H FHA, 3.0\nFSUB.H FHA, [val]\nHLT\nval: DB 1.0_h",                     2,  5),
+    ("fsub_mem_ofp8",   "FMOV.O3 FQA, 3.0\nFSUB.O3 FQA, [val]\nHLT\nval: DB 1.0_o3",                 2,  4),
+    # ── FMUL mem ─────────────────────────────────────────────────────
+    ("fmul_mem_fp32",   "FMOV.F FA, [src]\nFMUL.F FA, [src]\nHLT\nsrc: DB 2.0_f",                     2, 10),
+    ("fmul_mem_fp16",   "FMOV.H FHA, 2.0\nFMUL.H FHA, [val]\nHLT\nval: DB 2.0_h",                     2,  5),
+    # ── FCMP mem ─────────────────────────────────────────────────────
+    ("fcmp_mem_fp32",   "FMOV.F FA, [src]\nFCMP.F FA, [src]\nHLT\nsrc: DB 1.0_f",                     2, 10),
+    ("fcmp_mem_fp16",   "FMOV.H FHA, 1.0\nFCMP.H FHA, [val]\nHLT\nval: DB 1.0_h",                     2,  5),
+    ("fcmp_mem_ofp8",   "FMOV.O3 FQA, 1.0\nFCMP.O3 FQA, [val]\nHLT\nval: DB 1.0_o3",                 2,  4),
+    # ── FMOV regaddr ─────────────────────────────────────────────────
+    ("fmov_regaddr_fp32",  "MOV B, val\nFMOV.F FA, [B]\nHLT\nval: DB 1.0_f",   2,  5),
+    ("fmov_regaddr_fp16",  "MOV B, val\nFMOV.H FHA, [B]\nHLT\nval: DB 1.0_h",  2,  3),
+    ("fmov_regaddr_bf16",  "MOV B, val\nFMOV.BF FHA, [B]\nHLT\nval: DB 1.0_bf", 2, 3),
+    ("fmov_regaddr_ofp8",  "MOV B, val\nFMOV.O3 FQA, [B]\nHLT\nval: DB 1.0_o3", 2, 2),
+    # ── FDIV regaddr ─────────────────────────────────────────────────
+    ("fdiv_regaddr_fp16",  "FMOV.H FHA, 6.0\nMOV B, val\nFDIV.H FHA, [B]\nHLT\nval: DB 2.0_h", 3, 7),
+    # ── FMADD regaddr ────────────────────────────────────────────────
+    ("fmadd_regaddr_fp16", "FMOV.H FHA, 2.0\nFMOV.H FHB, 3.0\nMOV B, val\nFMADD.H FHA, FHB, [B]\nHLT\nval: DB 1.0_h",   4,  9),
+    ("fmadd_regaddr_fp32", "FMOV.F FA, [src]\nFMOV.F FB, [src]\nMOV B, src\nFMADD.F FA, FB, [B]\nHLT\nsrc: DB 1.0_f",    4, 17),
+    ("fmadd_regaddr_bf16", "FMOV.BF FHA, 2.0\nFMOV.BF FHB, 3.0\nMOV B, val\nFMADD.BF FHA, FHB, [B]\nHLT\nval: DB 1.0_bf", 4, 9),
+    ("fmadd_regaddr_ofp8", "FMOV.O3 FQA, 2.0\nFMOV.O3 FQB, 3.0\nMOV B, val\nFMADD.O3 FQA, FQB, [B]\nHLT\nval: DB 1.0_o3", 4, 8),
+]
+
+
+@pytest.mark.parametrize("src,steps,cycles", [
+    pytest.param(src, steps, cycles, id=tid)
+    for tid, src, steps, cycles in _FP_COST_CASES
+])
+def test_fp_cost(src: str, steps: int, cycles: int) -> None:
+    """FP cost model: format-dependent and operation-dependent costs."""
+    cpu = run(src)
+    _assert_halted_steps(cpu, steps)
+    assert cpu.cycles == cycles
 
 
 # ── Paranoid tests: rounding, aliasing, NaN, edge cases ─────────
@@ -1526,57 +1543,18 @@ class TestE4m3Saturation:
         assert cpu.a & 0x04, "overflow flag should be set"
 
 
-class TestBf16DirectedRoundingValues:
-    """bfloat16 directed rounding must produce correct VALUES, not just lengths."""
-
-    def test_bf16_rne_midpoint(self) -> None:
-        """RNE: midpoint rounds to even."""
-        # 1.0 in bf16 = 0x3F80, next is 1.0078125 = 0x3F81
-        # midpoint 1.00390625 should round to 1.0 (even mantissa)
-        val = 1.00390625  # exact midpoint between bf16 1.0 and 1.0078125
-        data, _ = encode_bfloat16(val, rm=0)
-        result = bytes_to_float(data, 2)
-        # RNE ties to even: 1.0 mantissa=0 (even) vs 1.0078125 mantissa=1 (odd)
-        assert result == 1.0, f"RNE midpoint: expected 1.0, got {result}"
-
-    def test_bf16_rtz(self) -> None:
-        """RTZ: truncate toward zero."""
-        val = 1.00390625  # midpoint
-        data, _ = encode_bfloat16(val, rm=1)
-        result = bytes_to_float(data, 2)
-        assert result == 1.0, f"RTZ: expected 1.0 (truncate), got {result}"
-
-    def test_bf16_rdn_positive(self) -> None:
-        """RDN: positive value rounds toward -Inf (floor)."""
-        val = 1.005  # between 1.0 and 1.0078125
-        data, _ = encode_bfloat16(val, rm=2)
-        result = bytes_to_float(data, 2)
-        assert result == 1.0, f"RDN positive: expected 1.0 (floor), got {result}"
-
-    def test_bf16_rdn_negative(self) -> None:
-        """RDN: negative value rounds toward -Inf (away from zero)."""
-        val = -1.005
-        data, _ = encode_bfloat16(val, rm=2)
-        result = bytes_to_float(data, 2)
-        assert result == -1.0078125, (
-            f"RDN negative: expected -1.0078125 (toward -Inf), got {result}"
-        )
-
-    def test_bf16_rup_positive(self) -> None:
-        """RUP: positive value rounds toward +Inf (ceiling)."""
-        val = 1.005
-        data, _ = encode_bfloat16(val, rm=3)
-        result = bytes_to_float(data, 2)
-        assert result == 1.0078125, (
-            f"RUP positive: expected 1.0078125 (ceiling), got {result}"
-        )
-
-    def test_bf16_rup_negative(self) -> None:
-        """RUP: negative value rounds toward +Inf (toward zero)."""
-        val = -1.005
-        data, _ = encode_bfloat16(val, rm=3)
-        result = bytes_to_float(data, 2)
-        assert result == -1.0, f"RUP negative: expected -1.0 (toward zero), got {result}"
+@pytest.mark.parametrize("val,rm,expected", [
+    pytest.param(1.00390625,  0,  1.0,        id="rne_midpoint"),   # ties to even
+    pytest.param(1.00390625,  1,  1.0,        id="rtz"),
+    pytest.param(1.005,       2,  1.0,        id="rdn_positive"),
+    pytest.param(-1.005,      2, -1.0078125,  id="rdn_negative"),
+    pytest.param(1.005,       3,  1.0078125,  id="rup_positive"),
+    pytest.param(-1.005,      3, -1.0,        id="rup_negative"),
+])
+def test_bf16_directed_rounding(val: float, rm: int, expected: float) -> None:
+    """bfloat16 directed rounding produces correct values."""
+    data, _ = encode_bfloat16(val, rm=rm)
+    assert bytes_to_float(data, 2) == expected
 
 
 class TestFmaddNan:
@@ -2487,15 +2465,15 @@ class TestPropSimRoundTrip:
         "FABS.F FA", "FNEG.H FHA", "FSQRT.BF FHB",
         "FABS.O3 FQA", "FNEG.O2 FQB",
     ]))
-    def test_unary_halt(self, insn: str) -> None:
+    def test_unary_halt(self, instr: str) -> None:
         """Unary FP instruction + HLT does not crash."""
-        cpu = run(f"{insn}\nHLT")
+        cpu = run(f"{instr}\nHLT")
         _assert_halted_steps(cpu, 1)
 
     @given(st.sampled_from(["FCLR", "FSTAT A", "FCFG A", "FSCFG A"]))
-    def test_control_halt(self, insn: str) -> None:
+    def test_control_halt(self, instr: str) -> None:
         """Control FP instruction + HLT does not crash."""
-        cpu = run(f"{insn}\nHLT")
+        cpu = run(f"{instr}\nHLT")
         _assert_halted_steps(cpu, 1)
 
 
@@ -2641,3 +2619,132 @@ class TestFpArithRrFormatMismatch:
         assert cpu.state == CpuState.FAULT
         assert cpu.steps == 0
         assert cpu.a == ErrorCode.FP_FORMAT
+
+
+# ── TLA+ parity tests (formal/tests/ scenarios) ───────────────────────
+
+
+def test_fp_cost_fdiv_fmov_fmadd_fdiv_sequence() -> None:
+    """FDIV_RR(3) + FMOV.H load(2) + FMADD.H mem(6) + FDIV.H mem(5) = 16 cycles.
+
+    Mirrors TLA+ test_fp_cost: four FP instructions before HLT,
+    covering the combined cost of mixed reg-reg and mem variants.
+    Memory at address 240 is pre-seeded with 2.0 in fp16.
+    """
+    cpu = CPU(arch=2)
+    code = [0] * 256
+    # Store 2.0 as fp16 at address 240
+    for i, b in enumerate(struct.pack("<e", 2.0)):
+        code[240 + i] = b
+    cpu.load(code)
+    fpm_fha = encode_fpm(0, 0, FP_FMT_H)  # FHA: phys=0, pos=0, fmt=H
+    fpm_fhb = encode_fpm(0, 1, FP_FMT_H)  # FHB: phys=0, pos=1, fmt=H
+    # FMOV.H FHA, 2.0 (imm16, cost=1) — initialise registers, not counted
+    cpu.mem[0] = int(Op.FMOV_FP_IMM16)
+    cpu.mem[1] = fpm_fha
+    cpu.mem[2] = 0x00
+    cpu.mem[3] = 0x40  # 2.0 in fp16 = 0x4000
+    # FMOV.H FHB, 2.0 (imm16, cost=1)
+    cpu.mem[4] = int(Op.FMOV_FP_IMM16)
+    cpu.mem[5] = fpm_fhb
+    cpu.mem[6] = 0x00
+    cpu.mem[7] = 0x40
+    # FDIV.H FHA, FHB  — reg-reg, cost=3
+    cpu.mem[8] = int(Op.FDIV_RR)
+    cpu.mem[9] = fpm_fha
+    cpu.mem[10] = fpm_fhb
+    # FMOV.H FHA, [240]  — load fp16, cost=2
+    cpu.mem[11] = int(Op.FMOV_FP_ADDR)
+    cpu.mem[12] = fpm_fha
+    cpu.mem[13] = 240
+    # FMADD.H FHA, FHB, [240]  — fmadd mem fp16, cost=4+2=6
+    cpu.mem[14] = int(Op.FMADD_FP_FP_ADDR)
+    cpu.mem[15] = fpm_fha
+    cpu.mem[16] = fpm_fhb
+    cpu.mem[17] = 240
+    # FDIV.H FHA, [240]  — fdiv mem fp16, cost=3+2=5
+    cpu.mem[18] = int(Op.FDIV_FP_ADDR)
+    cpu.mem[19] = fpm_fha
+    cpu.mem[20] = 240
+    # HLT
+    cpu.mem[21] = int(Op.HLT)
+    state = cpu.run()
+    assert state == CpuState.HALTED
+    # 2 init steps + 4 counted steps = 6 total steps before HLT
+    assert cpu.steps == 6
+    # init: 1+1=2; counted: fdiv_rr=3 + fmov_load=2 + fmadd_mem=6 + fdiv_mem=5 = 16
+    assert cpu.cycles == 2 + 16
+
+
+def test_fp_fault_atomicity() -> None:
+    """FAULT mid-sequence must not corrupt CPU flags set by prior instruction.
+
+    Mirrors TLA+ test_fp_fault_atomicity:
+      CMP A,A → Z=True, C=False
+      FABS with FPM fmt=5 (reserved) → FAULT(ERR_FP_FORMAT)
+    Post-fault: state=FAULT, A=ERR_FP_FORMAT=12, Z=True, C=False preserved.
+    """
+    fpm_invalid = (0 << 6) | (0 << 3) | 5  # fmt=5, reserved → 0x05
+    cpu = run_binary([
+        int(Op.CMP_REG_REG), 0, 0,           # CMP A, A → Z=1, C=0
+        int(Op.FABS_FP), fpm_invalid,         # FABS with bad FPM → FAULT
+        int(Op.HLT),
+    ])
+    assert cpu.state == CpuState.FAULT
+    assert cpu.steps == 1          # CMP executed, FABS faulted (step not counted)
+    assert cpu.a == ErrorCode.FP_FORMAT
+    assert cpu.zero is True
+    assert cpu.carry is False
+
+
+def test_fp_fitof_invalid_gpr() -> None:
+    """FITOF with GPR=SP (code=4) raises FAULT(ERR_INVALID_REG).
+
+    Mirrors TLA+ test_fp_fitof_invalid_gpr:
+      FITOF FHA, [GPR=SP=4] → FAULT(ERR_INVALID_REG=4)
+    SP (register code 4) is not a valid GPR for FITOF; only codes 0-3 are.
+    """
+    fpm_fha = encode_fpm(0, 0, FP_FMT_H)
+    sp_code = 4  # Reg.SP
+    cpu = run_binary([
+        int(Op.FITOF_FP_GPR), fpm_fha, sp_code,
+        int(Op.HLT),
+    ])
+    assert cpu.state == CpuState.FAULT
+    assert cpu.steps == 0
+    assert cpu.a == ErrorCode.INVALID_REG
+
+
+def test_fp_fmov_imm16_float32_fault() -> None:
+    """FMOV_FI16 with float32 format (fmt=0) raises FAULT(ERR_FP_FORMAT).
+
+    Mirrors TLA+ test_fp_fmov_imm16_fault:
+      FMOV_FI16 FHA, 0x3E00 with FPM fmt=0 (float32) → FAULT(ERR_FP_FORMAT)
+    FMOV_FI16 (opcode 162) requires a 16-bit format; float32 is invalid.
+    """
+    fpm_fa = encode_fpm(0, 0, FP_FMT_F)  # FA: float32 (fmt=0)
+    cpu = run_binary([
+        int(Op.FMOV_FP_IMM16), fpm_fa, 0x00, 0x3E,
+        int(Op.HLT),
+    ])
+    assert cpu.state == CpuState.FAULT
+    assert cpu.steps == 0
+    assert cpu.a == ErrorCode.FP_FORMAT
+
+
+def test_fmov_rr_bfloat16_vs_float16_fault() -> None:
+    """FMOV_RR with dst=bfloat16 (fmt=2) and src=float16 (fmt=1) → FAULT.
+
+    Mirrors TLA+ test_fmov_rr_fault:
+      FMOV.H FHA, BFA (fmt=1 vs fmt=2) → FAULT(ERR_FP_FORMAT=12)
+    The FPM format codes must match between source and destination.
+    """
+    fpm_fha = encode_fpm(0, 0, FP_FMT_H)   # FHA: fmt=1 (float16)
+    fpm_bfa = encode_fpm(0, 0, FP_FMT_BF)  # bfloat16 sub-reg: fmt=2
+    cpu = run_binary([
+        int(Op.FMOV_RR), fpm_bfa, fpm_fha,
+        int(Op.HLT),
+    ])
+    assert cpu.state == CpuState.FAULT
+    assert cpu.steps == 0
+    assert cpu.a == ErrorCode.FP_FORMAT

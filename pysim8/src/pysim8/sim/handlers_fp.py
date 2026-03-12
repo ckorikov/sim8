@@ -215,10 +215,10 @@ class HandlersFpMixin:
     ) -> Callable[[DecodedInsn], None]:
         """Factory for FP arith with memory operand."""
 
-        def handler(insn: DecodedInsn) -> None:
-            fpm = insn.operands[0]
+        def handler(instr: DecodedInsn) -> None:
+            fpm = instr.operands[0]
             phys, pos, fmt = self._validate_fpm(fpm)
-            addr = resolve_addr(insn.operands[1])
+            addr = resolve_addr(instr.operands[1])
 
             reg_val = self._fp_read_reg(pos, fmt, phys)
             mem_val = self._fp_read_mem(addr, fmt)
@@ -228,7 +228,7 @@ class HandlersFpMixin:
             )
             self._fpu.accumulate_exceptions(exc)
             self._fp_write_reg(pos, fmt, result, phys)
-            self.regs.ip += insn.size
+            self.regs.ip += instr.size
 
         return handler
 
@@ -238,10 +238,10 @@ class HandlersFpMixin:
     ) -> Callable[[DecodedInsn], None]:
         """Factory for FCMP with memory operand."""
 
-        def handler(insn: DecodedInsn) -> None:
-            fpm = insn.operands[0]
+        def handler(instr: DecodedInsn) -> None:
+            fpm = instr.operands[0]
             phys, pos, fmt = self._validate_fpm(fpm)
-            addr = resolve_addr(insn.operands[1])
+            addr = resolve_addr(instr.operands[1])
 
             reg_val = self._fp_read_reg(pos, fmt, phys)
             mem_val = self._fp_read_mem(addr, fmt)
@@ -250,7 +250,7 @@ class HandlersFpMixin:
             self._fpu.accumulate_exceptions(exc)
             self.regs.flags.z = z
             self.regs.flags.c = c
-            self.regs.ip += insn.size
+            self.regs.ip += instr.size
 
         return handler
 
@@ -260,9 +260,9 @@ class HandlersFpMixin:
     ) -> Callable[[DecodedInsn], None]:
         """Factory for reg-reg FP arithmetic."""
 
-        def handler(insn: DecodedInsn) -> None:
-            dst_fpm = insn.operands[0]
-            src_fpm = insn.operands[1]
+        def handler(instr: DecodedInsn) -> None:
+            dst_fpm = instr.operands[0]
+            src_fpm = instr.operands[1]
             dst_phys, dst_pos, dst_fmt = self._validate_fpm(dst_fpm)
             src_phys, src_pos, src_fmt = self._validate_fpm(src_fpm)
 
@@ -277,7 +277,7 @@ class HandlersFpMixin:
             )
             self._fpu.accumulate_exceptions(exc)
             self._fp_write_reg(dst_pos, dst_fmt, result, dst_phys)
-            self.regs.ip += insn.size
+            self.regs.ip += instr.size
 
         return handler
 
@@ -285,124 +285,124 @@ class HandlersFpMixin:
 
     # -- FMOV (128-131): raw data transfer, no rounding --
 
-    def _fmov_load(self, insn: DecodedInsn, addr: int) -> None:
-        fpm = insn.operands[0]
+    def _fmov_load(self, instr: DecodedInsn, addr: int) -> None:
+        fpm = instr.operands[0]
         phys, pos, fmt = self._validate_fpm(fpm)
         data = self._fp_read_mem_raw(addr, fmt)
         raw = int.from_bytes(data, "little")
         self._fpu.write_bits(pos, fmt, raw, phys)
-        self.regs.ip += insn.size
+        self.regs.ip += instr.size
 
-    def _h_fmov_load_addr(self, insn: DecodedInsn) -> None:
-        self._fmov_load(insn, self._direct_addr(insn.operands[1]))
+    def _h_fmov_load_addr(self, instr: DecodedInsn) -> None:
+        self._fmov_load(instr, self._direct_addr(instr.operands[1]))
 
-    def _h_fmov_load_regaddr(self, insn: DecodedInsn) -> None:
-        self._fmov_load(insn, self._indirect_addr(insn.operands[1]))
+    def _h_fmov_load_regaddr(self, instr: DecodedInsn) -> None:
+        self._fmov_load(instr, self._indirect_addr(instr.operands[1]))
 
-    def _fmov_store(self, insn: DecodedInsn, addr: int) -> None:
-        fpm = insn.operands[0]
+    def _fmov_store(self, instr: DecodedInsn, addr: int) -> None:
+        fpm = instr.operands[0]
         phys, pos, fmt = self._validate_fpm(fpm)
         raw = self._fpu.read_bits(pos, fmt, phys)
         data = raw.to_bytes(FP_FMT_WIDTH[fmt] // 8, "little")
         self._fp_write_mem_raw(addr, fmt, data)
-        self.regs.ip += insn.size
+        self.regs.ip += instr.size
 
-    def _h_fmov_store_addr(self, insn: DecodedInsn) -> None:
-        self._fmov_store(insn, self._direct_addr(insn.operands[1]))
+    def _h_fmov_store_addr(self, instr: DecodedInsn) -> None:
+        self._fmov_store(instr, self._direct_addr(instr.operands[1]))
 
-    def _h_fmov_store_regaddr(self, insn: DecodedInsn) -> None:
-        self._fmov_store(insn, self._indirect_addr(insn.operands[1]))
+    def _h_fmov_store_regaddr(self, instr: DecodedInsn) -> None:
+        self._fmov_store(instr, self._indirect_addr(instr.operands[1]))
 
     # -- FMOV immediate (161-162): raw bit write, no rounding --
 
-    def _h_fmov_imm8(self, insn: DecodedInsn) -> None:
-        fpm = insn.operands[0]
+    def _h_fmov_imm8(self, instr: DecodedInsn) -> None:
+        fpm = instr.operands[0]
         phys, pos, fmt = self._validate_fpm(fpm)
         if fmt not in (FP_FMT_O3, FP_FMT_O2):
             raise CpuFault(ErrorCode.FP_FORMAT, self.regs.ip)
-        imm8 = insn.operands[1]
+        imm8 = instr.operands[1]
         self._fpu.write_bits(pos, fmt, imm8, phys)
-        self.regs.ip += insn.size
+        self.regs.ip += instr.size
 
-    def _h_fmov_imm16(self, insn: DecodedInsn) -> None:
-        fpm = insn.operands[0]
+    def _h_fmov_imm16(self, instr: DecodedInsn) -> None:
+        fpm = instr.operands[0]
         phys, pos, fmt = self._validate_fpm(fpm)
         if fmt not in (FP_FMT_H, FP_FMT_BF):
             raise CpuFault(ErrorCode.FP_FORMAT, self.regs.ip)
-        imm16 = insn.operands[1] | (insn.operands[2] << 8)
+        imm16 = instr.operands[1] | (instr.operands[2] << 8)
         self._fpu.write_bits(pos, fmt, imm16, phys)
-        self.regs.ip += insn.size
+        self.regs.ip += instr.size
 
     # -- FMOV reg-reg (145): [145, dst_fpm, src_fpm] --
 
-    def _h_fmov_rr(self, insn: DecodedInsn) -> None:
-        dst_fpm = insn.operands[0]
-        src_fpm = insn.operands[1]
+    def _h_fmov_rr(self, instr: DecodedInsn) -> None:
+        dst_fpm = instr.operands[0]
+        src_fpm = instr.operands[1]
         dst_phys, dst_pos, dst_fmt = self._validate_fpm(dst_fpm)
         src_phys, src_pos, src_fmt = self._validate_fpm(src_fpm)
         if dst_fmt != src_fmt:
             raise CpuFault(ErrorCode.FP_FORMAT, self.regs.ip)
         raw = self._fpu.read_bits(src_pos, src_fmt, src_phys)
         self._fpu.write_bits(dst_pos, dst_fmt, raw, dst_phys)
-        self.regs.ip += insn.size
+        self.regs.ip += instr.size
 
     # -- FABS (142) / FNEG (143) --
 
     def _fp_unary_bitwise(
-        self, insn: DecodedInsn,
+        self, instr: DecodedInsn,
         fn: Callable[[int, int], int],
     ) -> None:
-        fpm = insn.operands[0]
+        fpm = instr.operands[0]
         phys, pos, fmt = self._validate_fpm(fpm)
         raw = self._fpu.read_bits(pos, fmt, phys)
         result = fn(raw, FP_FMT_WIDTH[fmt])
         self._fpu.write_bits(pos, fmt, result, phys)
-        self.regs.ip += insn.size
+        self.regs.ip += instr.size
 
-    def _h_fabs(self, insn: DecodedInsn) -> None:
-        self._fp_unary_bitwise(insn, fp_abs)
+    def _h_fabs(self, instr: DecodedInsn) -> None:
+        self._fp_unary_bitwise(instr, fp_abs)
 
-    def _h_fneg(self, insn: DecodedInsn) -> None:
-        self._fp_unary_bitwise(insn, fp_neg)
+    def _h_fneg(self, instr: DecodedInsn) -> None:
+        self._fp_unary_bitwise(instr, fp_neg)
 
     # -- FSQRT (144) --
 
-    def _h_fsqrt(self, insn: DecodedInsn) -> None:
-        fpm = insn.operands[0]
+    def _h_fsqrt(self, instr: DecodedInsn) -> None:
+        fpm = instr.operands[0]
         phys, pos, fmt = self._validate_fpm(fpm)
         val = self._fp_read_reg(pos, fmt, phys)
         result, exc = fp_sqrt(val, fmt, self._fpu.rounding_mode)
         self._fpu.accumulate_exceptions(exc)
         self._fp_write_reg(pos, fmt, result, phys)
-        self.regs.ip += insn.size
+        self.regs.ip += instr.size
 
     # -- FCVT (146): [146, dst_fpm, src_fpm] --
 
-    def _h_fcvt(self, insn: DecodedInsn) -> None:
-        dst_fpm = insn.operands[0]
-        src_fpm = insn.operands[1]
+    def _h_fcvt(self, instr: DecodedInsn) -> None:
+        dst_fpm = instr.operands[0]
+        src_fpm = instr.operands[1]
         dst_phys, dst_pos, dst_fmt = self._validate_fpm(dst_fpm)
         src_phys, src_pos, src_fmt = self._validate_fpm(src_fpm)
         src_val = self._fp_read_reg(src_pos, src_fmt, src_phys)
         self._fp_write_reg(dst_pos, dst_fmt, src_val, dst_phys)
-        self.regs.ip += insn.size
+        self.regs.ip += instr.size
 
     # -- FITOF (147): [147, fpm, gpr] --
 
-    def _h_fitof(self, insn: DecodedInsn) -> None:
-        fpm = insn.operands[0]
-        gpr_code = insn.operands[1]
+    def _h_fitof(self, instr: DecodedInsn) -> None:
+        fpm = instr.operands[0]
+        gpr_code = instr.operands[1]
         phys, pos, fmt = self._validate_fpm(fpm)
         gpr = self._decode_gpr(gpr_code)
         int_val = self.regs.read(gpr)
         self._fp_write_reg(pos, fmt, float(int_val), phys)
-        self.regs.ip += insn.size
+        self.regs.ip += instr.size
 
     # -- FFTOI (148): [148, fpm, gpr] --
 
-    def _h_fftoi(self, insn: DecodedInsn) -> None:
-        fpm = insn.operands[0]
-        gpr_code = insn.operands[1]
+    def _h_fftoi(self, instr: DecodedInsn) -> None:
+        fpm = instr.operands[0]
+        gpr_code = instr.operands[1]
         phys, pos, fmt = self._validate_fpm(fpm)
         gpr = self._decode_gpr(gpr_code)
         fp_val = self._fp_read_reg(pos, fmt, phys)
@@ -442,41 +442,41 @@ class HandlersFpMixin:
             FpExceptions(invalid=exc_invalid, inexact=exc_inexact),
         )
         self.regs.write(gpr, result)
-        self.regs.ip += insn.size
+        self.regs.ip += instr.size
 
     # -- FSTAT (149): [149, gpr] --
 
-    def _h_fstat(self, insn: DecodedInsn) -> None:
-        gpr = self._decode_gpr(insn.operands[0])
+    def _h_fstat(self, instr: DecodedInsn) -> None:
+        gpr = self._decode_gpr(instr.operands[0])
         self.regs.write(gpr, self._fpu.fpsr)
-        self.regs.ip += insn.size
+        self.regs.ip += instr.size
 
     # -- FCFG (150): [150, gpr] --
 
-    def _h_fcfg(self, insn: DecodedInsn) -> None:
-        gpr = self._decode_gpr(insn.operands[0])
+    def _h_fcfg(self, instr: DecodedInsn) -> None:
+        gpr = self._decode_gpr(instr.operands[0])
         self.regs.write(gpr, self._fpu.fpcr)
-        self.regs.ip += insn.size
+        self.regs.ip += instr.size
 
     # -- FSCFG (151): [151, gpr] --
 
-    def _h_fscfg(self, insn: DecodedInsn) -> None:
-        gpr = self._decode_gpr(insn.operands[0])
+    def _h_fscfg(self, instr: DecodedInsn) -> None:
+        gpr = self._decode_gpr(instr.operands[0])
         val = self.regs.read(gpr)
         self._fpu.fpcr = val & 0x03  # mask reserved bits
-        self.regs.ip += insn.size
+        self.regs.ip += instr.size
 
     # -- FCLR (152): [152] --
 
-    def _h_fclr(self, insn: DecodedInsn) -> None:
+    def _h_fclr(self, instr: DecodedInsn) -> None:
         self._fpu.fpsr = 0
-        self.regs.ip += insn.size
+        self.regs.ip += instr.size
 
     # -- FCMP_RR (157): [157, dst_fpm, src_fpm] --
 
-    def _h_fcmp_rr(self, insn: DecodedInsn) -> None:
-        dst_fpm = insn.operands[0]
-        src_fpm = insn.operands[1]
+    def _h_fcmp_rr(self, instr: DecodedInsn) -> None:
+        dst_fpm = instr.operands[0]
+        src_fpm = instr.operands[1]
         dst_phys, dst_pos, dst_fmt = self._validate_fpm(dst_fpm)
         src_phys, src_pos, src_fmt = self._validate_fpm(src_fpm)
         if dst_fmt != src_fmt:
@@ -489,13 +489,13 @@ class HandlersFpMixin:
         self._fpu.accumulate_exceptions(exc)
         self.regs.flags.z = z
         self.regs.flags.c = c
-        self.regs.ip += insn.size
+        self.regs.ip += instr.size
 
     # -- FCLASS (158): [158, fpm, gpr] --
 
-    def _h_fclass(self, insn: DecodedInsn) -> None:
-        fpm = insn.operands[0]
-        gpr_code = insn.operands[1]
+    def _h_fclass(self, instr: DecodedInsn) -> None:
+        fpm = instr.operands[0]
+        gpr_code = instr.operands[1]
         phys, pos, fmt = self._validate_fpm(fpm)
         gpr = self._decode_gpr(gpr_code)
 
@@ -506,20 +506,20 @@ class HandlersFpMixin:
 
         mask = fp_classify(val, raw, width, fmt)
         self.regs.write(gpr, mask)
-        self.regs.ip += insn.size
+        self.regs.ip += instr.size
 
     # -- FMADD (159-160): dst = src * mem + dst (unfused: two roundings) --
 
-    def _h_fmadd_addr(self, insn: DecodedInsn) -> None:
-        self._do_fmadd(insn, self._direct_addr(insn.operands[2]))
+    def _h_fmadd_addr(self, instr: DecodedInsn) -> None:
+        self._do_fmadd(instr, self._direct_addr(instr.operands[2]))
 
-    def _h_fmadd_regaddr(self, insn: DecodedInsn) -> None:
-        self._do_fmadd(insn, self._indirect_addr(insn.operands[2]))
+    def _h_fmadd_regaddr(self, instr: DecodedInsn) -> None:
+        self._do_fmadd(instr, self._indirect_addr(instr.operands[2]))
 
-    def _do_fmadd(self, insn: DecodedInsn, addr: int) -> None:
+    def _do_fmadd(self, instr: DecodedInsn, addr: int) -> None:
         """FMADD: dst = src * mem + dst."""
-        dst_fpm = insn.operands[0]
-        src_fpm = insn.operands[1]
+        dst_fpm = instr.operands[0]
+        src_fpm = instr.operands[1]
         dst_phys, dst_pos, dst_fmt = self._validate_fpm(dst_fpm)
         src_phys, src_pos, src_fmt = self._validate_fpm(src_fpm)
 
@@ -546,4 +546,4 @@ class HandlersFpMixin:
         )
         self._fpu.accumulate_exceptions(combined)
         self._fp_write_reg(dst_pos, dst_fmt, result, dst_phys)
-        self.regs.ip += insn.size
+        self.regs.ip += instr.size

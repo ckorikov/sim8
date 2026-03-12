@@ -78,39 +78,39 @@ class HandlersMixin:
 
     # ── Source resolvers ───────────────────────────────────────────────
 
-    def _src_regaddr(self, insn: DecodedInsn) -> int:
-        addr = self._indirect_addr(insn.operands[1])
+    def _src_regaddr(self, instr: DecodedInsn) -> int:
+        addr = self._indirect_addr(instr.operands[1])
         return self.mem[addr]
 
-    def _src_addr(self, insn: DecodedInsn) -> int:
-        addr = self._direct_addr(insn.operands[1])
+    def _src_addr(self, instr: DecodedInsn) -> int:
+        addr = self._direct_addr(instr.operands[1])
         return self.mem[addr]
 
-    def _src_const(self, insn: DecodedInsn) -> int:
-        return insn.operands[1]
+    def _src_const(self, instr: DecodedInsn) -> int:
+        return instr.operands[1]
 
-    def _src_stk_reg(self, insn: DecodedInsn) -> int:
-        code = self._decode_gpr_or_sp(insn.operands[1])
+    def _src_stk_reg(self, instr: DecodedInsn) -> int:
+        code = self._decode_gpr_or_sp(instr.operands[1])
         return self.regs.read(code)
 
-    def _src_gpr_reg(self, insn: DecodedInsn) -> int:
-        code = self._decode_gpr(insn.operands[1])
+    def _src_gpr_reg(self, instr: DecodedInsn) -> int:
+        code = self._decode_gpr(instr.operands[1])
         return self.regs.read(code)
 
-    def _src_muldiv_reg(self, insn: DecodedInsn) -> int:
-        code = self._decode_gpr(insn.operands[0])
+    def _src_muldiv_reg(self, instr: DecodedInsn) -> int:
+        code = self._decode_gpr(instr.operands[0])
         return self.regs.read(code)
 
-    def _src_muldiv_regaddr(self, insn: DecodedInsn) -> int:
-        addr = self._indirect_addr(insn.operands[0])
+    def _src_muldiv_regaddr(self, instr: DecodedInsn) -> int:
+        addr = self._indirect_addr(instr.operands[0])
         return self.mem[addr]
 
-    def _src_muldiv_addr(self, insn: DecodedInsn) -> int:
-        addr = self._direct_addr(insn.operands[0])
+    def _src_muldiv_addr(self, instr: DecodedInsn) -> int:
+        addr = self._direct_addr(instr.operands[0])
         return self.mem[addr]
 
-    def _src_muldiv_const(self, insn: DecodedInsn) -> int:
-        return insn.operands[0]
+    def _src_muldiv_const(self, instr: DecodedInsn) -> int:
+        return instr.operands[0]
 
     # ── Stack helpers ──────────────────────────────────────────────────
 
@@ -251,16 +251,16 @@ class HandlersMixin:
         writeback: bool = True,
     ) -> Handler:
         """Create handler for 2-operand ALU instructions (ADD/SUB/CMP)."""
-        def handler(insn: DecodedInsn) -> None:
-            dest_code = self._decode_gpr_or_sp(insn.operands[0])
-            right = resolve_src(insn)
+        def handler(instr: DecodedInsn) -> None:
+            dest_code = self._decode_gpr_or_sp(instr.operands[0])
+            right = resolve_src(instr)
             left = self.regs.read(dest_code)
             result, carry, zero = alu_fn(left, right)
             self.regs.flags.c = carry
             self.regs.flags.z = zero
             if writeback:
                 self.regs.write(dest_code, result)
-            self.regs.ip += insn.size
+            self.regs.ip += instr.size
         return handler
 
     def _make_bitwise_2op(
@@ -269,15 +269,15 @@ class HandlersMixin:
         resolve_src: Callable[[DecodedInsn], int],
     ) -> Handler:
         """Create handler for 2-operand bitwise instructions (AND/OR/XOR)."""
-        def handler(insn: DecodedInsn) -> None:
-            dest_code = self._decode_gpr(insn.operands[0])
-            right = resolve_src(insn)
+        def handler(instr: DecodedInsn) -> None:
+            dest_code = self._decode_gpr(instr.operands[0])
+            right = resolve_src(instr)
             left = self.regs.read(dest_code)
             result, zero = alu_fn(left, right)
             self.regs.flags.c = False
             self.regs.flags.z = zero
             self.regs.write(dest_code, result)
-            self.regs.ip += insn.size
+            self.regs.ip += instr.size
         return handler
 
     def _make_shift_2op(
@@ -286,9 +286,9 @@ class HandlersMixin:
         resolve_src: Callable[[DecodedInsn], int],
     ) -> Handler:
         """Create handler for 2-operand shift instructions (SHL/SHR)."""
-        def handler(insn: DecodedInsn) -> None:
-            dest_code = self._decode_gpr(insn.operands[0])
-            count = resolve_src(insn)
+        def handler(instr: DecodedInsn) -> None:
+            dest_code = self._decode_gpr(instr.operands[0])
+            count = resolve_src(instr)
             value = self.regs.read(dest_code)
             if count == 0:
                 # Spec: when count==0, value unchanged, C unchanged, Z updated
@@ -298,7 +298,7 @@ class HandlersMixin:
                 self.regs.flags.c = carry
                 self.regs.flags.z = zero
                 self.regs.write(dest_code, result)
-            self.regs.ip += insn.size
+            self.regs.ip += instr.size
         return handler
 
     def _make_jcc(
@@ -308,16 +308,16 @@ class HandlersMixin:
         is_reg: bool,
     ) -> Handler:
         """Create handler for conditional jumps."""
-        def handler(insn: DecodedInsn) -> None:
+        def handler(instr: DecodedInsn) -> None:
             if is_reg:
-                code = self._decode_gpr(insn.operands[0])
+                code = self._decode_gpr(instr.operands[0])
                 target = self.regs.read(code)
             else:
-                target = insn.operands[0]
+                target = instr.operands[0]
             if condition():
                 self.regs.ip = target
             else:
-                self.regs.ip += insn.size
+                self.regs.ip += instr.size
         return handler
 
     def _make_muldiv(
@@ -326,13 +326,13 @@ class HandlersMixin:
         resolve_src: Callable[[DecodedInsn], int],
     ) -> Handler:
         """Create handler for MUL instructions (A = A * operand)."""
-        def handler(insn: DecodedInsn) -> None:
-            right = resolve_src(insn)
+        def handler(instr: DecodedInsn) -> None:
+            right = resolve_src(instr)
             result, carry, zero = alu_fn(self.regs.a, right)
             self.regs.flags.c = carry
             self.regs.flags.z = zero
             self.regs.a = result
-            self.regs.ip += insn.size
+            self.regs.ip += instr.size
         return handler
 
     def _make_div(
@@ -340,161 +340,161 @@ class HandlersMixin:
         resolve_src: Callable[[DecodedInsn], int],
     ) -> Handler:
         """Create handler for DIV instructions (A = A / operand)."""
-        def handler(insn: DecodedInsn) -> None:
-            right = resolve_src(insn)
+        def handler(instr: DecodedInsn) -> None:
+            right = resolve_src(instr)
             if right == 0:
                 raise CpuFault(ErrorCode.DIV_ZERO, self.regs.ip)
             result, carry, zero = ALU.div(self.regs.a, right)
             self.regs.flags.c = carry
             self.regs.flags.z = zero
             self.regs.a = result
-            self.regs.ip += insn.size
+            self.regs.ip += instr.size
         return handler
 
     # ── Individual handlers ────────────────────────────────────────────
 
     # -- MOV --
 
-    def _h_mov_reg_reg(self, insn: DecodedInsn) -> None:
-        dest = self._decode_mov_reg(insn.operands[0])
-        src = self._decode_mov_reg(insn.operands[1])
+    def _h_mov_reg_reg(self, instr: DecodedInsn) -> None:
+        dest = self._decode_mov_reg(instr.operands[0])
+        src = self._decode_mov_reg(instr.operands[1])
         val = self.regs.read(src)
         self.regs.write(dest, val)
-        self.regs.ip += insn.size
+        self.regs.ip += instr.size
 
-    def _h_mov_reg_addr(self, insn: DecodedInsn) -> None:
-        dest = self._decode_mov_reg(insn.operands[0])
-        addr = self._direct_addr(insn.operands[1])
+    def _h_mov_reg_addr(self, instr: DecodedInsn) -> None:
+        dest = self._decode_mov_reg(instr.operands[0])
+        addr = self._direct_addr(instr.operands[1])
         val = self.mem[addr]
         self.regs.write(dest, val)
-        self.regs.ip += insn.size
+        self.regs.ip += instr.size
 
-    def _h_mov_reg_regaddr(self, insn: DecodedInsn) -> None:
-        dest = self._decode_mov_reg(insn.operands[0])
-        addr = self._indirect_addr(insn.operands[1])
+    def _h_mov_reg_regaddr(self, instr: DecodedInsn) -> None:
+        dest = self._decode_mov_reg(instr.operands[0])
+        addr = self._indirect_addr(instr.operands[1])
         val = self.mem[addr]
         self.regs.write(dest, val)
-        self.regs.ip += insn.size
+        self.regs.ip += instr.size
 
-    def _h_mov_addr_reg(self, insn: DecodedInsn) -> None:
-        addr = self._direct_addr(insn.operands[0])
-        src = self._decode_mov_reg(insn.operands[1])
+    def _h_mov_addr_reg(self, instr: DecodedInsn) -> None:
+        addr = self._direct_addr(instr.operands[0])
+        src = self._decode_mov_reg(instr.operands[1])
         val = self.regs.read(src)
         self.mem[addr] = val
-        self.regs.ip += insn.size
+        self.regs.ip += instr.size
 
-    def _h_mov_regaddr_reg(self, insn: DecodedInsn) -> None:
-        addr = self._indirect_addr(insn.operands[0])
-        src = self._decode_mov_reg(insn.operands[1])
+    def _h_mov_regaddr_reg(self, instr: DecodedInsn) -> None:
+        addr = self._indirect_addr(instr.operands[0])
+        src = self._decode_mov_reg(instr.operands[1])
         val = self.regs.read(src)
         self.mem[addr] = val
-        self.regs.ip += insn.size
+        self.regs.ip += instr.size
 
-    def _h_mov_reg_const(self, insn: DecodedInsn) -> None:
-        dest = self._decode_mov_reg(insn.operands[0])
-        val = insn.operands[1]
+    def _h_mov_reg_const(self, instr: DecodedInsn) -> None:
+        dest = self._decode_mov_reg(instr.operands[0])
+        val = instr.operands[1]
         self.regs.write(dest, val)
-        self.regs.ip += insn.size
+        self.regs.ip += instr.size
 
-    def _h_mov_addr_const(self, insn: DecodedInsn) -> None:
-        addr = self._direct_addr(insn.operands[0])
-        val = insn.operands[1]
+    def _h_mov_addr_const(self, instr: DecodedInsn) -> None:
+        addr = self._direct_addr(instr.operands[0])
+        val = instr.operands[1]
         self.mem[addr] = val
-        self.regs.ip += insn.size
+        self.regs.ip += instr.size
 
-    def _h_mov_regaddr_const(self, insn: DecodedInsn) -> None:
-        addr = self._indirect_addr(insn.operands[0])
-        val = insn.operands[1]
+    def _h_mov_regaddr_const(self, instr: DecodedInsn) -> None:
+        addr = self._indirect_addr(instr.operands[0])
+        val = instr.operands[1]
         self.mem[addr] = val
-        self.regs.ip += insn.size
+        self.regs.ip += instr.size
 
     # -- INC / DEC --
 
-    def _h_inc(self, insn: DecodedInsn) -> None:
-        code = self._decode_gpr_or_sp(insn.operands[0])
+    def _h_inc(self, instr: DecodedInsn) -> None:
+        code = self._decode_gpr_or_sp(instr.operands[0])
         val = self.regs.read(code)
         result, carry, zero = ALU.inc(val)
         self.regs.flags.c = carry
         self.regs.flags.z = zero
         self.regs.write(code, result)
-        self.regs.ip += insn.size
+        self.regs.ip += instr.size
 
-    def _h_dec(self, insn: DecodedInsn) -> None:
-        code = self._decode_gpr_or_sp(insn.operands[0])
+    def _h_dec(self, instr: DecodedInsn) -> None:
+        code = self._decode_gpr_or_sp(instr.operands[0])
         val = self.regs.read(code)
         result, carry, zero = ALU.dec(val)
         self.regs.flags.c = carry
         self.regs.flags.z = zero
         self.regs.write(code, result)
-        self.regs.ip += insn.size
+        self.regs.ip += instr.size
 
     # -- JMP --
 
-    def _h_jmp_reg(self, insn: DecodedInsn) -> None:
-        code = self._decode_gpr(insn.operands[0])
+    def _h_jmp_reg(self, instr: DecodedInsn) -> None:
+        code = self._decode_gpr(instr.operands[0])
         self.regs.ip = self.regs.read(code)
 
-    def _h_jmp_addr(self, insn: DecodedInsn) -> None:
-        self.regs.ip = insn.operands[0]
+    def _h_jmp_addr(self, instr: DecodedInsn) -> None:
+        self.regs.ip = instr.operands[0]
 
     # -- PUSH --
 
-    def _h_push_reg(self, insn: DecodedInsn) -> None:
-        code = self._decode_gpr(insn.operands[0])
+    def _h_push_reg(self, instr: DecodedInsn) -> None:
+        code = self._decode_gpr(instr.operands[0])
         val = self.regs.read(code)
         self._do_push(val)
-        self.regs.ip += insn.size
+        self.regs.ip += instr.size
 
-    def _h_push_regaddr(self, insn: DecodedInsn) -> None:
-        addr = self._indirect_addr(insn.operands[0])
+    def _h_push_regaddr(self, instr: DecodedInsn) -> None:
+        addr = self._indirect_addr(instr.operands[0])
         val = self.mem[addr]
         self._do_push(val)
-        self.regs.ip += insn.size
+        self.regs.ip += instr.size
 
-    def _h_push_addr(self, insn: DecodedInsn) -> None:
-        addr = self._direct_addr(insn.operands[0])
+    def _h_push_addr(self, instr: DecodedInsn) -> None:
+        addr = self._direct_addr(instr.operands[0])
         val = self.mem[addr]
         self._do_push(val)
-        self.regs.ip += insn.size
+        self.regs.ip += instr.size
 
-    def _h_push_const(self, insn: DecodedInsn) -> None:
-        val = insn.operands[0]
+    def _h_push_const(self, instr: DecodedInsn) -> None:
+        val = instr.operands[0]
         self._do_push(val)
-        self.regs.ip += insn.size
+        self.regs.ip += instr.size
 
     # -- POP --
 
-    def _h_pop_reg(self, insn: DecodedInsn) -> None:
-        code = self._decode_gpr(insn.operands[0])
+    def _h_pop_reg(self, instr: DecodedInsn) -> None:
+        code = self._decode_gpr(instr.operands[0])
         val = self._do_pop()
         self.regs.write(code, val)
-        self.regs.ip += insn.size
+        self.regs.ip += instr.size
 
     # -- CALL / RET --
 
-    def _h_call_reg(self, insn: DecodedInsn) -> None:
-        code = self._decode_gpr(insn.operands[0])
+    def _h_call_reg(self, instr: DecodedInsn) -> None:
+        code = self._decode_gpr(instr.operands[0])
         target = self.regs.read(code)
-        return_addr = self.regs.ip + insn.size
+        return_addr = self.regs.ip + instr.size
         self._do_push(return_addr)
         self.regs.ip = target
 
-    def _h_call_addr(self, insn: DecodedInsn) -> None:
-        target = insn.operands[0]
-        return_addr = self.regs.ip + insn.size
+    def _h_call_addr(self, instr: DecodedInsn) -> None:
+        target = instr.operands[0]
+        return_addr = self.regs.ip + instr.size
         self._do_push(return_addr)
         self.regs.ip = target
 
-    def _h_ret(self, insn: DecodedInsn) -> None:
+    def _h_ret(self, instr: DecodedInsn) -> None:
         self.regs.ip = self._do_pop()
 
     # -- NOT --
 
-    def _h_not(self, insn: DecodedInsn) -> None:
-        code = self._decode_gpr(insn.operands[0])
+    def _h_not(self, instr: DecodedInsn) -> None:
+        code = self._decode_gpr(instr.operands[0])
         val = self.regs.read(code)
         result, zero = ALU.not_op(val)
         self.regs.flags.c = False
         self.regs.flags.z = zero
         self.regs.write(code, result)
-        self.regs.ip += insn.size
+        self.regs.ip += instr.size

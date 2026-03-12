@@ -5,7 +5,7 @@ import pytest
 from pysim8.asm import assemble
 from pysim8.disasm import disasm, disasm_insn
 from pysim8.isa import (
-    ISA, ISA_FP, InsnDef, OpType, Op,
+    ISA, ISA_FP, InstrDef, OpType, Op,
     FP_FMT_F, FP_FMT_H, FP_FMT_BF, FP_FMT_O3, FP_FMT_O2,
     FP_CONTROL_MNEMONICS, encode_fpm,
 )
@@ -27,7 +27,7 @@ _SAMPLES: dict[tuple[int, OpType], int] = {
 }
 
 
-def _make_operands(defn: InsnDef) -> tuple[int, ...]:
+def _make_operands(defn: InstrDef) -> tuple[int, ...]:
     return tuple(_SAMPLES[i, ot] for i, ot in enumerate(defn.sig))
 
 
@@ -35,7 +35,7 @@ def _make_operands(defn: InsnDef) -> tuple[int, ...]:
 
 
 @pytest.mark.parametrize("defn", ISA, ids=lambda d: d.op.name)
-def test_roundtrip(defn: InsnDef) -> None:
+def test_roundtrip(defn: InstrDef) -> None:
     operands = _make_operands(defn)
     original = [int(defn.op)] + list(operands)
 
@@ -290,10 +290,10 @@ class TestDisasmFpEdgeCoverage:
     """Tests for disasm/core.py uncovered lines 129, 133."""
 
     def test_fp_data_no_fpreg_operands(self) -> None:
-        """FP data insn with zero FP_REG operands → label without suffix."""
+        """FP data instr with zero FP_REG operands → label without suffix."""
         from pysim8.disasm.core import _disasm_fp_insn
-        from pysim8.isa import BY_CODE_FP, InsnDef, Op, OpType
-        fake = InsnDef(Op.FCLR, "FTEST", (OpType.MEM,), cost=1)
+        from pysim8.isa import BY_CODE_FP, InstrDef, Op, OpType
+        fake = InstrDef(Op.FCLR, "FTEST", (OpType.MEM,), cost=1)
         saved = BY_CODE_FP.get(int(Op.FCLR))
         BY_CODE_FP[int(Op.FCLR)] = fake
         try:
@@ -306,10 +306,10 @@ class TestDisasmFpEdgeCoverage:
                 del BY_CODE_FP[int(Op.FCLR)]
 
     def test_fp_data_no_operands(self) -> None:
-        """FP data insn with zero operands → bare label."""
+        """FP data instr with zero operands → bare label."""
         from pysim8.disasm.core import _disasm_fp_insn
-        from pysim8.isa import BY_CODE_FP, InsnDef, Op, OpType
-        fake = InsnDef(Op.FCLR, "FBARE", (), cost=1)
+        from pysim8.isa import BY_CODE_FP, InstrDef, Op, OpType
+        fake = InstrDef(Op.FCLR, "FBARE", (), cost=1)
         saved = BY_CODE_FP.get(int(Op.FCLR))
         BY_CODE_FP[int(Op.FCLR)] = fake
         try:

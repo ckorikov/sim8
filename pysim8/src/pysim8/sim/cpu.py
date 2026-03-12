@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pysim8.isa import BY_CODE, BY_CODE_FP, ISA, ISA_FP, Op
+from pysim8.isa import BY_CODE, BY_CODE_FP, FP_FMT_WIDTH, ISA, ISA_FP, InstrDef, Op
 
 from .decoder import Decoder
 from .errors import CpuFault, ErrorCode
@@ -16,8 +16,17 @@ from .tracing import TraceCallback, TraceEvent
 
 if TYPE_CHECKING:
     from .handlers import Handler
+    from .decoder import Instruction
 
 __all__ = ["CPU"]
+
+# FP memory cost by format (fmt = fpm_byte % 8).
+# Derived from FP_FMT_WIDTH (bits) / 8, covering fmt 0..4 (v2 valid formats).
+# FP_FMT_WIDTH: {0:32, 1:16, 2:16, 3:8, 4:8} → bytes: (4, 2, 2, 1, 1)
+_FP_FMT_MEM_COST: tuple[int, ...] = tuple(
+    FP_FMT_WIDTH[fmt] // 8 for fmt in range(5)
+)
+
 
 
 class CPU(HandlersMixin, HandlersFpMixin):
@@ -25,7 +34,7 @@ class CPU(HandlersMixin, HandlersFpMixin):
 
     __slots__ = (
         "mem", "regs", "state", "_dispatch", "_tracer",
-        "_steps", "_cycles", "_op_cost", "_arch",
+        "_steps", "_cycles", "_op_cost", "_cost_overrides", "_arch", "_instr_def",
     )
 
     def __init__(
@@ -55,9 +64,15 @@ class CPU(HandlersMixin, HandlersFpMixin):
             raise ValueError(
                 f"Unknown mnemonics in costs: {sorted(unknown)}"
             )
+        self._instr_def: dict[int, InstrDef] = {int(d.op): d for d in all_isa}
         self._op_cost: dict[int, int] = {
-            int(d.op): overrides.get(d.mnemonic, d.cost)
+            int(d.op): d.cost for d in all_isa
+            if not d.format_dep
+        }
+        self._cost_overrides: dict[int, int] = {
+            int(d.op): overrides[d.mnemonic]
             for d in all_isa
+            if d.mnemonic in overrides
         }
 
     # ── Public API ─────────────────────────────────────────────────────
@@ -78,7 +93,7 @@ class CPU(HandlersMixin, HandlersFpMixin):
         ip_before = self.regs.ip
 
         try:
-            insn = Decoder.fetch(
+            instr = Decoder.fetch(
                 self.mem, self.regs.ip, arch=self._arch,
             )
         except CpuFault as fault:
@@ -95,31 +110,31 @@ class CPU(HandlersMixin, HandlersFpMixin):
             return False
 
         # HLT: cost=0, not counted in steps/cycles
-        if insn.op == Op.HLT:
+        if instr.op == Op.HLT:
             self.state = CpuState.HALTED
             return False
 
+        cost = self._compute_cost(instr)
         tracer = self._tracer
         snap_before = self._snapshot() if tracer is not None else {}
 
         try:
-            handler = self._dispatch[insn.op]
-            handler(insn)
+            handler = self._dispatch[instr.op]
+            handler(instr)
         except CpuFault as fault:
             self._enter_fault(fault.code)
             if tracer is not None:
-                self._trace(ip_before, int(insn.op), insn.operands,
-                            insn.size, self._diff(snap_before),
+                self._trace(ip_before, int(instr.op), instr.operands,
+                            instr.size, self._diff(snap_before),
                             is_fault=True)
             return False
 
-        cost = self._op_cost[int(insn.op)]
         self._steps += 1
         self._cycles += cost
 
         if tracer is not None:
-            self._trace(ip_before, int(insn.op), insn.operands,
-                        insn.size, self._diff(snap_before),
+            self._trace(ip_before, int(instr.op), instr.operands,
+                        instr.size, self._diff(snap_before),
                         is_fault=False, cost=cost)
 
         return self.state == CpuState.RUNNING
@@ -214,6 +229,17 @@ class CPU(HandlersMixin, HandlersFpMixin):
 
     def __repr__(self) -> str:
         return f"CPU({self.state.value} {self.regs!r})"
+
+    # ── Cost computation ───────────────────────────────────────────────
+
+    def _compute_cost(self, instr: "Instruction") -> int:
+        if instr.op in self._cost_overrides:
+            return self._cost_overrides[instr.op]
+        d = self._instr_def[instr.op]
+        if d.format_dep:
+            fmt = instr.operands[0] % 8
+            return _FP_FMT_MEM_COST[fmt] + d.cost
+        return d.cost
 
     # ── Fault handling ─────────────────────────────────────────────────
 
