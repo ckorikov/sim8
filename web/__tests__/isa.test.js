@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   Op, Reg, OpType, REGISTERS, GPR_CODES, STACK_CODES,
   MNEMONIC_ALIASES, ISA, ISA_FP, BY_CODE, BY_CODE_FP,
-  BY_MNEMONIC, BY_MNEMONIC_FP, MNEMONICS, MNEMONICS_FP,
+  BY_MNEMONIC, BY_MNEMONIC_FP, MNEMONICS,
   FP_CONTROL_MNEMONICS,
   encodeRegaddr, decodeRegaddr,
   FP_FMT_F, FP_FMT_H, FP_FMT_BF, FP_FMT_O3, FP_FMT_O2,

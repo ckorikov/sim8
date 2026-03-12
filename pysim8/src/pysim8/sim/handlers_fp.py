@@ -6,16 +6,6 @@ import math
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from pysim8.isa import (
-    Op,
-    FP_FMT_H,
-    FP_FMT_BF,
-    FP_FMT_O3,
-    FP_FMT_O2,
-    FP_FMT_WIDTH,
-    decode_fpm,
-    validate_fpm,
-)
 from pysim8.fp_formats import (
     FpExceptions,
     bytes_to_float,
@@ -29,6 +19,16 @@ from pysim8.fp_formats import (
     fp_neg,
     fp_sqrt,
     fp_sub,
+)
+from pysim8.isa import (
+    FP_FMT_BF,
+    FP_FMT_H,
+    FP_FMT_O2,
+    FP_FMT_O3,
+    FP_FMT_WIDTH,
+    Op,
+    decode_fpm,
+    validate_fpm,
 )
 
 from .decoder import DecodedInsn
@@ -92,7 +92,10 @@ class HandlersFpMixin:
         return bytes_to_float(data, fmt)
 
     def _fp_write_mem_raw(
-        self, addr: int, fmt: int, data: bytes,
+        self,
+        addr: int,
+        fmt: int,
+        data: bytes,
     ) -> None:
         """Write raw bytes to memory."""
         width = FP_FMT_WIDTH[fmt]
@@ -106,7 +109,10 @@ class HandlersFpMixin:
     # ── Register helpers ───────────────────────────────────────────
 
     def _fp_read_reg(
-        self, pos: int, fmt: int, phys: int = 0,
+        self,
+        pos: int,
+        fmt: int,
+        phys: int = 0,
     ) -> float:
         """Read FP register as float value."""
         raw = self._fpu.read_bits(pos, fmt, phys)
@@ -115,11 +121,17 @@ class HandlersFpMixin:
         return bytes_to_float(data, fmt)
 
     def _fp_write_reg(
-        self, pos: int, fmt: int, value: float, phys: int = 0,
+        self,
+        pos: int,
+        fmt: int,
+        value: float,
+        phys: int = 0,
     ) -> None:
         """Write float value to FP register (with rounding)."""
         data, exc = float_to_bytes(
-            value, fmt, self._fpu.rounding_mode,
+            value,
+            fmt,
+            self._fpu.rounding_mode,
         )
         self._fpu.accumulate_exceptions(exc)
         raw = int.from_bytes(data, "little")
@@ -141,28 +153,36 @@ class HandlersFpMixin:
 
         # Arithmetic mem variants (132-141)
         d[Op.FADD_FP_ADDR] = self._make_fp_arith_mem(
-            fp_add, self._direct_addr,
+            fp_add,
+            self._direct_addr,
         )
         d[Op.FADD_FP_REGADDR] = self._make_fp_arith_mem(
-            fp_add, self._indirect_addr,
+            fp_add,
+            self._indirect_addr,
         )
         d[Op.FSUB_FP_ADDR] = self._make_fp_arith_mem(
-            fp_sub, self._direct_addr,
+            fp_sub,
+            self._direct_addr,
         )
         d[Op.FSUB_FP_REGADDR] = self._make_fp_arith_mem(
-            fp_sub, self._indirect_addr,
+            fp_sub,
+            self._indirect_addr,
         )
         d[Op.FMUL_FP_ADDR] = self._make_fp_arith_mem(
-            fp_mul, self._direct_addr,
+            fp_mul,
+            self._direct_addr,
         )
         d[Op.FMUL_FP_REGADDR] = self._make_fp_arith_mem(
-            fp_mul, self._indirect_addr,
+            fp_mul,
+            self._indirect_addr,
         )
         d[Op.FDIV_FP_ADDR] = self._make_fp_arith_mem(
-            fp_div, self._direct_addr,
+            fp_div,
+            self._direct_addr,
         )
         d[Op.FDIV_FP_REGADDR] = self._make_fp_arith_mem(
-            fp_div, self._indirect_addr,
+            fp_div,
+            self._indirect_addr,
         )
         d[Op.FCMP_FP_ADDR] = self._make_fp_cmp_mem(
             self._direct_addr,
@@ -224,7 +244,10 @@ class HandlersFpMixin:
             mem_val = self._fp_read_mem(addr, fmt)
 
             result, exc = arith_fn(
-                reg_val, mem_val, fmt, self._fpu.rounding_mode,
+                reg_val,
+                mem_val,
+                fmt,
+                self._fpu.rounding_mode,
             )
             self._fpu.accumulate_exceptions(exc)
             self._fp_write_reg(pos, fmt, result, phys)
@@ -273,7 +296,10 @@ class HandlersFpMixin:
             src_val = self._fp_read_reg(src_pos, src_fmt, src_phys)
 
             result, exc = arith_fn(
-                dst_val, src_val, dst_fmt, self._fpu.rounding_mode,
+                dst_val,
+                src_val,
+                dst_fmt,
+                self._fpu.rounding_mode,
             )
             self._fpu.accumulate_exceptions(exc)
             self._fp_write_reg(dst_pos, dst_fmt, result, dst_phys)
@@ -349,7 +375,8 @@ class HandlersFpMixin:
     # -- FABS (142) / FNEG (143) --
 
     def _fp_unary_bitwise(
-        self, instr: DecodedInsn,
+        self,
+        instr: DecodedInsn,
         fn: Callable[[int, int], int],
     ) -> None:
         fpm = instr.operands[0]
@@ -531,10 +558,16 @@ class HandlersFpMixin:
         dst_val = self._fp_read_reg(dst_pos, dst_fmt, dst_phys)
 
         mul_result, mul_exc = fp_mul(
-            src_val, mem_val, dst_fmt, self._fpu.rounding_mode,
+            src_val,
+            mem_val,
+            dst_fmt,
+            self._fpu.rounding_mode,
         )
         result, add_exc = fp_add(
-            mul_result, dst_val, dst_fmt, self._fpu.rounding_mode,
+            mul_result,
+            dst_val,
+            dst_fmt,
+            self._fpu.rounding_mode,
         )
 
         combined = FpExceptions(

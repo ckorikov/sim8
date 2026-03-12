@@ -3,14 +3,20 @@
 from __future__ import annotations
 
 from pysim8.isa import (
-    BY_CODE, BY_CODE_FP, OpType, Reg,
-    FP_REGISTERS, FP_CONTROL_MNEMONICS,
-    decode_fpm, decode_regaddr,
+    BY_CODE,
+    BY_CODE_FP,
+    FP_CONTROL_MNEMONICS,
+    FP_REGISTERS,
+    OpType,
+    Reg,
+    decode_fpm,
+    decode_regaddr,
 )
 
 __all__ = ["disasm_insn", "disasm"]
 
 _REG_NAMES: dict[int, str] = {r.value: r.name for r in Reg}
+
 
 def _build_fpm_to_reg(
     regs: dict[str, tuple[int, int, int, int]],
@@ -80,10 +86,6 @@ def _disasm_fp_insn(opcode: int, raw_operands: tuple[int, ...]) -> str | None:
 
     # Count FP_REG operands to split raw bytes: [FPM...][non-FP...]
     fp_indices = [i for i, ot in enumerate(sig) if ot == OpType.FP_REG]
-    non_fp_indices = [
-        i for i, ot in enumerate(sig) if ot != OpType.FP_REG
-    ]
-
     fp_count = len(fp_indices)
 
     # Split raw operand bytes
@@ -137,9 +139,7 @@ def disasm_insn(opcode: int, operands: tuple[int, ...] = ()) -> str:
     """Disassemble one instruction to text, e.g. 'MOV A, 42'."""
     defn = BY_CODE.get(opcode)
     if defn is not None:
-        ops = [
-            _fmt_operand(ot, val) for ot, val in zip(defn.sig, operands)
-        ]
+        ops = [_fmt_operand(ot, val) for ot, val in zip(defn.sig, operands)]
         if ops:
             return f"{defn.mnemonic} {', '.join(ops)}"
         return defn.mnemonic

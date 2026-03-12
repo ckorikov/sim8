@@ -15,26 +15,32 @@ from .registers import CpuState, RegisterFile
 from .tracing import TraceCallback, TraceEvent
 
 if TYPE_CHECKING:
-    from .handlers import Handler
     from .decoder import Instruction
+    from .handlers import Handler
 
 __all__ = ["CPU"]
 
 # FP memory cost by format (fmt = fpm_byte % 8).
 # Derived from FP_FMT_WIDTH (bits) / 8, covering fmt 0..4 (v2 valid formats).
 # FP_FMT_WIDTH: {0:32, 1:16, 2:16, 3:8, 4:8} → bytes: (4, 2, 2, 1, 1)
-_FP_FMT_MEM_COST: tuple[int, ...] = tuple(
-    FP_FMT_WIDTH[fmt] // 8 for fmt in range(5)
-)
-
+_FP_FMT_MEM_COST: tuple[int, ...] = tuple(FP_FMT_WIDTH[fmt] // 8 for fmt in range(5))
 
 
 class CPU(HandlersMixin, HandlersFpMixin):
     """8-bit CPU simulator (control unit)."""
 
     __slots__ = (
-        "mem", "regs", "state", "_dispatch", "_tracer",
-        "_steps", "_cycles", "_op_cost", "_cost_overrides", "_arch", "_instr_def",
+        "mem",
+        "regs",
+        "state",
+        "_dispatch",
+        "_tracer",
+        "_steps",
+        "_cycles",
+        "_op_cost",
+        "_cost_overrides",
+        "_arch",
+        "_instr_def",
     )
 
     def __init__(
@@ -61,18 +67,11 @@ class CPU(HandlersMixin, HandlersFpMixin):
         valid = {d.mnemonic for d in all_isa}
         unknown = overrides.keys() - valid
         if unknown:
-            raise ValueError(
-                f"Unknown mnemonics in costs: {sorted(unknown)}"
-            )
+            raise ValueError(f"Unknown mnemonics in costs: {sorted(unknown)}")
         self._instr_def: dict[int, InstrDef] = {int(d.op): d for d in all_isa}
-        self._op_cost: dict[int, int] = {
-            int(d.op): d.cost for d in all_isa
-            if not d.format_dep
-        }
+        self._op_cost: dict[int, int] = {int(d.op): d.cost for d in all_isa if not d.format_dep}
         self._cost_overrides: dict[int, int] = {
-            int(d.op): overrides[d.mnemonic]
-            for d in all_isa
-            if d.mnemonic in overrides
+            int(d.op): overrides[d.mnemonic] for d in all_isa if d.mnemonic in overrides
         }
 
     # ── Public API ─────────────────────────────────────────────────────
@@ -94,7 +93,9 @@ class CPU(HandlersMixin, HandlersFpMixin):
 
         try:
             instr = Decoder.fetch(
-                self.mem, self.regs.ip, arch=self._arch,
+                self.mem,
+                self.regs.ip,
+                arch=self._arch,
             )
         except CpuFault as fault:
             self._enter_fault(fault.code)
@@ -104,9 +105,7 @@ class CPU(HandlersMixin, HandlersFpMixin):
                 if defn is None and self._arch >= 2:
                     defn = BY_CODE_FP.get(opcode)
                 size = defn.size if defn is not None else 1
-                self._trace(ip_before, opcode, (), size,
-                            {"FF": True, "A": int(fault.code)},
-                            is_fault=True)
+                self._trace(ip_before, opcode, (), size, {"FF": True, "A": int(fault.code)}, is_fault=True)
             return False
 
         # HLT: cost=0, not counted in steps/cycles
@@ -124,18 +123,18 @@ class CPU(HandlersMixin, HandlersFpMixin):
         except CpuFault as fault:
             self._enter_fault(fault.code)
             if tracer is not None:
-                self._trace(ip_before, int(instr.op), instr.operands,
-                            instr.size, self._diff(snap_before),
-                            is_fault=True)
+                self._trace(
+                    ip_before, int(instr.op), instr.operands, instr.size, self._diff(snap_before), is_fault=True
+                )
             return False
 
         self._steps += 1
         self._cycles += cost
 
         if tracer is not None:
-            self._trace(ip_before, int(instr.op), instr.operands,
-                        instr.size, self._diff(snap_before),
-                        is_fault=False, cost=cost)
+            self._trace(
+                ip_before, int(instr.op), instr.operands, instr.size, self._diff(snap_before), is_fault=False, cost=cost
+            )
 
         return self.state == CpuState.RUNNING
 
@@ -262,18 +261,31 @@ class CPU(HandlersMixin, HandlersFpMixin):
         cost: int = 0,
     ) -> None:
         assert self._tracer is not None
-        self._tracer(TraceEvent(
-            ip=ip, opcode=opcode, operands=operands,
-            size=size, changes=changes,
-            is_fault=is_fault, cost=cost,
-        ))
+        self._tracer(
+            TraceEvent(
+                ip=ip,
+                opcode=opcode,
+                operands=operands,
+                size=size,
+                changes=changes,
+                is_fault=is_fault,
+                cost=cost,
+            )
+        )
 
     def _snapshot(self) -> dict[str, int | bool]:
         r = self.regs
         snap: dict[str, int | bool] = {
-            "A": r.a, "B": r.b, "C": r.c, "D": r.d,
-            "SP": r.sp, "DP": r.dp, "IP": r.ip,
-            "ZF": r.flags.z, "CF": r.flags.c, "FF": r.flags.f,
+            "A": r.a,
+            "B": r.b,
+            "C": r.c,
+            "D": r.d,
+            "SP": r.sp,
+            "DP": r.dp,
+            "IP": r.ip,
+            "ZF": r.flags.z,
+            "CF": r.flags.c,
+            "FF": r.flags.f,
         }
         if r.fpu is not None:
             snap["FA"] = r.fpu.fa

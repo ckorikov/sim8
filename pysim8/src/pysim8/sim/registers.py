@@ -57,8 +57,8 @@ class FpuRegisters:
 
     def __init__(self) -> None:
         self._fp32: list[int] = [0, 0]  # 2 × 32-bit raw storage
-        self.fpcr: int = 0   # bits[1:0] = rounding mode
-        self.fpsr: int = 0   # sticky exception flags
+        self.fpcr: int = 0  # bits[1:0] = rounding mode
+        self.fpsr: int = 0  # sticky exception flags
 
     @property
     def fa(self) -> int:
@@ -87,16 +87,17 @@ class FpuRegisters:
         return (self._fp32[phys] >> bit_offset) & mask
 
     def write_bits(
-        self, pos: int, fmt: int, value: int, phys: int = 0,
+        self,
+        pos: int,
+        fmt: int,
+        value: int,
+        phys: int = 0,
     ) -> None:
         """Write raw bits to sub-register at (phys, pos, fmt)."""
         width = _FP_FMT_WIDTH[fmt]
         bit_offset = pos * width
         mask = (1 << width) - 1
-        self._fp32[phys] = (
-            (self._fp32[phys] & ~(mask << bit_offset))
-            | ((value & mask) << bit_offset)
-        )
+        self._fp32[phys] = (self._fp32[phys] & ~(mask << bit_offset)) | ((value & mask) << bit_offset)
 
     def accumulate_exceptions(self, exc: FpExceptions) -> None:
         """OR exception flags into FPSR (sticky)."""
@@ -118,10 +119,7 @@ class FpuRegisters:
         self.fpsr = 0
 
     def __repr__(self) -> str:
-        return (
-            f"FPU(FA=0x{self._fp32[0]:08X} FB=0x{self._fp32[1]:08X}"
-            f" FPCR={self.fpcr:02X} FPSR={self.fpsr:02X})"
-        )
+        return f"FPU(FA=0x{self._fp32[0]:08X} FB=0x{self._fp32[1]:08X} FPCR={self.fpcr:02X} FPSR={self.fpsr:02X})"
 
 
 class RegisterFile:
@@ -133,9 +131,7 @@ class RegisterFile:
         self._regs: list[int] = [0, 0, 0, 0, SP_INIT, 0]
         self.ip: int = 0
         self.flags: Flags = Flags()
-        self.fpu: FpuRegisters | None = (
-            FpuRegisters() if arch >= 2 else None
-        )
+        self.fpu: FpuRegisters | None = FpuRegisters() if arch >= 2 else None
 
     def read(self, code: int) -> int:
         """Read register by code. Caller must validate code is in range."""
@@ -208,6 +204,5 @@ class RegisterFile:
 
     def __repr__(self) -> str:
         return (
-            f"Regs(A={self.a} B={self.b} C={self.c} D={self.d} "
-            f"SP={self.sp} DP={self.dp} IP={self.ip} {self.flags!r})"
+            f"Regs(A={self.a} B={self.b} C={self.c} D={self.d} SP={self.sp} DP={self.dp} IP={self.ip} {self.flags!r})"
         )

@@ -5,27 +5,37 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
-from pysim8.isa import (
-    OpType, Reg, InstrDef, BY_MNEMONIC, BY_MNEMONIC_FP, MNEMONICS_FP,
-    FP_CONTROL_MNEMONICS, GPR_CODES, STACK_CODES, encode_regaddr,
-    encode_fpm, FP_REGISTERS, FP_SUFFIX_TO_FMT, FP_FMT_WIDTH,
-    FP_WIDTH_REGS, FP_FMT_N1, FP_FMT_N2, Op,
-)
 from pysim8.asm.parser import (
     AsmError,
-    OpReg,
-    OpConst,
     OpAddr,
     OpAddrLabel,
-    OpRegAddr,
-    OpString,
-    OpLabel,
-    OpFpReg,
+    OpConst,
+    Operand,
     OpFloat,
     OpFpImm,
-    Operand,
+    OpFpReg,
+    OpLabel,
+    OpReg,
+    OpRegAddr,
+    OpString,
     ParseError,
     parse_lines,
+)
+from pysim8.isa import (
+    BY_MNEMONIC,
+    BY_MNEMONIC_FP,
+    FP_CONTROL_MNEMONICS,
+    FP_FMT_WIDTH,
+    FP_SUFFIX_TO_FMT,
+    FP_WIDTH_REGS,
+    GPR_CODES,
+    MNEMONICS_FP,
+    STACK_CODES,
+    InstrDef,
+    Op,
+    OpType,
+    encode_fpm,
+    encode_regaddr,
 )
 
 __all__ = ["assemble", "AssemblerError", "AssembleResult"]
@@ -107,27 +117,22 @@ def _find_insn(
     for instr in candidates:
         if len(instr.sig) != len(operands):
             continue
-        if all(
-            _operand_matches(op, ot)
-            for op, ot in zip(operands, instr.sig)
-        ):
+        if all(_operand_matches(op, ot) for op, ot in zip(operands, instr.sig)):
             return instr
 
     max_arity = max(len(i.sig) for i in candidates)
     if len(operands) > max_arity:
-        raise AssemblerError(
-            f"{mnemonic}: too many arguments", line
-        )
-    raise AssemblerError(
-        f"{mnemonic} does not support this operand(s)", line
-    )
+        raise AssemblerError(f"{mnemonic}: too many arguments", line)
+    raise AssemblerError(f"{mnemonic} does not support this operand(s)", line)
 
 
 # ── DB encoding ────────────────────────────────────────────────────
 
 
 def _encode_db_operand(
-    op: Operand, line: int, result: list[int],
+    op: Operand,
+    line: int,
+    result: list[int],
 ) -> None:
     """Encode one DB operand, appending bytes to result."""
     if isinstance(op, OpConst):
@@ -135,19 +140,16 @@ def _encode_db_operand(
         return
     if isinstance(op, OpString):
         if not op.text:
-            raise AssemblerError(
-                "DB string must not be empty", line
-            )
+            raise AssemblerError("DB string must not be empty", line)
         result.extend(ord(c) for c in op.text)
         return
     if isinstance(op, OpFloat):
         from pysim8.fp_formats import float_to_bytes
+
         data, _exc = float_to_bytes(op.value, op.fmt)
         result.extend(data)
         return
-    raise AssemblerError(
-        f"DB does not support this operand: {op!r}", line
-    )
+    raise AssemblerError(f"DB does not support this operand: {op!r}", line)
 
 
 def _encode_db(operands: list[Operand], line: int) -> list[int]:
@@ -165,15 +167,11 @@ def _validate_fp_suffix(suffix: str, line: int) -> int:
     """Resolve and validate FP format suffix to fmt code."""
     upper = suffix.upper()
     if upper not in FP_SUFFIX_TO_FMT:
-        raise AssemblerError(
-            f"Invalid FP format suffix: .{suffix}", line
-        )
+        raise AssemblerError(f"Invalid FP format suffix: .{suffix}", line)
     return FP_SUFFIX_TO_FMT[upper]
 
 
-def _validate_fp_reg_width(
-    reg: OpFpReg, fmt: int, line: int
-) -> None:
+def _validate_fp_reg_width(reg: OpFpReg, fmt: int, line: int) -> None:
     """Check that register width matches format width."""
     fmt_width = FP_FMT_WIDTH[fmt]
     allowed = FP_WIDTH_REGS.get(fmt_width, frozenset())
@@ -184,9 +182,7 @@ def _validate_fp_reg_width(
         )
 
 
-def _find_fp_insn(
-    mnemonic: str, operands: list[Operand], line: int
-) -> InstrDef:
+def _find_fp_insn(mnemonic: str, operands: list[Operand], line: int) -> InstrDef:
     """Find matching FP InstrDef by mnemonic and operands."""
     return _find_insn(mnemonic, operands, line, table=BY_MNEMONIC_FP)
 
@@ -211,9 +207,7 @@ def _encode_fp_instruction(
     if instr.op == Op.FCVT_FP_FP:
         assert dst_fmt is not None and src_fmt is not None
         if dst_fmt == src_fmt:
-            raise AssemblerError(
-                "FCVT with identical formats (use FMOV)", line
-            )
+            raise AssemblerError("FCVT with identical formats (use FMOV)", line)
         dst_reg = operands[0]
         src_reg = operands[1]
         assert isinstance(dst_reg, OpFpReg) and isinstance(src_reg, OpFpReg)
@@ -236,9 +230,7 @@ def _encode_fp_instruction(
             non_fp_ops.append(op)
 
     # Encode FPM bytes
-    fpm_bytes = [
-        encode_fpm(fp_op.phys, fp_op.pos, dst_fmt) for fp_op in fp_ops
-    ]
+    fpm_bytes = [encode_fpm(fp_op.phys, fp_op.pos, dst_fmt) for fp_op in fp_ops]
 
     # Encode non-FP bytes
     non_fp_bytes = [_encode_operand(op) for op in non_fp_ops]
@@ -256,9 +248,7 @@ def _encode_fmov_imm(
 ) -> list[int]:
     """Encode FMOV with FP immediate operand."""
     if not isinstance(operands[0], OpFpReg):
-        raise AssemblerError(
-            "FMOV does not support this operand(s)", line
-        )
+        raise AssemblerError("FMOV does not support this operand(s)", line)
     assert dst_suffix is not None
 
     dst_reg = operands[0]
@@ -269,23 +259,18 @@ def _encode_fmov_imm(
     fmt_width = FP_FMT_WIDTH[dst_fmt]
 
     if fmt_width == 32:
-        raise AssemblerError(
-            "FP immediate not supported for float32", line
-        )
+        raise AssemblerError("FP immediate not supported for float32", line)
     if fmt_width == 4:
-        raise AssemblerError(
-            "FP immediate not supported for 4-bit formats", line
-        )
+        raise AssemblerError("FP immediate not supported for 4-bit formats", line)
 
     # Check literal suffix matches instruction suffix
     if fp_imm.fmt is not None and fp_imm.fmt != dst_fmt:
-        raise AssemblerError(
-            "FP immediate suffix mismatch", line
-        )
+        raise AssemblerError("FP immediate suffix mismatch", line)
 
     _validate_fp_reg_width(dst_reg, dst_fmt, line)
 
     from pysim8.fp_formats import float_to_bytes
+
     data, _exc = float_to_bytes(fp_imm.value, dst_fmt)
 
     fpm_byte = encode_fpm(dst_reg.phys, dst_reg.pos, dst_fmt)
@@ -313,22 +298,14 @@ def _encode_instruction(
 
     if arch >= 2 and mnemonic in MNEMONICS_FP:
         # FMOV immediate special case (bypasses _find_fp_insn)
-        if (
-            mnemonic == "FMOV"
-            and len(operands) == 2
-            and isinstance(operands[1], OpFpImm)
-        ):
+        if mnemonic == "FMOV" and len(operands) == 2 and isinstance(operands[1], OpFpImm):
             return _encode_fmov_imm(operands, dst_suffix, line)
 
         instr = _find_fp_insn(mnemonic, operands, line)
         if mnemonic in FP_CONTROL_MNEMONICS:
             # Control: no FPM, just opcode + operand bytes
-            return [int(instr.op)] + [
-                _encode_operand(op) for op in operands
-            ]
-        return _encode_fp_instruction(
-            instr, operands, dst_suffix, src_suffix, line
-        )
+            return [int(instr.op)] + [_encode_operand(op) for op in operands]
+        return _encode_fp_instruction(instr, operands, dst_suffix, src_suffix, line)
 
     instr = _find_insn(mnemonic, operands, line)
     return [int(instr.op)] + [_encode_operand(op) for op in operands]
@@ -365,13 +342,14 @@ def assemble(source: str, arch: int = 1) -> AssembleResult:
         if pline.mnemonic is None:
             continue
 
-        operands = (
-            pline.operands if pline.operands is not None else []
-        )
+        operands = pline.operands if pline.operands is not None else []
 
         encoded = _encode_instruction(
-            pline.mnemonic, operands, pline.line_no,
-            dst_suffix=pline.dst_suffix, src_suffix=pline.src_suffix,
+            pline.mnemonic,
+            operands,
+            pline.line_no,
+            dst_suffix=pline.dst_suffix,
+            src_suffix=pline.src_suffix,
             arch=arch,
         )
 
@@ -385,42 +363,30 @@ def assemble(source: str, arch: int = 1) -> AssembleResult:
                     # reordered before non-FP bytes. Calculate
                     # the correct position of the label byte.
                     is_fp_data = (
-                        arch >= 2
-                        and pline.mnemonic in MNEMONICS_FP
-                        and pline.mnemonic not in FP_CONTROL_MNEMONICS
+                        arch >= 2 and pline.mnemonic in MNEMONICS_FP and pline.mnemonic not in FP_CONTROL_MNEMONICS
                     )
                     if is_fp_data:
-                        fp_count = sum(
-                            1 for o in operands
-                            if isinstance(o, OpFpReg)
-                        )
-                        non_fp_idx = sum(
-                            1 for o in operands[:i]
-                            if not isinstance(o, OpFpReg)
-                        )
-                        label_patches.append((
-                            pos + 1 + fp_count + non_fp_idx,
-                            op.name,
-                            pline.line_no,
-                        ))
-                    else:
+                        fp_count = sum(1 for o in operands if isinstance(o, OpFpReg))
+                        non_fp_idx = sum(1 for o in operands[:i] if not isinstance(o, OpFpReg))
                         label_patches.append(
-                            (pos + 1 + i, op.name, pline.line_no)
+                            (
+                                pos + 1 + fp_count + non_fp_idx,
+                                op.name,
+                                pline.line_no,
+                            )
                         )
+                    else:
+                        label_patches.append((pos + 1 + i, op.name, pline.line_no))
 
         code.extend(encoded)
 
     # ── Pass 2: resolve labels ──────────────────────
     for patch_pos, label_name, line_no in label_patches:
         if label_name not in labels:
-            raise AssemblerError(
-                f"Undefined label: {label_name}", line_no
-            )
+            raise AssemblerError(f"Undefined label: {label_name}", line_no)
         addr = labels[label_name]
         if addr < 0 or addr > 255:
-            raise AssemblerError(
-                f"{addr} must have a value between 0-255", line_no
-            )
+            raise AssemblerError(f"{addr} must have a value between 0-255", line_no)
         code[patch_pos] = addr
 
     return AssembleResult(code=code, labels=labels, mapping=mapping)

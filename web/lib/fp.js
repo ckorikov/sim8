@@ -184,7 +184,7 @@ function _encodeFloat16Rne(value) {
     // So shift amount = -14 - unbiasedExp + 13 (since f32 has 23 mant bits, f16 has 10)
     const fullMant = (1 << 23) | f32Mant;
     // We want to shift from 23-bit mantissa to 10-bit, plus extra shift for subnormal
-    const shiftAmount = -1 - unbiasedExp + 13;  // = 13 - unbiasedExp - 1
+    // shiftAmount = -1 - unbiasedExp + 13  (= 13 - unbiasedExp - 1)
     // Actually: denorm shift
     // f16 denorm value = mant/1024 * 2^(-14)
     // = fullMant * 2^(unbiasedExp - 23) but we need mant/1024 * 2^(-14)
@@ -490,7 +490,6 @@ const _E5M2_BIAS = 15;
 const _E5M2_EXP_BITS = 5;
 const _E5M2_MANT_BITS = 2;
 const _E5M2_MAX_EXP = (1 << _E5M2_EXP_BITS) - 1;  // 31
-const _E5M2_MAX_FINITE = 57344.0;
 
 export function encodeOfp8E5M2(value, rm = 0) {
   if (Number.isNaN(value)) {

@@ -2,7 +2,7 @@
  * CPU block renderer: registers, pointers, flags, state icon, format toggle.
  */
 
-import { cpu, colors, regColors, hex, cssVar } from '../state.js';
+import { cpu, colors, regColors, hex } from '../state.js';
 
 let cpuFmt = 'hex';
 

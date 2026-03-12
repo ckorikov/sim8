@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from pysim8.isa import Op, Reg, decode_regaddr, BY_CODE_FP
+from pysim8.isa import BY_CODE_FP, Op, Reg, decode_regaddr
 
 from .alu import ALU
 from .decoder import DecodedInsn
@@ -172,14 +172,10 @@ class HandlersMixin:
         d[Op.JZ_ADDR] = self._make_jcc(lambda: self.regs.flags.z, is_reg=False)
         d[Op.JNZ_REG] = self._make_jcc(lambda: not self.regs.flags.z, is_reg=True)
         d[Op.JNZ_ADDR] = self._make_jcc(lambda: not self.regs.flags.z, is_reg=False)
-        d[Op.JA_REG] = self._make_jcc(
-            lambda: not self.regs.flags.c and not self.regs.flags.z, is_reg=True)
-        d[Op.JA_ADDR] = self._make_jcc(
-            lambda: not self.regs.flags.c and not self.regs.flags.z, is_reg=False)
-        d[Op.JNA_REG] = self._make_jcc(
-            lambda: self.regs.flags.c or self.regs.flags.z, is_reg=True)
-        d[Op.JNA_ADDR] = self._make_jcc(
-            lambda: self.regs.flags.c or self.regs.flags.z, is_reg=False)
+        d[Op.JA_REG] = self._make_jcc(lambda: not self.regs.flags.c and not self.regs.flags.z, is_reg=True)
+        d[Op.JA_ADDR] = self._make_jcc(lambda: not self.regs.flags.c and not self.regs.flags.z, is_reg=False)
+        d[Op.JNA_REG] = self._make_jcc(lambda: self.regs.flags.c or self.regs.flags.z, is_reg=True)
+        d[Op.JNA_ADDR] = self._make_jcc(lambda: self.regs.flags.c or self.regs.flags.z, is_reg=False)
 
         # -- PUSH (4 variants) --
         d[Op.PUSH_REG] = self._h_push_reg
@@ -234,9 +230,7 @@ class HandlersMixin:
     def _check_dispatch_complete(d: dict[Op, Handler]) -> None:
         """Verify every non-HLT, non-FP Op has a handler."""
         _fp_ops = {Op(c) for c in BY_CODE_FP}
-        missing = (
-            {op for op in Op if op != Op.HLT} - _fp_ops - set(d)
-        )
+        missing = {op for op in Op if op != Op.HLT} - _fp_ops - set(d)
         if missing:
             names = ", ".join(sorted(op.name for op in missing))
             raise RuntimeError(f"Dispatch table missing handlers: {names}")
@@ -251,6 +245,7 @@ class HandlersMixin:
         writeback: bool = True,
     ) -> Handler:
         """Create handler for 2-operand ALU instructions (ADD/SUB/CMP)."""
+
         def handler(instr: DecodedInsn) -> None:
             dest_code = self._decode_gpr_or_sp(instr.operands[0])
             right = resolve_src(instr)
@@ -261,6 +256,7 @@ class HandlersMixin:
             if writeback:
                 self.regs.write(dest_code, result)
             self.regs.ip += instr.size
+
         return handler
 
     def _make_bitwise_2op(
@@ -269,6 +265,7 @@ class HandlersMixin:
         resolve_src: Callable[[DecodedInsn], int],
     ) -> Handler:
         """Create handler for 2-operand bitwise instructions (AND/OR/XOR)."""
+
         def handler(instr: DecodedInsn) -> None:
             dest_code = self._decode_gpr(instr.operands[0])
             right = resolve_src(instr)
@@ -278,6 +275,7 @@ class HandlersMixin:
             self.regs.flags.z = zero
             self.regs.write(dest_code, result)
             self.regs.ip += instr.size
+
         return handler
 
     def _make_shift_2op(
@@ -286,6 +284,7 @@ class HandlersMixin:
         resolve_src: Callable[[DecodedInsn], int],
     ) -> Handler:
         """Create handler for 2-operand shift instructions (SHL/SHR)."""
+
         def handler(instr: DecodedInsn) -> None:
             dest_code = self._decode_gpr(instr.operands[0])
             count = resolve_src(instr)
@@ -299,6 +298,7 @@ class HandlersMixin:
                 self.regs.flags.z = zero
                 self.regs.write(dest_code, result)
             self.regs.ip += instr.size
+
         return handler
 
     def _make_jcc(
@@ -308,6 +308,7 @@ class HandlersMixin:
         is_reg: bool,
     ) -> Handler:
         """Create handler for conditional jumps."""
+
         def handler(instr: DecodedInsn) -> None:
             if is_reg:
                 code = self._decode_gpr(instr.operands[0])
@@ -318,6 +319,7 @@ class HandlersMixin:
                 self.regs.ip = target
             else:
                 self.regs.ip += instr.size
+
         return handler
 
     def _make_muldiv(
@@ -326,6 +328,7 @@ class HandlersMixin:
         resolve_src: Callable[[DecodedInsn], int],
     ) -> Handler:
         """Create handler for MUL instructions (A = A * operand)."""
+
         def handler(instr: DecodedInsn) -> None:
             right = resolve_src(instr)
             result, carry, zero = alu_fn(self.regs.a, right)
@@ -333,6 +336,7 @@ class HandlersMixin:
             self.regs.flags.z = zero
             self.regs.a = result
             self.regs.ip += instr.size
+
         return handler
 
     def _make_div(
@@ -340,6 +344,7 @@ class HandlersMixin:
         resolve_src: Callable[[DecodedInsn], int],
     ) -> Handler:
         """Create handler for DIV instructions (A = A / operand)."""
+
         def handler(instr: DecodedInsn) -> None:
             right = resolve_src(instr)
             if right == 0:
@@ -349,6 +354,7 @@ class HandlersMixin:
             self.regs.flags.z = zero
             self.regs.a = result
             self.regs.ip += instr.size
+
         return handler
 
     # ── Individual handlers ────────────────────────────────────────────

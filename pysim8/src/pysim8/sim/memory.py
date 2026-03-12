@@ -30,10 +30,7 @@ class Memory:
     def load(self, data: bytes | list[int], offset: int = 0) -> None:
         """Load data into memory at the given offset."""
         if offset + len(data) > MEMORY_SIZE:
-            raise ValueError(
-                f"Data ({len(data)} bytes at offset {offset}) "
-                f"exceeds memory size ({MEMORY_SIZE})"
-            )
+            raise ValueError(f"Data ({len(data)} bytes at offset {offset}) exceeds memory size ({MEMORY_SIZE})")
         for i, b in enumerate(data):
             self._data[offset + i] = b & 0xFF
 

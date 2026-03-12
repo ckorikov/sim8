@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  CpuState, ErrorCode, CpuFault,
-  MEMORY_SIZE, PAGE_SIZE, IO_START, SP_INIT,
+  CpuState, ErrorCode,
+  IO_START, SP_INIT,
   Memory, CPU,
 } from '../lib/core.js';
-import { encodeFloat32, decodeFloat32, encodeFloat16 } from '../lib/fp.js';
+import { encodeFloat32, decodeFloat32 } from '../lib/fp.js';
 import { Op, Reg, encodeFpm, encodeRegaddr, FP_FMT_F, FP_FMT_H, FP_FMT_O3 } from '../lib/isa.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -15,13 +15,8 @@ const FPM_FA_F32 = encodeFpm(0, 0, FP_FMT_F);
 const FPM_FB_F32 = encodeFpm(1, 0, FP_FMT_F);
 // FPM byte for FHA.f16 (phys=0, pos=0, fmt=1)
 const FPM_FHA_F16 = encodeFpm(0, 0, FP_FMT_H);
-// FPM byte for FHC.f16 (phys=1, pos=0, fmt=1)
-const FPM_FHC_F16 = encodeFpm(1, 0, FP_FMT_H);
-
 // REGADDR for B+0: ((0 & 0x1F) << 3) | 1 = 0x01
 const RA_B_0 = encodeRegaddr(Reg.B, 0);
-// REGADDR for A+0: ((0 & 0x1F) << 3) | 0 = 0x00
-const RA_A_0 = encodeRegaddr(Reg.A, 0);
 
 /** Store float32 LE bytes into memory at addr. */
 function storeFloat32(mem, addr, value) {
@@ -1006,7 +1001,6 @@ describe('Fault conditions', () => {
       Op.HLT,
     ]);
     cpu.step(); // MOV
-    const ipBeforeDiv = cpu.ip;
     cpu.step(); // DIV 0
     expect(cpu.state).toBe(CpuState.FAULT);
     expect(cpu.a).toBe(ErrorCode.DIV_ZERO);

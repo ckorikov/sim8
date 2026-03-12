@@ -9,7 +9,7 @@ import { describe, it, expect } from 'vitest';
 import { assemble, AsmError } from '../lib/asm.js';
 import {
   Op, Reg, encodeFpm, encodeRegaddr,
-  FP_FMT_F, FP_FMT_H, FP_FMT_BF, FP_FMT_O3, FP_FMT_O2,
+  FP_FMT_F, FP_FMT_H, FP_FMT_O3,
 } from '../lib/isa.js';
 import { encodeFloat32, encodeFloat16 } from '../lib/fp.js';
 

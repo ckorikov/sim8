@@ -12,8 +12,12 @@ import re
 from dataclasses import dataclass
 
 from pysim8.isa import (
-    REGISTERS, MNEMONIC_ALIASES, MNEMONICS,
-    FP_REGISTERS, MNEMONICS_FP, FP_CONTROL_MNEMONICS,
+    FP_CONTROL_MNEMONICS,
+    FP_REGISTERS,
+    MNEMONIC_ALIASES,
+    MNEMONICS,
+    MNEMONICS_FP,
+    REGISTERS,
 )
 
 __all__ = [
@@ -107,10 +111,10 @@ class OpAddrLabel:
 class OpFpReg:
     """FP register operand: FA/FB, FHA-FHD, FQA-FQH, FOA-FOP."""
 
-    name: str    # uppercase: "FA", "FHA", "FB", etc.
-    pos: int     # position within format (0-7)
-    fmt: int     # canonical format code
-    phys: int    # physical register index (0 or 1)
+    name: str  # uppercase: "FA", "FHA", "FB", etc.
+    pos: int  # position within format (0-7)
+    fmt: int  # canonical format code
+    phys: int  # physical register index (0 or 1)
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,10 +133,7 @@ class OpFpImm:
     fmt: int | None  # FP_FMT_* or None (resolved from instruction suffix)
 
 
-Operand = (
-    OpReg | OpConst | OpAddr | OpRegAddr | OpString | OpLabel
-    | OpAddrLabel | OpFpReg | OpFloat | OpFpImm
-)
+Operand = OpReg | OpConst | OpAddr | OpRegAddr | OpString | OpLabel | OpAddrLabel | OpFpReg | OpFloat | OpFpImm
 
 
 # ── Parsed line ─────────────────────────────────────────────────────
@@ -146,8 +147,8 @@ class ParsedLine:
     label: str | None = None
     mnemonic: str | None = None
     operands: list[Operand] | None = None
-    dst_suffix: str | None = None   # destination format suffix e.g. "F", "H", "BF"
-    src_suffix: str | None = None   # source format suffix for FCVT.dst.src
+    dst_suffix: str | None = None  # destination format suffix e.g. "F", "H", "BF"
+    src_suffix: str | None = None  # source format suffix for FCVT.dst.src
 
 
 # ── Number parsing ──────────────────────────────────────────────────
@@ -200,18 +201,14 @@ def parse_number(token: str, line: int) -> int:
 def _check_byte_range(value: int, line: int) -> int:
     """Validate value is in 0-255."""
     if value < 0 or value > 255:
-        raise ParseError(
-            f"{value} must have a value between 0-255", line
-        )
+        raise ParseError(f"{value} must have a value between 0-255", line)
     return value
 
 
 # ── Bracket operand parsing ─────────────────────────────────────────
 
 _RE_BRACKET = re.compile(r"^\[(.+)\]$")
-_RE_REG_OFFSET = re.compile(
-    r"^([A-Za-z]+)\s*([+-])\s*(\d+)$"
-)
+_RE_REG_OFFSET = re.compile(r"^([A-Za-z]+)\s*([+-])\s*(\d+)$")
 _RE_REG_ONLY = re.compile(r"^([A-Za-z]+)$")
 
 
@@ -227,13 +224,9 @@ def _parse_bracket_operand(inner: str, line: int) -> OpAddr | OpRegAddr:
         if sign == "-":
             offset_val = -offset_val
         if reg_name not in REGISTERS:
-            raise ParseError(
-                f"Invalid register in address: {m.group(1)}", line
-            )
+            raise ParseError(f"Invalid register in address: {m.group(1)}", line)
         if offset_val < -16 or offset_val > 15:
-            raise ParseError(
-                "offset must be a value between -16...+15", line
-            )
+            raise ParseError("offset must be a value between -16...+15", line)
         return OpRegAddr(REGISTERS[reg_name], offset_val)
 
     # [reg]
@@ -294,13 +287,12 @@ def _try_const(token: str, line: int) -> Operand | None:
     return None
 
 
-def _resolve_fp_imm_suffix(
-    suffix_str: str | None, line: int
-) -> int | None:
+def _resolve_fp_imm_suffix(suffix_str: str | None, line: int) -> int | None:
     """Resolve FP immediate literal suffix to fmt code (None if no suffix)."""
     if suffix_str is None:
         return None
     from pysim8.isa import FP_DB_SUFFIX_TO_FMT
+
     suffix = suffix_str[1:].upper()  # strip leading _
     if suffix not in FP_DB_SUFFIX_TO_FMT:
         raise ParseError("Invalid float literal", line)
@@ -373,19 +365,14 @@ def _parse_operand(token: str, line: int) -> Operand:
 
 # ── Float literal parsing ──────────────────────────────────────────
 
-_RE_FLOAT = re.compile(
-    r'^([+-]?)(\d+\.\d*|\.\d+)([eE][+-]?\d+)?(_\w+)?$'
-)
-_RE_FLOAT_SPECIAL = re.compile(
-    r'^([+-]?)(inf|nan)(_\w+)?$', re.IGNORECASE
-)
+_RE_FLOAT = re.compile(r"^([+-]?)(\d+\.\d*|\.\d+)([eE][+-]?\d+)?(_\w+)?$")
+_RE_FLOAT_SPECIAL = re.compile(r"^([+-]?)(inf|nan)(_\w+)?$", re.IGNORECASE)
 
 
-def _resolve_db_float_suffix(
-    suffix_str: str | None, line: int
-) -> int:
+def _resolve_db_float_suffix(suffix_str: str | None, line: int) -> int:
     """Resolve DB float suffix to format code. Default is float32."""
     from pysim8.isa import FP_DB_SUFFIX_TO_FMT, FP_FMT_F, FP_FMT_N1, FP_FMT_N2
+
     if suffix_str is None:
         return FP_FMT_F  # default float32
     suffix = suffix_str[1:].upper()  # strip leading _
@@ -393,15 +380,11 @@ def _resolve_db_float_suffix(
         raise ParseError("Invalid float literal", line)
     fmt = FP_DB_SUFFIX_TO_FMT[suffix]
     if fmt in (FP_FMT_N1, FP_FMT_N2):
-        raise ParseError(
-            f"Unsupported float format for DB: {suffix_str[1:]}", line
-        )
+        raise ParseError(f"Unsupported float format for DB: {suffix_str[1:]}", line)
     return fmt
 
 
-def _parse_float_literal(
-    token: str, line: int
-) -> OpFloat | None:
+def _parse_float_literal(token: str, line: int) -> OpFloat | None:
     """Try to parse a float literal: 1.4, 1.4_h, inf_f, nan_h."""
     # Try special values first
     m = _RE_FLOAT_SPECIAL.match(token)
@@ -439,9 +422,7 @@ def _parse_float_literal(
 # ── DB operand parsing ──────────────────────────────────────────────
 
 
-def _parse_db_operands(
-    raw: str, line: int, arch: int = 1
-) -> list[Operand]:
+def _parse_db_operands(raw: str, line: int, arch: int = 1) -> list[Operand]:
     """Parse DB operands: const, comma-list, string, or float."""
     raw = raw.strip()
 
@@ -470,8 +451,7 @@ def _parse_db_operands(
             if fp is not None:
                 if has_int:
                     raise ParseError(
-                        "DB does not support mixing float and"
-                        " integer operands",
+                        "DB does not support mixing float and integer operands",
                         line,
                     )
                 has_float = True
@@ -481,15 +461,12 @@ def _parse_db_operands(
         # Integer value
         if has_float:
             raise ParseError(
-                "DB does not support mixing float and"
-                " integer operands",
+                "DB does not support mixing float and integer operands",
                 line,
             )
 
         if _RE_LABEL.match(part) and _try_parse_number(part) is None:
-            raise ParseError(
-                "DB does not support this operand", line
-            )
+            raise ParseError("DB does not support this operand", line)
 
         has_int = True
         val = parse_number(part, line)
@@ -513,7 +490,7 @@ def _tokenize_line(line: str) -> str:
         elif ch == "'" and not in_string:
             # Consume char literal as a unit: 'X'
             if i + 2 < len(line) and line[i + 2] == "'":
-                result.append(line[i:i + 3])
+                result.append(line[i : i + 3])
                 i += 3
                 continue
         elif ch == ";" and not in_string:
@@ -548,9 +525,7 @@ def _split_operands(operand_str: str) -> list[str]:
     return [p for p in parts if p]
 
 
-def parse_line(
-    raw: str, line_no: int, arch: int = 1
-) -> ParsedLine:
+def parse_line(raw: str, line_no: int, arch: int = 1) -> ParsedLine:
     """Parse a single source line."""
     text = _tokenize_line(raw)
 
@@ -575,7 +550,7 @@ def parse_line(
                 line_no,
             )
         result.label = label_name.lower()
-        text = text[label_match.end():].strip()
+        text = text[label_match.end() :].strip()
 
     if not text:
         return result
@@ -601,14 +576,10 @@ def parse_line(
                 raise ParseError("Syntax error", line_no)
 
     # Check against known mnemonics
-    all_mnemonics = (
-        MNEMONICS if arch < 2 else MNEMONICS | MNEMONICS_FP
-    )
+    all_mnemonics = MNEMONICS if arch < 2 else MNEMONICS | MNEMONICS_FP
     if mnemonic not in all_mnemonics:
         if _RE_LABEL.match(mnemonic_raw):
-            raise ParseError(
-                f"Invalid instruction: {mnemonic_raw}", line_no
-            )
+            raise ParseError(f"Invalid instruction: {mnemonic_raw}", line_no)
         raise ParseError("Syntax error", line_no)
 
     # Validate FP suffix requirements
@@ -618,14 +589,10 @@ def parse_line(
                 raise ParseError("Syntax error", line_no)
         elif mnemonic == "FCVT":
             if dst_suffix is None or src_suffix is None:
-                raise ParseError(
-                    "FP format suffix required", line_no
-                )
+                raise ParseError("FP format suffix required", line_no)
         else:
             if dst_suffix is None:
-                raise ParseError(
-                    "FP format suffix required", line_no
-                )
+                raise ParseError("FP format suffix required", line_no)
 
     result.mnemonic = mnemonic
     result.dst_suffix = dst_suffix
@@ -634,34 +601,26 @@ def parse_line(
 
     # Parse operands based on mnemonic
     if mnemonic == "DB":
-        result.operands = _parse_db_operands(
-            operand_str, line_no, arch=arch
-        )
+        result.operands = _parse_db_operands(operand_str, line_no, arch=arch)
         return result
 
     if mnemonic in ("HLT", "RET", "FCLR"):
         if operand_str:
-            raise ParseError(
-                f"{mnemonic}: too many arguments", line_no
-            )
+            raise ParseError(f"{mnemonic}: too many arguments", line_no)
         result.operands = []
         return result
 
     # Split and parse operands
     if operand_str:
         tokens = _split_operands(operand_str)
-        result.operands = [
-            _parse_operand(t, line_no) for t in tokens
-        ]
+        result.operands = [_parse_operand(t, line_no) for t in tokens]
     else:
         result.operands = []
 
     return result
 
 
-def parse_lines(
-    source: str, arch: int = 1
-) -> list[ParsedLine]:
+def parse_lines(source: str, arch: int = 1) -> list[ParsedLine]:
     """Parse all lines from source text."""
     lines = source.split("\n")
     parsed: list[ParsedLine] = []

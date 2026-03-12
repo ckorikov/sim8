@@ -7,10 +7,22 @@
     "build": "mkdir -p dist && esbuild src/sim.js --bundle --format=iife --outfile=dist/sim.bundle.js --sourcemap && cp index.html sim.css dist/",
     "test": "vitest run",
     "test:ci": "vitest run --exclude __tests__/cross_validate.test.js",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "lint": "eslint lib/ src/ __tests__/ && stylelint sim.css && htmlhint index.html",
+    "lint:js": "eslint lib/ src/ __tests__/",
+    "lint:css": "stylelint sim.css",
+    "lint:html": "htmlhint index.html",
+    "format": "prettier --write lib/ src/ __tests__/ sim.css index.html",
+    "format:check": "prettier --check lib/ src/ __tests__/ sim.css index.html"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "esbuild": "^0.27.3",
+    "eslint": "^10.0.3",
+    "htmlhint": "^1.9.2",
+    "prettier": "^3.8.1",
+    "stylelint": "^17.4.0",
+    "stylelint-config-standard": "^40.0.0",
     "vitest": "^3.0.0"
   },
   "dependencies": {

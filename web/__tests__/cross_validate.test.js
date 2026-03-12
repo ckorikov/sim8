@@ -13,7 +13,7 @@ import { execSync } from 'node:child_process';
 import { resolve } from 'node:path';
 
 import { assemble } from '../lib/asm.js';
-import { CPU, CpuState } from '../lib/core.js';
+import { CPU } from '../lib/core.js';
 import { FP_FMT_F } from '../lib/isa.js';
 
 // ── Helpers ──────────────────────────────────────────────────────

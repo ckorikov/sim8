@@ -4,15 +4,41 @@ from dataclasses import dataclass
 from enum import Enum, IntEnum
 
 __all__ = [
-    "Op", "Reg", "REGISTERS", "GPR_CODES", "STACK_CODES", "MNEMONIC_ALIASES",
-    "OpType", "InstrDef", "ISA", "BY_CODE", "BY_MNEMONIC", "MNEMONICS",
-    "encode_regaddr", "decode_regaddr",
-    "ISA_FP", "BY_CODE_FP", "BY_MNEMONIC_FP", "MNEMONICS_FP",
-    "FP_CONTROL_MNEMONICS", "FP_REGISTERS", "FP_SUFFIX_TO_FMT",
-    "FP_DB_SUFFIX_TO_FMT", "FP_FMT_F", "FP_FMT_H", "FP_FMT_BF",
-    "FP_FMT_O3", "FP_FMT_O2", "FP_FMT_N1", "FP_FMT_N2",
-    "FP_FMT_WIDTH", "FP_FMT_MAX_POS", "FP_WIDTH_REGS",
-    "encode_fpm", "decode_fpm", "validate_fpm",
+    "Op",
+    "Reg",
+    "REGISTERS",
+    "GPR_CODES",
+    "STACK_CODES",
+    "MNEMONIC_ALIASES",
+    "OpType",
+    "InstrDef",
+    "ISA",
+    "BY_CODE",
+    "BY_MNEMONIC",
+    "MNEMONICS",
+    "encode_regaddr",
+    "decode_regaddr",
+    "ISA_FP",
+    "BY_CODE_FP",
+    "BY_MNEMONIC_FP",
+    "MNEMONICS_FP",
+    "FP_CONTROL_MNEMONICS",
+    "FP_REGISTERS",
+    "FP_SUFFIX_TO_FMT",
+    "FP_DB_SUFFIX_TO_FMT",
+    "FP_FMT_F",
+    "FP_FMT_H",
+    "FP_FMT_BF",
+    "FP_FMT_O3",
+    "FP_FMT_O2",
+    "FP_FMT_N1",
+    "FP_FMT_N2",
+    "FP_FMT_WIDTH",
+    "FP_FMT_MAX_POS",
+    "FP_WIDTH_REGS",
+    "encode_fpm",
+    "decode_fpm",
+    "validate_fpm",
 ]
 
 
@@ -233,7 +259,7 @@ STACK_CODES: frozenset[int] = GPR_CODES | {Reg.SP}
 _RA_REG_BITS = 3
 _RA_REG_MASK = (1 << _RA_REG_BITS) - 1  # 0x07
 _RA_OFF_RANGE = 1 << (8 - _RA_REG_BITS)  # 32
-_RA_OFF_MAX = _RA_OFF_RANGE // 2 - 1     # 15
+_RA_OFF_MAX = _RA_OFF_RANGE // 2 - 1  # 15
 
 
 def encode_regaddr(reg_code: int, offset: int) -> int:
@@ -270,33 +296,50 @@ MNEMONIC_ALIASES: dict[str, str] = {
 }
 
 # ── FP format constants ──────────────────────────────────────────────
-FP_FMT_F = 0    # float32 (E8M23), 32-bit
-FP_FMT_H = 1    # float16 (E5M10), 16-bit
-FP_FMT_BF = 2   # bfloat16 (E8M7), 16-bit
-FP_FMT_O3 = 3   # OFP8 E4M3, 8-bit
-FP_FMT_O2 = 4   # OFP8 E5M2, 8-bit
-FP_FMT_N1 = 5   # 4-bit E2M1 (reserved in v2)
-FP_FMT_N2 = 6   # 4-bit E1M2 (reserved in v2)
+FP_FMT_F = 0  # float32 (E8M23), 32-bit
+FP_FMT_H = 1  # float16 (E5M10), 16-bit
+FP_FMT_BF = 2  # bfloat16 (E8M7), 16-bit
+FP_FMT_O3 = 3  # OFP8 E4M3, 8-bit
+FP_FMT_O2 = 4  # OFP8 E5M2, 8-bit
+FP_FMT_N1 = 5  # 4-bit E2M1 (reserved in v2)
+FP_FMT_N2 = 6  # 4-bit E1M2 (reserved in v2)
 
 FP_FMT_WIDTH: dict[int, int] = {
-    FP_FMT_F: 32, FP_FMT_H: 16, FP_FMT_BF: 16,
-    FP_FMT_O3: 8, FP_FMT_O2: 8, FP_FMT_N1: 4, FP_FMT_N2: 4,
+    FP_FMT_F: 32,
+    FP_FMT_H: 16,
+    FP_FMT_BF: 16,
+    FP_FMT_O3: 8,
+    FP_FMT_O2: 8,
+    FP_FMT_N1: 4,
+    FP_FMT_N2: 4,
 }
 
 FP_FMT_MAX_POS: dict[int, int] = {
-    FP_FMT_F: 0, FP_FMT_H: 1, FP_FMT_BF: 1,
-    FP_FMT_O3: 3, FP_FMT_O2: 3, FP_FMT_N1: 7, FP_FMT_N2: 7,
+    FP_FMT_F: 0,
+    FP_FMT_H: 1,
+    FP_FMT_BF: 1,
+    FP_FMT_O3: 3,
+    FP_FMT_O2: 3,
+    FP_FMT_N1: 7,
+    FP_FMT_N2: 7,
 }
 
 # Short suffix -> fmt code (case-insensitive matching done by caller)
 FP_SUFFIX_TO_FMT: dict[str, int] = {
-    "F": FP_FMT_F, "E8M23": FP_FMT_F,
-    "H": FP_FMT_H, "E5M10": FP_FMT_H,
-    "BF": FP_FMT_BF, "E8M7": FP_FMT_BF,
-    "O3": FP_FMT_O3, "E4M3": FP_FMT_O3,
-    "O2": FP_FMT_O2, "E5M2": FP_FMT_O2,
-    "N1": FP_FMT_N1, "E2M1": FP_FMT_N1,
-    "N2": FP_FMT_N2, "E1M2": FP_FMT_N2,
+    "F": FP_FMT_F,
+    "E8M23": FP_FMT_F,
+    "H": FP_FMT_H,
+    "E5M10": FP_FMT_H,
+    "BF": FP_FMT_BF,
+    "E8M7": FP_FMT_BF,
+    "O3": FP_FMT_O3,
+    "E4M3": FP_FMT_O3,
+    "O2": FP_FMT_O2,
+    "E5M2": FP_FMT_O2,
+    "N1": FP_FMT_N1,
+    "E2M1": FP_FMT_N1,
+    "N2": FP_FMT_N2,
+    "E1M2": FP_FMT_N2,
 }
 
 # DB literal suffix -> fmt code (same mapping, kept as alias for clarity)
@@ -305,7 +348,7 @@ FP_DB_SUFFIX_TO_FMT = FP_SUFFIX_TO_FMT
 # FP register table: name -> (phys, pos, canonical_fmt, width_bits)
 FP_REGISTERS: dict[str, tuple[int, int, int, int]] = {
     # Physical register 0 (FA family)
-    "FA":  (0, 0, FP_FMT_F, 32),
+    "FA": (0, 0, FP_FMT_F, 32),
     "FHA": (0, 0, FP_FMT_H, 16),
     "FHB": (0, 1, FP_FMT_H, 16),
     "FQA": (0, 0, FP_FMT_O3, 8),
@@ -321,7 +364,7 @@ FP_REGISTERS: dict[str, tuple[int, int, int, int]] = {
     "FOG": (0, 6, FP_FMT_N1, 4),
     "FOH": (0, 7, FP_FMT_N1, 4),
     # Physical register 1 (FB family)
-    "FB":  (1, 0, FP_FMT_F, 32),
+    "FB": (1, 0, FP_FMT_F, 32),
     "FHC": (1, 0, FP_FMT_H, 16),
     "FHD": (1, 1, FP_FMT_H, 16),
     "FQE": (1, 0, FP_FMT_O3, 8),
@@ -342,12 +385,10 @@ FP_REGISTERS: dict[str, tuple[int, int, int, int]] = {
 FP_WIDTH_REGS: dict[int, frozenset[str]] = {
     32: frozenset({"FA", "FB"}),
     16: frozenset({"FHA", "FHB", "FHC", "FHD"}),
-    8: frozenset({"FQA", "FQB", "FQC", "FQD",
-                  "FQE", "FQF", "FQG", "FQH"}),
-    4: frozenset({"FOA", "FOB", "FOC", "FOD",
-                  "FOE", "FOF", "FOG", "FOH",
-                  "FOI", "FOJ", "FOK", "FOL",
-                  "FOM", "FON", "FOO", "FOP"}),
+    8: frozenset({"FQA", "FQB", "FQC", "FQD", "FQE", "FQF", "FQG", "FQH"}),
+    4: frozenset(
+        {"FOA", "FOB", "FOC", "FOD", "FOE", "FOF", "FOG", "FOH", "FOI", "FOJ", "FOK", "FOL", "FOM", "FON", "FOO", "FOP"}
+    ),
 }
 
 
@@ -377,14 +418,14 @@ def validate_fpm(fpm: int) -> bool:
 class OpType(Enum):
     """Operand type for instruction matching."""
 
-    REG = "reg"              # any register (0-5)
+    REG = "reg"  # any register (0-5)
     REG_STACK = "reg_stack"  # GPR + SP (0-4)
-    REG_GPR = "reg_gpr"      # GPR only (0-3)
-    IMM = "imm"          # number or label (no brackets)
-    MEM = "mem"          # [addr] — direct address in brackets
+    REG_GPR = "reg_gpr"  # GPR only (0-3)
+    IMM = "imm"  # number or label (no brackets)
+    MEM = "mem"  # [addr] — direct address in brackets
     REGADDR = "regaddr"  # [reg±offset] — register indirect
-    FP_REG = "fp_reg"    # FP register operand
-    FP_IMM8 = "fp_imm8"    # 8-bit FP immediate (1 byte)
+    FP_REG = "fp_reg"  # FP register operand
+    FP_IMM8 = "fp_imm8"  # 8-bit FP immediate (1 byte)
     FP_IMM16 = "fp_imm16"  # 16-bit FP immediate (2 bytes, LE)
 
 
@@ -525,9 +566,7 @@ BY_CODE: dict[int, InstrDef] = {int(instr.op): instr for instr in ISA}
 _by_mn: dict[str, list[InstrDef]] = {}
 for _insn in ISA:
     _by_mn.setdefault(_insn.mnemonic, []).append(_insn)
-BY_MNEMONIC: dict[str, tuple[InstrDef, ...]] = {
-    k: tuple(v) for k, v in _by_mn.items()
-}
+BY_MNEMONIC: dict[str, tuple[InstrDef, ...]] = {k: tuple(v) for k, v in _by_mn.items()}
 del _by_mn, _insn
 
 MNEMONICS: frozenset[str] = frozenset(BY_MNEMONIC) | {"DB"}
@@ -595,18 +634,21 @@ BY_CODE_FP: dict[int, InstrDef] = {int(instr.op): instr for instr in ISA_FP}
 _by_mn_fp: dict[str, list[InstrDef]] = {}
 for _insn_fp in ISA_FP:
     _by_mn_fp.setdefault(_insn_fp.mnemonic, []).append(_insn_fp)
-BY_MNEMONIC_FP: dict[str, tuple[InstrDef, ...]] = {
-    k: tuple(v) for k, v in _by_mn_fp.items()
-}
+BY_MNEMONIC_FP: dict[str, tuple[InstrDef, ...]] = {k: tuple(v) for k, v in _by_mn_fp.items()}
 
 MNEMONICS_FP: frozenset[str] = frozenset(BY_MNEMONIC_FP)
 
 # FP control mnemonics (no format suffix needed)
-FP_CONTROL_MNEMONICS: frozenset[str] = frozenset(
-    {"FSTAT", "FCFG", "FSCFG", "FCLR"}
-)
+FP_CONTROL_MNEMONICS: frozenset[str] = frozenset({"FSTAT", "FCFG", "FSCFG", "FCLR"})
 
 del (
-    _by_mn_fp, _insn_fp, _FP,
-    _REG, _STK, _GPR, _IMM, _MEM, _IADDR,
+    _by_mn_fp,
+    _insn_fp,
+    _FP,
+    _REG,
+    _STK,
+    _GPR,
+    _IMM,
+    _MEM,
+    _IADDR,
 )

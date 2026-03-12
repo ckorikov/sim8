@@ -18,9 +18,11 @@ pysim8-disasm = "pysim8.disasm.cli:main"
 dev = [
     "hypothesis>=6.151.9",
     "ml-dtypes>=0.5.4",
+    "mypy>=1.19.1",
     "numpy>=2.4.2",
     "pytest",
     "pytest-cov>=7.0.0",
+    "ruff>=0.15.5",
 ]
 
 [build-system]
@@ -43,3 +45,23 @@ directory = "htmlcov"
 
 [tool.pytest.ini_options]
 addopts = "--cov --cov-report=term-missing:skip-covered"
+
+# ── Ruff ──────────────────────────────────────────────────────────
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]   # pycodestyle, pyflakes, isort
+ignore = ["E501"]               # line length enforced by formatter, not lint
+
+[tool.ruff.format]
+quote-style = "double"
+
+# ── Mypy ──────────────────────────────────────────────────────────
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+ignore_missing_imports = true

@@ -37,14 +37,30 @@ if _HAS_TERMIOS:
 
 _COLORS: dict[str, str] = {
     "MOV": "cyan",
-    "ADD": "green", "SUB": "green", "MUL": "green", "DIV": "green",
-    "INC": "green", "DEC": "green", "CMP": "green",
-    "AND": "green", "OR": "green", "XOR": "green", "NOT": "green",
-    "SHL": "green", "SHR": "green",
-    "JMP": "yellow", "JC": "yellow", "JNC": "yellow",
-    "JZ": "yellow", "JNZ": "yellow", "JA": "yellow", "JNA": "yellow",
-    "CALL": "yellow", "RET": "yellow",
-    "PUSH": "magenta", "POP": "magenta",
+    "ADD": "green",
+    "SUB": "green",
+    "MUL": "green",
+    "DIV": "green",
+    "INC": "green",
+    "DEC": "green",
+    "CMP": "green",
+    "AND": "green",
+    "OR": "green",
+    "XOR": "green",
+    "NOT": "green",
+    "SHL": "green",
+    "SHR": "green",
+    "JMP": "yellow",
+    "JC": "yellow",
+    "JNC": "yellow",
+    "JZ": "yellow",
+    "JNZ": "yellow",
+    "JA": "yellow",
+    "JNA": "yellow",
+    "CALL": "yellow",
+    "RET": "yellow",
+    "PUSH": "magenta",
+    "POP": "magenta",
     "HLT": "dim",
 }
 
@@ -65,9 +81,7 @@ def _hex(val: int | bool) -> str:
 
 
 def _fmt_changes(changes: dict[str, int | bool]) -> str:
-    return " ".join(
-        f"{k}←{_hex(v)}" for k, v in changes.items() if k != "IP"
-    )
+    return " ".join(f"{k}←{_hex(v)}" for k, v in changes.items() if k != "IP")
 
 
 def _fmt_trace(event: TraceEvent) -> Text:
@@ -172,8 +186,8 @@ def _make_status(cpu: CPU, filename: str, paused: bool = False) -> Panel:
 
 # ── Keyboard listener ────────────────────────────────────────────────
 
-_PANEL_LINES_BASE = 4   # top border + row1 + row2 + bottom border
-_PANEL_LINES_FPU = 5    # + row_fp when arch >= 2
+_PANEL_LINES_BASE = 4  # top border + row1 + row2 + bottom border
+_PANEL_LINES_FPU = 5  # + row_fp when arch >= 2
 
 
 def _key_listener(state: dict[str, bool]) -> None:
@@ -283,14 +297,20 @@ def run_tui(
 @click.option("--speed", "-s", default=25, help="Steps per second (0 = max).")
 @click.option("--paused", is_flag=True, help="Start paused (use Space to run).")
 @click.option(
-    "--arch", type=int, default=2,
+    "--arch",
+    type=int,
+    default=2,
     help="Architecture version (1=integer, 2=FPU).",
 )
 @click.option("--headless", is_flag=True, help="Run without TUI, print final state.")
 @click.option("--json", "json_out", is_flag=True, help="Output full state as JSON (implies --headless).")
 def main(
-    program: str, speed: int, paused: bool, arch: int,
-    headless: bool, json_out: bool,
+    program: str,
+    speed: int,
+    paused: bool,
+    arch: int,
+    headless: bool,
+    json_out: bool,
 ) -> None:
     """Run a .bin binary in the TUI simulator.
 
@@ -320,7 +340,10 @@ def main(
 
 
 def run_headless(
-    code: list[int], *, arch: int = 2, max_steps: int = 100_000,
+    code: list[int],
+    *,
+    arch: int = 2,
+    max_steps: int = 100_000,
     json_out: bool = False,
 ) -> None:
     """Run program without TUI, print final state and I/O output."""
@@ -337,19 +360,28 @@ def run_headless(
             "steps": cpu.steps,
             "cycles": cpu.cycles,
             "regs": {
-                "a": cpu.a, "b": cpu.b, "c": cpu.c, "d": cpu.d,
-                "sp": cpu.sp, "dp": cpu.dp, "ip": cpu.ip,
+                "a": cpu.a,
+                "b": cpu.b,
+                "c": cpu.c,
+                "d": cpu.d,
+                "sp": cpu.sp,
+                "dp": cpu.dp,
+                "ip": cpu.ip,
             },
             "flags": {
-                "z": cpu.zero, "c": cpu.carry, "f": cpu.fault,
+                "z": cpu.zero,
+                "c": cpu.carry,
+                "f": cpu.fault,
             },
             "display": cpu.display(),
         }
         if cpu.regs.fpu is not None:
             fpu = cpu.regs.fpu
             state["fpu"] = {
-                "fa": fpu.fa, "fb": fpu.fb,
-                "fpcr": fpu.fpcr, "fpsr": fpu.fpsr,
+                "fa": fpu.fa,
+                "fb": fpu.fb,
+                "fpcr": fpu.fpcr,
+                "fpsr": fpu.fpsr,
             }
         click.echo(_json.dumps(state))
         return
@@ -360,7 +392,4 @@ def run_headless(
     click.echo(f"State: {cpu.state.value}  Cycles: {cpu.cycles}")
     if cpu.regs.fpu:
         fpu = cpu.regs.fpu
-        click.echo(
-            f"FA=0x{fpu.fa:08X} FB=0x{fpu.fb:08X}"
-            f" FPSR=0x{fpu.fpsr:02X}"
-        )
+        click.echo(f"FA=0x{fpu.fa:08X} FB=0x{fpu.fb:08X} FPSR=0x{fpu.fpsr:02X}")
