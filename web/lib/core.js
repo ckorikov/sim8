@@ -465,6 +465,12 @@ export class CPU {
         return this.state;
     }
 
+    pause() {
+        if (this.state === CpuState.RUNNING) {
+            this.state = CpuState.IDLE;
+        }
+    }
+
     reset() {
         this.mem.reset();
         this.regs.reset(this._arch);

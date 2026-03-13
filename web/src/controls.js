@@ -69,9 +69,7 @@ export function stopRun() {
         clearTimeout(runTimer);
         runTimer = null;
     }
-    if (cpu.state === CpuState.RUNNING) {
-        cpu.state = CpuState.IDLE;
-    }
+    cpu.pause();
     setRunUI(false);
     _renderCPU();
 }
@@ -104,8 +102,8 @@ export function setupControls({ onStep, onReset, renderCPU, getBreakpoints, getE
         if (cpu.state === CpuState.RUNNING && cost > 0) {
             stepTimer = setTimeout(() => {
                 stepTimer = null;
-                if (cpu.state === CpuState.RUNNING && !isRunning()) {
-                    cpu.state = CpuState.IDLE;
+                if (!isRunning()) {
+                    cpu.pause();
                     _renderCPU();
                 }
             }, getSpeedMs() * cost);

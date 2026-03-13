@@ -7,7 +7,7 @@ import { assemble, AsmError } from "../lib/asm.js";
 import { CpuState } from "../lib/core.js";
 import { BY_CODE_FP } from "../lib/isa.js";
 
-import { cpu, asm, refreshColors } from "./state.js";
+import { cpu, asm, refreshColors, IO_BASE, PAGE_SIZE } from "./state.js";
 import { renderCPU } from "./ui/cpu.js";
 import { renderFPU } from "./ui/fpu.js";
 import { renderMemory } from "./ui/mem.js";
@@ -60,7 +60,7 @@ function renderAll() {
     renderFPU();
     renderMemory();
     renderDisplay();
-    const line = asm.mapping[cpu.ip];
+    const line = getExecLine();
     highlightExecLine(line !== undefined ? line : -1);
 }
 
@@ -93,11 +93,22 @@ function doAssemble(source) {
 
 // ── Step / Reset ───────────────────────────────────────────────
 
+function ioChanged(snapshot) {
+    for (let addr = IO_BASE; addr < PAGE_SIZE; addr++) {
+        if (cpu.mem.get(addr) !== snapshot[addr - IO_BASE]) return true;
+    }
+    return false;
+}
+
 function stepCPU() {
     if (cpu.state === CpuState.FAULT || cpu.state === CpuState.HALTED) return 0;
 
     const prevCycles = cpu.cycles;
     const opcode = cpu.mem.get(cpu.ip);
+
+    const ioSnap = new Uint8Array(PAGE_SIZE - IO_BASE);
+    for (let i = 0; i < ioSnap.length; i++) ioSnap[i] = cpu.mem.get(IO_BASE + i);
+
     const wasRunning = cpu.step();
 
     if (BY_CODE_FP[opcode] !== undefined) {
@@ -105,7 +116,7 @@ function stepCPU() {
     } else {
         flashWire(WIRE_DATA);
     }
-    flashWire(WIRE_IO);
+    if (ioChanged(ioSnap)) flashWire(WIRE_IO);
 
     renderAll();
     return wasRunning ? cpu.cycles - prevCycles : 0;
@@ -113,6 +124,10 @@ function stepCPU() {
 
 function resetCPU() {
     if (isRunning()) stopRun();
+    const errEl = document.getElementById("asm-error");
+    errEl.classList.add("hidden");
+    errEl.textContent = "";
+
     cpu.reset();
     if (asm.codeLen > 0) {
         const source = getEditorSource();
@@ -120,8 +135,18 @@ function resetCPU() {
             try {
                 const result = assemble(source);
                 cpu.load(result.code);
+                asm.codeLen = result.code.length;
+                asm.labels = result.labels;
+                asm.mapping = result.mapping;
+                asm.instrStarts = new Set(Object.keys(result.mapping).map(Number));
+                renderLabels();
             } catch (e) {
-                console.warn("Re-assembly on reset failed:", e.message);
+                asm.codeLen = 0;
+                asm.labels = {};
+                asm.mapping = {};
+                asm.instrStarts = new Set();
+                errEl.textContent = e instanceof AsmError ? e.message : "Internal error: " + e.message;
+                errEl.classList.remove("hidden");
             }
         }
     }
@@ -131,12 +156,16 @@ function resetCPU() {
 
 // ── Controls wiring ────────────────────────────────────────────
 
+function getExecLine() {
+    return asm.mapping[cpu.ip];
+}
+
 setupControls({
-    onStep: () => stepCPU(),
-    onReset: () => resetCPU(),
+    onStep: stepCPU,
+    onReset: resetCPU,
     renderCPU,
     getBreakpoints,
-    getExecLine: () => asm.mapping[cpu.ip],
+    getExecLine,
 });
 
 // ── Assemble button ────────────────────────────────────────────

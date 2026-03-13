@@ -2,18 +2,18 @@
  * CodeMirror editor: initialization, syntax highlighting, execution line marking.
  */
 
-import { MNEMONICS, MNEMONICS_FP, REGISTERS, FP_REGISTERS } from "../lib/isa.js";
+import { MNEMONICS, MNEMONICS_FP, REGISTERS, FP_REGISTERS, ISA, ISA_FP, OpType } from "../lib/isa.js";
 
 const ALL_MNEMONICS_RE = new RegExp("\\b(" + [...MNEMONICS, ...MNEMONICS_FP].join("|") + ")\\b", "i");
 const ALL_REGISTERS_RE = new RegExp(
     "\\b(" + [...Object.keys(REGISTERS), ...Object.keys(FP_REGISTERS)].join("|") + ")\\b",
+    "i",
 );
 
 let cmView = null;
 let cmExecEffect = null;
 let cmScrollIntoView = null;
 let cmBpField = null;
-let cmToggleBp = null;
 
 export function highlightExecLine(line) {
     if (!cmView || !cmExecEffect) return;
@@ -41,12 +41,14 @@ export async function initEditor(container, defaultCode) {
             { Decoration, GutterMarker, gutter },
             { StreamLanguage, HighlightStyle, syntaxHighlighting },
             { tags },
+            { autocompletion },
         ] = await Promise.all([
             import("https://esm.sh/codemirror"),
             import("https://esm.sh/@codemirror/state"),
             import("https://esm.sh/@codemirror/view"),
             import("https://esm.sh/@codemirror/language"),
             import("https://esm.sh/@lezer/highlight"),
+            import("https://esm.sh/@codemirror/autocomplete"),
         ]);
 
         const setExecLine = StateEffect.define();
@@ -147,7 +149,7 @@ export async function initEditor(container, defaultCode) {
         ]);
 
         const toggleBp = StateEffect.define();
-        cmToggleBp = toggleBp;
+
         const bpField = StateField.define({
             create() {
                 return new Set();
@@ -207,6 +209,152 @@ export async function initEditor(container, defaultCode) {
             },
         });
 
+        const MNEMONIC_INFO = {
+            HLT: "Halt CPU execution",
+            MOV: "Copy value: reg, mem, or immediate",
+            ADD: "dest = dest + src; sets C, Z",
+            SUB: "dest = dest - src; sets C, Z",
+            INC: "dest = dest + 1; sets C, Z",
+            DEC: "dest = dest - 1; sets C, Z",
+            CMP: "Compare (sets Z, C without storing)",
+            MUL: "A = A * src; sets C, Z",
+            DIV: "A = A / src (integer); FAULT if src=0",
+            AND: "dest = dest & src; C=0, sets Z",
+            OR: "dest = dest | src; C=0, sets Z",
+            XOR: "dest = dest ^ src; C=0, sets Z",
+            NOT: "dest = ~dest; C=0, sets Z",
+            SHL: "dest = dest << n; sets C if overflow",
+            SHR: "dest = dest >>> n; sets C if bits lost",
+            JMP: "Unconditional jump",
+            JZ: "Jump if Z=1 (equal)",
+            JNZ: "Jump if Z=0 (not equal)",
+            JC: "Jump if C=1 (borrow/underflow)",
+            JNC: "Jump if C=0 (no borrow)",
+            JA: "Jump if C=0 and Z=0 (unsigned greater)",
+            JNA: "Jump if C=1 or Z=1 (unsigned <=)",
+            PUSH: "Push to stack; SP--; FAULT if SP=0",
+            POP: "Pop from stack; SP++; FAULT if SP>=231",
+            CALL: "Push return addr, jump to target",
+            RET: "Pop addr from stack, jump to it",
+            DB: "Define raw byte(s) or ASCII string",
+            FMOV: "FP load/store or register copy",
+            FADD: "FP dst = dst + src",
+            FSUB: "FP dst = dst - src",
+            FMUL: "FP dst = dst * src",
+            FDIV: "FP dst = dst / src",
+            FCMP: "FP compare; sets Z, C (Z=C=1 if NaN)",
+            FABS: "Clear sign bit of FP register",
+            FNEG: "Toggle sign bit of FP register",
+            FSQRT: "FP square root",
+            FCVT: "Convert between FP formats",
+            FITOF: "uint8 GPR to FP register",
+            FFTOI: "FP to uint8 GPR (saturating)",
+            FSTAT: "Read FPSR (exception flags) to GPR",
+            FCFG: "Read FPCR (rounding mode) to GPR",
+            FSCFG: "Write GPR to FPCR (bits [1:0] only)",
+            FCLR: "Clear all FPSR sticky flags",
+            FCLASS: "Classify FP value to 8-bit bitmask",
+            FMADD: "FP dst = src * mem + dst (fused)",
+        };
+        const SIG_LABELS = {
+            [OpType.REG]: "reg",
+            [OpType.REG_STACK]: "reg",
+            [OpType.REG_GPR]: "gpr",
+            [OpType.IMM]: "imm",
+            [OpType.MEM]: "[addr]",
+            [OpType.REGADDR]: "[reg±off]",
+            [OpType.FP_REG]: "fp",
+            [OpType.FP_IMM8]: "imm8",
+            [OpType.FP_IMM16]: "imm16",
+        };
+
+        function buildMnemonicVariants() {
+            const variants = {};
+            for (const def of [...ISA, ...ISA_FP]) {
+                const sig = def.sig.map((s) => SIG_LABELS[s] || "?").join(", ");
+                const form = sig ? `${def.mnemonic} ${sig}` : def.mnemonic;
+                if (!variants[def.mnemonic]) variants[def.mnemonic] = new Set();
+                variants[def.mnemonic].add(form);
+            }
+            return variants;
+        }
+        const MNEMONIC_VARIANTS = buildMnemonicVariants();
+
+        function mnemonicInfoDom(mnemonic) {
+            const el = document.createElement("div");
+            el.className = "cm-instr-info";
+            const desc = document.createElement("div");
+            desc.className = "cm-instr-desc";
+            desc.textContent = MNEMONIC_INFO[mnemonic] || mnemonic;
+            el.appendChild(desc);
+            const forms = MNEMONIC_VARIANTS[mnemonic];
+            if (forms) {
+                for (const f of forms) {
+                    const line = document.createElement("div");
+                    line.className = "cm-instr-form";
+                    line.textContent = f;
+                    el.appendChild(line);
+                }
+            }
+            return el;
+        }
+
+        const MNEMONIC_COMPLETIONS = [...MNEMONICS, ...MNEMONICS_FP].map((m) => ({
+            label: m,
+            info: () => mnemonicInfoDom(m),
+            type: "keyword",
+        }));
+
+        const GPR_INFO = {
+            A: "General purpose A",
+            B: "General purpose B",
+            C: "General purpose C",
+            D: "General purpose D",
+            SP: "Stack pointer",
+            DP: "Data page",
+        };
+        const FP_WIDTH_LABELS = { 32: "float32", 16: "float16", 8: "ofp8", 4: "nf4" };
+        const REGISTER_COMPLETIONS = [
+            ...Object.keys(REGISTERS).map((r) => ({
+                label: r,
+                info: GPR_INFO[r] || r,
+                type: "variable",
+            })),
+            ...Object.keys(FP_REGISTERS).map((r) => {
+                const bits = FP_REGISTERS[r].bits;
+                const fmt = FP_WIDTH_LABELS[bits] || bits + "b";
+                return { label: r, info: `FP ${fmt}`, type: "variable" };
+            }),
+        ];
+
+        function sim8CompletionSource(context) {
+            const word = context.matchBefore(/[\w.]+/);
+            if (!word || (word.from === word.to && !context.explicit)) return null;
+
+            const prefix = word.text.toUpperCase();
+            const line = context.state.doc.lineAt(word.from);
+            const beforeWord = line.text.slice(0, word.from - line.from);
+            const isMnemonicPos = /^\s*(\w+\s*:)?\s*$/.test(beforeWord);
+
+            if (isMnemonicPos) {
+                const options = MNEMONIC_COMPLETIONS.filter((o) => o.label.startsWith(prefix));
+                return options.length ? { from: word.from, options } : null;
+            }
+
+            const options = REGISTER_COMPLETIONS.filter((o) => o.label.startsWith(prefix));
+            const seen = new Set(options.map((o) => o.label.toUpperCase()));
+            const labelRe = /^[ \t]*(\w+)\s*:/gm;
+            let m;
+            const docText = context.state.doc.toString();
+            while ((m = labelRe.exec(docText)) !== null) {
+                if (!seen.has(m[1].toUpperCase()) && m[1].toUpperCase().startsWith(prefix)) {
+                    options.push({ label: m[1], type: "namespace", info: "Label" });
+                    seen.add(m[1].toUpperCase());
+                }
+            }
+            return options.length ? { from: word.from, options } : null;
+        }
+
         cmScrollIntoView = EditorView.scrollIntoView;
         cmView = new EditorView({
             state: EditorState.create({
@@ -220,6 +368,7 @@ export async function initEditor(container, defaultCode) {
                     execDecoExt,
                     bpField,
                     debugGutter,
+                    autocompletion({ override: [sim8CompletionSource] }),
                 ],
             }),
             parent: container,

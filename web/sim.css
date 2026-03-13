@@ -448,6 +448,76 @@ body {
     background: rgba(138, 90, 48, 0.18) !important;
 }
 
+/* ── Autocomplete popup ── */
+.cm-tooltip-autocomplete {
+    background: var(--t-surface) !important;
+    border: 1px solid var(--t-border) !important;
+    border-radius: 4px !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    font-family: "JetBrains Mono", monospace !important;
+}
+.cm-tooltip-autocomplete ul {
+    font-size: 11px !important;
+}
+.cm-tooltip-autocomplete ul li {
+    padding: 2px 8px !important;
+    border-radius: 2px;
+    margin: 1px 2px;
+}
+.cm-tooltip-autocomplete ul li[aria-selected] {
+    background: var(--a-orange-a20) !important;
+    color: var(--t-bright) !important;
+}
+.cm-tooltip-autocomplete .cm-completionIcon {
+    padding-right: 10px;
+    opacity: 0.6;
+}
+.cm-tooltip-autocomplete .cm-completionLabel {
+    color: var(--t-text);
+}
+.cm-tooltip-autocomplete ul li[aria-selected] .cm-completionLabel {
+    color: var(--t-bright);
+}
+.cm-tooltip-autocomplete .cm-completionMatchedText {
+    text-decoration: none !important;
+    color: var(--a-orange) !important;
+    font-weight: 700;
+}
+.cm-tooltip-autocomplete .cm-completionDetail {
+    color: var(--t-dim) !important;
+    font-style: normal !important;
+    font-size: 10px;
+    margin-left: 32px;
+}
+.cm-completionInfo {
+    background: var(--t-nav) !important;
+    border: 1px solid var(--t-border) !important;
+    border-radius: 4px !important;
+    color: var(--t-mid) !important;
+    font-family: "JetBrains Mono", monospace !important;
+    font-size: 10px !important;
+    padding: 4px 8px !important;
+}
+.cm-instr-info {
+    min-width: 140px;
+}
+.cm-instr-desc {
+    color: var(--t-text);
+    font-weight: 600;
+    margin-bottom: 4px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--t-border);
+}
+.cm-instr-form {
+    color: var(--t-mid);
+    font-size: 10px;
+    line-height: 1.6;
+    font-family: "JetBrains Mono", monospace;
+}
+:root.light .cm-tooltip-autocomplete {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
 /* ── Error display ── */
 #asm-error {
     font-size: 10px;

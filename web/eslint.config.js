@@ -19,6 +19,7 @@ export default [
                 clearTimeout: "readonly",
                 requestAnimationFrame: "readonly",
                 getComputedStyle: "readonly",
+                localStorage: "readonly",
                 // CDN libs
                 X6: "readonly",
             },
