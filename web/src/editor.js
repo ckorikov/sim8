@@ -2,7 +2,23 @@
  * CodeMirror editor: initialization, syntax highlighting, execution line marking.
  */
 
-import { MNEMONICS, MNEMONICS_FP, REGISTERS, FP_REGISTERS, ISA, ISA_FP, OpType } from "../lib/isa.js";
+import {
+    MNEMONICS,
+    MNEMONICS_FP,
+    REGISTERS,
+    FP_REGISTERS,
+    ISA,
+    ISA_FP,
+    OpType,
+    MNEMONIC_ALIASES,
+    FP_FMT_F,
+    FP_FMT_H,
+    FP_FMT_BF,
+    FP_FMT_O3,
+    FP_FMT_O2,
+    FP_FMT_N1,
+    FP_FMT_N2,
+} from "../lib/isa.js";
 
 const ALL_MNEMONICS_RE = new RegExp("\\b(" + [...MNEMONICS, ...MNEMONICS_FP].join("|") + ")\\b", "i");
 const ALL_REGISTERS_RE = new RegExp(
@@ -258,7 +274,7 @@ export async function initEditor(container, defaultCode) {
         };
         const SIG_LABELS = {
             [OpType.REG]: "reg",
-            [OpType.REG_STACK]: "reg",
+            [OpType.REG_STACK]: "reg|SP",
             [OpType.REG_GPR]: "gpr",
             [OpType.IMM]: "imm",
             [OpType.MEM]: "[addr]",
@@ -266,6 +282,16 @@ export async function initEditor(container, defaultCode) {
             [OpType.FP_REG]: "fp",
             [OpType.FP_IMM8]: "imm8",
             [OpType.FP_IMM16]: "imm16",
+        };
+
+        const FP_FMT_NAMES = {
+            [FP_FMT_F]: "float32",
+            [FP_FMT_H]: "float16",
+            [FP_FMT_BF]: "bfloat16",
+            [FP_FMT_O3]: "ofp8-e4m3",
+            [FP_FMT_O2]: "ofp8-e5m2",
+            [FP_FMT_N1]: "nf4-e2m1",
+            [FP_FMT_N2]: "nf4-e1m2",
         };
 
         function buildMnemonicVariants() {
@@ -280,14 +306,21 @@ export async function initEditor(container, defaultCode) {
         }
         const MNEMONIC_VARIANTS = buildMnemonicVariants();
 
-        function mnemonicInfoDom(mnemonic) {
+        function mnemonicInfoDom(mnemonic, aliasOf) {
             const el = document.createElement("div");
             el.className = "cm-instr-info";
             const desc = document.createElement("div");
             desc.className = "cm-instr-desc";
-            desc.textContent = MNEMONIC_INFO[mnemonic] || mnemonic;
+            const canonical = aliasOf || mnemonic;
+            desc.textContent = MNEMONIC_INFO[canonical] || canonical;
             el.appendChild(desc);
-            const forms = MNEMONIC_VARIANTS[mnemonic];
+            if (aliasOf) {
+                const alias = document.createElement("div");
+                alias.className = "cm-instr-form";
+                alias.textContent = `= ${aliasOf}`;
+                el.appendChild(alias);
+            }
+            const forms = MNEMONIC_VARIANTS[canonical];
             if (forms) {
                 for (const f of forms) {
                     const line = document.createElement("div");
@@ -299,30 +332,29 @@ export async function initEditor(container, defaultCode) {
             return el;
         }
 
-        const MNEMONIC_COMPLETIONS = [...MNEMONICS, ...MNEMONICS_FP].map((m) => ({
-            label: m,
-            info: () => mnemonicInfoDom(m),
-            type: "keyword",
-        }));
+        const MNEMONIC_COMPLETIONS = [
+            ...[...MNEMONICS, ...MNEMONICS_FP].map((m) => ({
+                label: m,
+                info: () => mnemonicInfoDom(m),
+                type: "keyword",
+            })),
+            ...Object.entries(MNEMONIC_ALIASES).map(([alias, canonical]) => ({
+                label: alias,
+                detail: `= ${canonical}`,
+                info: () => mnemonicInfoDom(alias, canonical),
+                type: "keyword",
+            })),
+        ];
 
-        const GPR_INFO = {
-            A: "General purpose A",
-            B: "General purpose B",
-            C: "General purpose C",
-            D: "General purpose D",
-            SP: "Stack pointer",
-            DP: "Data page",
-        };
-        const FP_WIDTH_LABELS = { 32: "float32", 16: "float16", 8: "ofp8", 4: "nf4" };
+        const GPR_DESCRIPTIONS = { A: "GPR", B: "GPR", C: "GPR", D: "GPR", SP: "Stack pointer", DP: "Data page" };
         const REGISTER_COMPLETIONS = [
             ...Object.keys(REGISTERS).map((r) => ({
                 label: r,
-                info: GPR_INFO[r] || r,
+                info: GPR_DESCRIPTIONS[r] || r,
                 type: "variable",
             })),
             ...Object.keys(FP_REGISTERS).map((r) => {
-                const bits = FP_REGISTERS[r].bits;
-                const fmt = FP_WIDTH_LABELS[bits] || bits + "b";
+                const fmt = FP_FMT_NAMES[FP_REGISTERS[r].fmt] || `${FP_REGISTERS[r].width}b`;
                 return { label: r, info: `FP ${fmt}`, type: "variable" };
             }),
         ];
@@ -334,6 +366,7 @@ export async function initEditor(container, defaultCode) {
             const prefix = word.text.toUpperCase();
             const line = context.state.doc.lineAt(word.from);
             const beforeWord = line.text.slice(0, word.from - line.from);
+            if (beforeWord.includes(";")) return null;
             const isMnemonicPos = /^\s*(\w+\s*:)?\s*$/.test(beforeWord);
 
             if (isMnemonicPos) {

@@ -70,12 +70,12 @@
                 style="border: 1px solid var(--t-border); color: var(--t-dim)"
                 id="speed-select"
             >
-                <option>1 hz</option>
-                <option selected>4 hz</option>
-                <option>8 hz</option>
-                <option>16 hz</option>
-                <option>32 hz</option>
-                <option>64 hz</option>
+                <option value="1">1 hz</option>
+                <option value="4" selected>4 hz</option>
+                <option value="8">8 hz</option>
+                <option value="16">16 hz</option>
+                <option value="32">32 hz</option>
+                <option value="64">64 hz</option>
             </select>
 
             <div class="w-px h-4 mx-1" style="background: var(--t-border)"></div>
@@ -339,9 +339,11 @@
                                 >
                                 <button class="ft act" data-ffmt="hex">hex</button>
                                 <button class="ft" data-ffmt="dec">dec</button>
-                                <button class="ft" data-ffmt="fp32">f32</button>
-                                <button class="ft" data-ffmt="fp16">f16</button>
-                                <button class="ft" data-ffmt="fp8">f8</button>
+                                <button class="ft" data-ffmt="F">F</button>
+                                <button class="ft" data-ffmt="H">H</button>
+                                <button class="ft" data-ffmt="BF">BF</button>
+                                <button class="ft" data-ffmt="O3">O3</button>
+                                <button class="ft" data-ffmt="O2">O2</button>
                             </div>
                         </div>
                         <div class="hw-body" style="padding: var(--s-body-compact-pad); gap: 0">

@@ -42,7 +42,14 @@ function tick() {
         }
     }
     _skipBpOnce = false;
-    const cost = _onStep();
+    let cost;
+    try {
+        cost = _onStep();
+    } catch (e) {
+        console.error("Step error:", e);
+        stopRun();
+        return;
+    }
     if (!cost) {
         stopRun();
         return;

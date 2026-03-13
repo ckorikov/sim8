@@ -71,22 +71,27 @@ function doAssemble(source) {
     errEl.classList.add("hidden");
     errEl.textContent = "";
 
+    cpu.reset();
+    asm.codeLen = 0;
+    asm.labels = {};
+    asm.mapping = {};
+    asm.instrStarts = new Set();
+
     try {
         const result = assemble(source);
         asm.codeLen = result.code.length;
         asm.labels = result.labels;
         asm.mapping = result.mapping;
         asm.instrStarts = new Set(Object.keys(result.mapping).map(Number));
-
-        cpu.reset();
         cpu.load(result.code);
-
         renderLabels();
         renderAll();
         return true;
     } catch (e) {
-        errEl.textContent = e instanceof AsmError ? e.message : "Internal error: " + e.message;
+        errEl.textContent = e instanceof AsmError ? `Line ${e.line}: ${e.message}` : "Internal error: " + e.message;
         errEl.classList.remove("hidden");
+        renderLabels();
+        renderAll();
         return false;
     }
 }
@@ -124,34 +129,8 @@ function stepCPU() {
 
 function resetCPU() {
     if (isRunning()) stopRun();
-    const errEl = document.getElementById("asm-error");
-    errEl.classList.add("hidden");
-    errEl.textContent = "";
-
-    cpu.reset();
-    if (asm.codeLen > 0) {
-        const source = getEditorSource();
-        if (source) {
-            try {
-                const result = assemble(source);
-                cpu.load(result.code);
-                asm.codeLen = result.code.length;
-                asm.labels = result.labels;
-                asm.mapping = result.mapping;
-                asm.instrStarts = new Set(Object.keys(result.mapping).map(Number));
-                renderLabels();
-            } catch (e) {
-                asm.codeLen = 0;
-                asm.labels = {};
-                asm.mapping = {};
-                asm.instrStarts = new Set();
-                errEl.textContent = e instanceof AsmError ? e.message : "Internal error: " + e.message;
-                errEl.classList.remove("hidden");
-            }
-        }
-    }
+    doAssemble(getEditorSource());
     highlightExecLine(-1);
-    renderAll();
 }
 
 // ── Controls wiring ────────────────────────────────────────────

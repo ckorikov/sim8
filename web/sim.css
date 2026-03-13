@@ -26,6 +26,7 @@
     --a-blue: #4488cc;
     --a-orange-a20: rgba(204, 85, 0, 0.2);
     --a-green-a40: rgba(58, 154, 58, 0.4);
+    --t-exec-bg: rgba(204, 85, 0, 0.15);
 
     /* ── Layout sizes (for resizable diagram) ── */
     --s-split: 38%;
@@ -89,6 +90,7 @@
     --a-blue: #3a6090;
     --a-orange-a20: rgba(138, 90, 48, 0.15);
     --a-green-a40: rgba(58, 122, 80, 0.3);
+    --t-exec-bg: rgba(138, 90, 48, 0.18);
 }
 
 body {
@@ -174,7 +176,10 @@ body {
     font-size: var(--s-mem-cell-font);
     color: var(--t-dim);
     border: 1px solid transparent;
-    transition: all 0.1s;
+    transition:
+        border-color 0.1s,
+        color 0.1s,
+        background 0.1s;
 }
 .mem-cell:hover {
     border-color: var(--a-orange);
@@ -423,7 +428,7 @@ body {
     font-weight: 500;
 }
 .cm-exec-line {
-    background: rgba(204, 85, 0, 0.15) !important;
+    background: var(--t-exec-bg) !important;
 }
 .cm-debug-gutter {
     width: 16px;
@@ -443,9 +448,6 @@ body {
     font-size: 11px;
     filter: brightness(1.4);
     line-height: 1.5;
-}
-:root.light .cm-exec-line {
-    background: rgba(138, 90, 48, 0.18) !important;
 }
 
 /* ── Autocomplete popup ── */
@@ -512,7 +514,6 @@ body {
     color: var(--t-mid);
     font-size: 10px;
     line-height: 1.6;
-    font-family: "JetBrains Mono", monospace;
 }
 :root.light .cm-tooltip-autocomplete {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
