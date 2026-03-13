@@ -10,16 +10,16 @@ const REG_NAMES = [
     {
         F: ["FA"],
         H: ["FHB", "FHA"],
-        BF: ["bf16.1", "bf16.0"],
+        BF: ["FHB", "FHA"],
         O3: ["FQD", "FQC", "FQB", "FQA"],
-        O2: ["e5m2.3", "e5m2.2", "e5m2.1", "e5m2.0"],
+        O2: ["FQD", "FQC", "FQB", "FQA"],
     },
     {
         F: ["FB"],
         H: ["FHD", "FHC"],
-        BF: ["bf16.1", "bf16.0"],
+        BF: ["FHD", "FHC"],
         O3: ["FQH", "FQG", "FQF", "FQE"],
-        O2: ["e5m2.3", "e5m2.2", "e5m2.1", "e5m2.0"],
+        O2: ["FQH", "FQG", "FQF", "FQE"],
     },
 ];
 
