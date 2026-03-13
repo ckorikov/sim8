@@ -2,11 +2,23 @@
 
 from __future__ import annotations
 
+from pysim8.fp_formats import (
+    decode_bfloat16,
+    decode_float16,
+    decode_float32,
+    decode_ofp8_e4m3,
+    decode_ofp8_e5m2,
+)
 from pysim8.isa import (
     BY_CODE,
     BY_CODE_FP,
     FP_CONTROL_MNEMONICS,
     FP_REGISTERS,
+    FP_FMT_BF,
+    FP_FMT_F,
+    FP_FMT_H,
+    FP_FMT_O2,
+    FP_FMT_O3,
     OpType,
     Reg,
     decode_fpm,
@@ -34,6 +46,24 @@ _FPM_TO_REG = _build_fpm_to_reg(FP_REGISTERS)
 
 # fmt code → shortest suffix name
 _FMT_TO_SUFFIX: dict[int, str] = {0: "F", 1: "H", 2: "BF", 3: "O3", 4: "O2"}
+
+
+def _decode_fp_imm(raw: int, fmt: int, width: int) -> str:
+    """Decode a raw FP immediate to a float literal with suffix."""
+    suffix = _FMT_TO_SUFFIX.get(fmt, "?")
+    if width == 1:
+        v = decode_ofp8_e4m3(raw) if fmt == FP_FMT_O3 else decode_ofp8_e5m2(raw)
+    else:
+        b2 = bytes([raw & 0xFF, (raw >> 8) & 0xFF])
+        if fmt == FP_FMT_H:
+            v = decode_float16(b2)
+        elif fmt == FP_FMT_BF:
+            v = decode_bfloat16(b2)
+        elif fmt == FP_FMT_F:
+            v = decode_float32(raw.to_bytes(4, "little"))
+        else:
+            return f"{raw}_{suffix}"
+    return f"{v:g}_{suffix}"
 
 
 def _fmt_regaddr(val: int) -> str:
@@ -68,71 +98,47 @@ def _fmt_fpm(fpm: int) -> tuple[str, int]:
     return name, fmt
 
 
+def _build_fp_label(mnemonic: str, fp_decoded: list[tuple[str, int]]) -> str:
+    if not fp_decoded:
+        return mnemonic
+    fmts = [_FMT_TO_SUFFIX.get(f, f"?{f}") for _, f in fp_decoded]
+    if len(fp_decoded) == 2 and fmts[0] != fmts[1]:
+        return f"{mnemonic}.{fmts[0]}.{fmts[1]}"
+    return f"{mnemonic}.{fmts[0]}"
+
+
 def _disasm_fp_insn(opcode: int, raw_operands: tuple[int, ...]) -> str | None:
     """Disassemble one FP instruction. Returns None if opcode not FP."""
     defn = BY_CODE_FP.get(opcode)
     if defn is None:
         return None
 
-    sig = defn.sig
     mnemonic = defn.mnemonic
-
-    # Control instructions (FSTAT, FCFG, FSCFG, FCLR): no FPM reordering
     if mnemonic in FP_CONTROL_MNEMONICS:
-        parts = [_fmt_operand(ot, val) for ot, val in zip(sig, raw_operands)]
-        if parts:
-            return f"{mnemonic} {', '.join(parts)}"
-        return mnemonic
+        parts = [_fmt_operand(ot, val) for ot, val in zip(defn.sig, raw_operands)]
+        return f"{mnemonic} {', '.join(parts)}" if parts else mnemonic
 
-    # Count FP_REG operands to split raw bytes: [FPM...][non-FP...]
-    fp_indices = [i for i, ot in enumerate(sig) if ot == OpType.FP_REG]
-    fp_count = len(fp_indices)
-
-    # Split raw operand bytes
-    fpm_bytes = raw_operands[:fp_count]
-    non_fp_bytes = raw_operands[fp_count:]
-
-    # Decode FPM bytes
-    fp_decoded: list[tuple[str, int]] = [_fmt_fpm(b) for b in fpm_bytes]
-
-    # Build output operands in sig order
-    parts: list[str] = []
+    fp_count = sum(1 for ot in defn.sig if ot == OpType.FP_REG)
+    fp_decoded: list[tuple[str, int]] = [_fmt_fpm(b) for b in raw_operands[:fp_count]]
     fp_iter = iter(fp_decoded)
-    non_fp_iter = iter(non_fp_bytes)
+    non_fp_iter = iter(raw_operands[fp_count:])
     fmt_code = -1
+    parts = []
 
-    for ot in sig:
+    for ot in defn.sig:
         if ot == OpType.FP_REG:
             name, fmt_code = next(fp_iter)
             parts.append(name)
         elif ot == OpType.FP_IMM8:
-            imm = next(non_fp_iter)
-            parts.append(str(imm))
+            parts.append(_decode_fp_imm(next(non_fp_iter), fmt_code, 1))
         elif ot == OpType.FP_IMM16:
-            lo = next(non_fp_iter)
-            hi = next(non_fp_iter)
-            parts.append(str(lo | (hi << 8)))
+            lo, hi = next(non_fp_iter), next(non_fp_iter)
+            parts.append(_decode_fp_imm(lo | (hi << 8), fmt_code, 2))
         else:
-            val = next(non_fp_iter)
-            parts.append(_fmt_operand(ot, val))
+            parts.append(_fmt_operand(ot, next(non_fp_iter)))
 
-    # Determine suffix from first FPM byte
-    if fp_decoded:
-        first_fmt = fp_decoded[0][1]
-        suffix = _FMT_TO_SUFFIX.get(first_fmt, f"?{first_fmt}")
-        # FCVT: dual suffix if formats differ
-        if len(fp_decoded) == 2 and fp_decoded[0][1] != fp_decoded[1][1]:
-            dst_suf = _FMT_TO_SUFFIX.get(fp_decoded[0][1], "?")
-            src_suf = _FMT_TO_SUFFIX.get(fp_decoded[1][1], "?")
-            label = f"{mnemonic}.{dst_suf}.{src_suf}"
-        else:
-            label = f"{mnemonic}.{suffix}"
-    else:
-        label = mnemonic
-
-    if parts:
-        return f"{label} {', '.join(parts)}"
-    return label
+    label = _build_fp_label(mnemonic, fp_decoded)
+    return f"{label} {', '.join(parts)}" if parts else label
 
 
 def disasm_insn(opcode: int, operands: tuple[int, ...] = ()) -> str:

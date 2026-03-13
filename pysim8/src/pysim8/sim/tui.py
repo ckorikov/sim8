@@ -18,6 +18,8 @@ from rich.table import Table
 from rich.text import Text
 
 from pysim8.disasm import disasm_insn
+from pysim8.fp_formats import decode_bfloat16, decode_float16, decode_float32
+from pysim8.isa import BY_CODE_FP, FP_FMT_BF, FP_FMT_F, FP_FMT_H, OpType, decode_fpm
 
 from .cpu import CPU
 from .memory import IO_START, PAGE_SIZE
@@ -62,6 +64,25 @@ _COLORS: dict[str, str] = {
     "PUSH": "magenta",
     "POP": "magenta",
     "HLT": "dim",
+    # FP instructions
+    "FMOV": "cyan",
+    "FADD": "green",
+    "FSUB": "green",
+    "FMUL": "green",
+    "FDIV": "green",
+    "FCMP": "green",
+    "FABS": "green",
+    "FNEG": "green",
+    "FSQRT": "green",
+    "FMADD": "green",
+    "FCVT": "bright_cyan",
+    "FITOF": "bright_cyan",
+    "FFTOI": "bright_cyan",
+    "FCLASS": "bright_cyan",
+    "FSTAT": "yellow",
+    "FCFG": "yellow",
+    "FSCFG": "yellow",
+    "FCLR": "dim",
 }
 
 _STATE_STYLES: dict[CpuState, str] = {
@@ -74,20 +95,58 @@ _STATE_STYLES: dict[CpuState, str] = {
 # ── Formatting helpers ────────────────────────────────────────────────
 
 
+_FP_PHYS_REGS = frozenset({"FA", "FB"})
+
+
 def _hex(val: int | bool) -> str:
     if isinstance(val, bool):
         return str(int(val))
     return f"{val:02X}"
 
 
-def _fmt_changes(changes: dict[str, int | bool]) -> str:
-    return " ".join(f"{k}←{_hex(v)}" for k, v in changes.items() if k != "IP")
+def _fp_fmt_from_event(event: TraceEvent) -> int | None:
+    """Return FP format code from first FPM byte of an FP instruction, or None."""
+    defn = BY_CODE_FP.get(event.opcode)
+    if defn is None or not any(ot == OpType.FP_REG for ot in defn.sig):
+        return None
+    _, _, fmt = decode_fpm(event.operands[0])
+    return fmt
+
+
+def _fmt_fp_reg(bits: int, fmt: int) -> str:
+    """Decode a 32-bit FP register as readable value(s) for the given format."""
+    if fmt == FP_FMT_F:
+        return f"{decode_float32(bits.to_bytes(4, 'little')):g}_F"
+    if fmt in (FP_FMT_H, FP_FMT_BF):
+        decode = decode_float16 if fmt == FP_FMT_H else decode_bfloat16
+        suf = "H" if fmt == FP_FMT_H else "BF"
+        lo, hi = bits & 0xFFFF, (bits >> 16) & 0xFFFF
+        lo_v = decode(bytes([lo & 0xFF, lo >> 8]))
+        hi_v = decode(bytes([hi & 0xFF, hi >> 8]))
+        if hi_v == 0.0:
+            return f"{lo_v:g}_{suf}"
+        if lo_v == 0.0:
+            return f"{hi_v:g}_{suf}"
+        return f"{lo_v:g}|{hi_v:g}_{suf}"
+    return f"{bits:08X}"
+
+
+def _fmt_changes(changes: dict[str, int | bool], fp_fmt: int | None = None) -> str:
+    parts = []
+    for k, v in changes.items():
+        if k == "IP":
+            continue
+        if k in _FP_PHYS_REGS and fp_fmt is not None and isinstance(v, int):
+            parts.append(f"{k}←{_fmt_fp_reg(v, fp_fmt)}")
+        else:
+            parts.append(f"{k}←{_hex(v)}")
+    return " ".join(parts)
 
 
 def _fmt_trace(event: TraceEvent) -> Text:
     asm = disasm_insn(event.opcode, event.operands)
-    changes = _fmt_changes(event.changes)
-    mnemonic = asm.split()[0] if asm else ""
+    changes = _fmt_changes(event.changes, _fp_fmt_from_event(event))
+    mnemonic = asm.split()[0].split(".")[0] if asm else ""
     color = _COLORS.get(mnemonic, "white")
 
     text = Text()

@@ -5,9 +5,18 @@ import pytest
 from pysim8.asm import assemble
 from pysim8.disasm import disasm, disasm_insn
 from pysim8.isa import (
-    ISA, ISA_FP, InstrDef, OpType, Op,
-    FP_FMT_F, FP_FMT_H, FP_FMT_BF, FP_FMT_O3, FP_FMT_O2,
-    FP_CONTROL_MNEMONICS, encode_fpm,
+    ISA,
+    ISA_FP,
+    InstrDef,
+    OpType,
+    Op,
+    FP_FMT_F,
+    FP_FMT_H,
+    FP_FMT_BF,
+    FP_FMT_O3,
+    FP_FMT_O2,
+    FP_CONTROL_MNEMONICS,
+    encode_fpm,
 )
 
 # Sample operand values per (position, operand_type).
@@ -42,9 +51,8 @@ def test_roundtrip(defn: InstrDef) -> None:
     text = disasm_insn(int(defn.op), operands)
     result = assemble(text + "\nHLT")
 
-    assert result.code[:defn.size] == original, (
-        f"{defn.op.name}: disasm={text!r}, "
-        f"expected={original}, got={result.code[:defn.size]}"
+    assert result.code[: defn.size] == original, (
+        f"{defn.op.name}: disasm={text!r}, expected={original}, got={result.code[: defn.size]}"
     )
 
 
@@ -81,6 +89,7 @@ def test_disasm_insn_unknown() -> None:
 
 def test_fmt_operand_unknown_type() -> None:
     from pysim8.disasm.core import _fmt_operand
+
     with pytest.raises(ValueError, match="unknown operand type"):
         _fmt_operand(OpType.FP_REG, 0)
 
@@ -88,13 +97,16 @@ def test_fmt_operand_unknown_type() -> None:
 # ── REGADDR encoding roundtrip ───────────────────────────────────────
 
 
-@pytest.mark.parametrize("reg,offset,expected", [
-    (0, 0, "[A]"),
-    (1, 3, "[B+3]"),
-    (2, -2, "[C-2]"),
-    (3, 15, "[D+15]"),
-    (0, -16, "[A-16]"),
-])
+@pytest.mark.parametrize(
+    "reg,offset,expected",
+    [
+        (0, 0, "[A]"),
+        (1, 3, "[B+3]"),
+        (2, -2, "[C-2]"),
+        (3, 15, "[D+15]"),
+        (0, -16, "[A-16]"),
+    ],
+)
 def test_regaddr_disasm(reg: int, offset: int, expected: str) -> None:
     offset_u = offset if offset >= 0 else 32 + offset
     encoded = (offset_u << 3) | reg
@@ -201,12 +213,12 @@ class TestFpDisasm:
     def test_fmov_imm8(self) -> None:
         fpm = encode_fpm(0, 0, FP_FMT_O3)
         text = disasm_insn(int(Op.FMOV_FP_IMM8), (fpm, 42))
-        assert text == "FMOV.O3 FQA, 42"
+        assert text == "FMOV.O3 FQA, 0.3125_O3"
 
     def test_fmov_imm16(self) -> None:
         fpm = encode_fpm(0, 0, FP_FMT_H)
         text = disasm_insn(int(Op.FMOV_FP_IMM16), (fpm, 0x00, 0x3C))
-        assert text == "FMOV.H FHA, 15360"
+        assert text == "FMOV.H FHA, 1_H"
 
     def test_fmadd(self) -> None:
         dst = encode_fpm(0, 0, FP_FMT_H)
@@ -239,8 +251,11 @@ class TestFpDisasm:
     def test_all_fp_formats(self) -> None:
         """Every FP format suffix is recognized."""
         for fmt, suffix in [
-            (FP_FMT_F, "F"), (FP_FMT_H, "H"), (FP_FMT_BF, "BF"),
-            (FP_FMT_O3, "O3"), (FP_FMT_O2, "O2"),
+            (FP_FMT_F, "F"),
+            (FP_FMT_H, "H"),
+            (FP_FMT_BF, "BF"),
+            (FP_FMT_O3, "O3"),
+            (FP_FMT_O2, "O2"),
         ]:
             fpm = encode_fpm(0, 0, fmt)
             text = disasm_insn(int(Op.FABS_FP), (fpm,))
@@ -259,15 +274,17 @@ class TestBuildFpmToReg:
     def test_shorter_name_wins(self) -> None:
         """When two names share a key, the shorter one wins."""
         from pysim8.disasm.core import _build_fpm_to_reg
+
         regs = {
             "LONGER": (0, 0, 0, 32),
-            "SH":     (0, 0, 0, 32),
+            "SH": (0, 0, 0, 32),
         }
         result = _build_fpm_to_reg(regs)
         assert result[(0, 0, 0)] == "SH"
 
     def test_first_seen_kept_if_same_length(self) -> None:
         from pysim8.disasm.core import _build_fpm_to_reg
+
         regs = {
             "AA": (0, 0, 1, 16),
             "BB": (0, 0, 1, 16),
@@ -277,6 +294,7 @@ class TestBuildFpmToReg:
 
     def test_unique_keys(self) -> None:
         from pysim8.disasm.core import _build_fpm_to_reg
+
         regs = {
             "X": (0, 0, 0, 8),
             "Y": (1, 0, 0, 8),
@@ -293,6 +311,7 @@ class TestDisasmFpEdgeCoverage:
         """FP data instr with zero FP_REG operands → label without suffix."""
         from pysim8.disasm.core import _disasm_fp_insn
         from pysim8.isa import BY_CODE_FP, InstrDef, Op, OpType
+
         fake = InstrDef(Op.FCLR, "FTEST", (OpType.MEM,), cost=1)
         saved = BY_CODE_FP.get(int(Op.FCLR))
         BY_CODE_FP[int(Op.FCLR)] = fake
@@ -309,6 +328,7 @@ class TestDisasmFpEdgeCoverage:
         """FP data instr with zero operands → bare label."""
         from pysim8.disasm.core import _disasm_fp_insn
         from pysim8.isa import BY_CODE_FP, InstrDef, Op, OpType
+
         fake = InstrDef(Op.FCLR, "FBARE", (), cost=1)
         saved = BY_CODE_FP.get(int(Op.FCLR))
         BY_CODE_FP[int(Op.FCLR)] = fake
