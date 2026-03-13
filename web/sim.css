@@ -528,3 +528,50 @@ body {
     max-height: 60px;
     overflow-y: auto;
 }
+
+/* ── Memory cell data inspector tooltip ── */
+#mem-tooltip {
+    display: none;
+    position: fixed;
+    z-index: 9999;
+    pointer-events: none;
+    background: var(--t-surface);
+    border: 1px solid var(--t-border);
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-family: var(--font-mono, monospace);
+    font-size: 10px;
+    color: var(--t-text);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    min-width: 150px;
+    line-height: 1.6;
+}
+.mtt-hdr {
+    color: var(--a-orange);
+    font-size: 11px;
+    font-weight: bold;
+    margin-bottom: 4px;
+    padding-bottom: 3px;
+    border-bottom: 1px solid var(--t-border);
+}
+.mtt-sep {
+    height: 1px;
+    background: var(--t-border);
+    margin: 3px 0;
+}
+.mtt-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+}
+.mtt-l {
+    color: var(--t-dim);
+    min-width: 44px;
+}
+.mtt-v {
+    color: var(--t-text);
+    text-align: right;
+}
+.mtt-d {
+    color: var(--t-dim);
+}
