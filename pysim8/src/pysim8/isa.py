@@ -36,6 +36,7 @@ __all__ = [
     "FP_FMT_WIDTH",
     "FP_FMT_MAX_POS",
     "FP_WIDTH_REGS",
+    "FORBIDDEN_FP_LABEL_NAMES",
     "encode_fpm",
     "decode_fpm",
     "validate_fpm",
@@ -390,6 +391,14 @@ FP_WIDTH_REGS: dict[int, frozenset[str]] = {
         {"FOA", "FOB", "FOC", "FOD", "FOE", "FOF", "FOG", "FOH", "FOI", "FOJ", "FOK", "FOL", "FOM", "FON", "FOO", "FOP"}
     ),
 }
+
+
+# FP names forbidden as labels: real v2 registers + future-reserved names (spec §5.3).
+# FC/FD = phys 2/3 full; FHE-FHH = phys 2/3 half; FQI-FQP = phys 2/3 quarter.
+FORBIDDEN_FP_LABEL_NAMES: frozenset[str] = frozenset(
+    FP_REGISTERS.keys()
+    | {"FC", "FD", "FHE", "FHF", "FHG", "FHH", "FQI", "FQJ", "FQK", "FQL", "FQM", "FQN", "FQO", "FQP"}
+)
 
 
 def encode_fpm(phys: int, pos: int, fmt: int) -> int:

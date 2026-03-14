@@ -33,11 +33,14 @@ def main(
     """
     if source == "-":
         text = click.get_text_stream("stdin").read()
+        base_path = Path.cwd()
     else:
-        text = Path(source).read_text()
+        src_path = Path(source).resolve()
+        text = src_path.read_text()
+        base_path = src_path.parent
 
     try:
-        result = assemble(text, arch=arch)
+        result = assemble(text, arch=arch, base_path=base_path)
     except AssemblerError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)

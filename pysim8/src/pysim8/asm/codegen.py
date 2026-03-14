@@ -1,9 +1,11 @@
-"""Two-pass assembler: parse → encode → resolve labels."""
+"""Two-pass assembler (pass 1: encode, pass 2: resolve labels). Called after preprocessing (@include resolution)."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+
+from pathlib import Path
 
 from pysim8.asm.parser import (
     AsmError,
@@ -21,10 +23,13 @@ from pysim8.asm.parser import (
     ParseError,
     parse_lines,
 )
+from pysim8.asm.preprocess import PreprocessError, SourceLoc, preprocess
+from pysim8.fp_formats import FpExceptions, float_to_bytes
 from pysim8.isa import (
     BY_MNEMONIC,
     BY_MNEMONIC_FP,
     FP_CONTROL_MNEMONICS,
+    FP_FMT_O3,
     FP_FMT_WIDTH,
     FP_SUFFIX_TO_FMT,
     FP_WIDTH_REGS,
@@ -51,7 +56,7 @@ class AssembleResult:
 
     code: list[int] = field(default_factory=list)
     labels: dict[str, int] = field(default_factory=dict)
-    mapping: dict[int, int] = field(default_factory=dict)
+    mapping: dict[int, SourceLoc] = field(default_factory=dict)
 
 
 # ── Operand matching and encoding ──────────────────────────────────
@@ -79,10 +84,6 @@ def _operand_matches(op: Operand, ot: OpType) -> bool:
     return False
 
 
-def _encode_regaddr(ra: OpRegAddr) -> int:
-    return encode_regaddr(ra.reg_code, ra.offset)
-
-
 def _encode_operand(op: Operand) -> int:
     """Encode one operand into a single byte."""
     match op:
@@ -93,7 +94,7 @@ def _encode_operand(op: Operand) -> int:
         case OpAddr(value=v):
             return v
         case OpRegAddr() as ra:
-            return _encode_regaddr(ra)
+            return encode_regaddr(ra.reg_code, ra.offset)
         case OpLabel():
             return 0  # placeholder for pass 2
         case OpAddrLabel():
@@ -144,12 +145,11 @@ def _encode_db_operand(
         result.extend(ord(c) for c in op.text)
         return
     if isinstance(op, OpFloat):
-        from pysim8.fp_formats import float_to_bytes
-
-        data, _exc = float_to_bytes(op.value, op.fmt)
+        data, exc = float_to_bytes(op.value, op.fmt)
+        _check_e4m3_range(exc, op.fmt, line)
         result.extend(data)
         return
-    raise AssemblerError(f"DB does not support this operand: {op!r}", line)
+    raise AssemblerError("DB does not support this operand", line)
 
 
 def _encode_db(operands: list[Operand], line: int) -> list[int]:
@@ -171,6 +171,11 @@ def _validate_fp_suffix(suffix: str, line: int) -> int:
     return FP_SUFFIX_TO_FMT[upper]
 
 
+def _check_e4m3_range(exc: FpExceptions, fmt: int, line: int) -> None:
+    if exc.overflow and fmt == FP_FMT_O3:
+        raise AssemblerError("Float value out of range for format E4M3", line)
+
+
 def _validate_fp_reg_width(reg: OpFpReg, fmt: int, line: int) -> None:
     """Check that register width matches format width."""
     fmt_width = FP_FMT_WIDTH[fmt]
@@ -180,11 +185,6 @@ def _validate_fp_reg_width(reg: OpFpReg, fmt: int, line: int) -> None:
             "FP format suffix does not match register width",
             line,
         )
-
-
-def _find_fp_insn(mnemonic: str, operands: list[Operand], line: int) -> InstrDef:
-    """Find matching FP InstrDef by mnemonic and operands."""
-    return _find_insn(mnemonic, operands, line, table=BY_MNEMONIC_FP)
 
 
 def _encode_fp_instruction(
@@ -263,15 +263,13 @@ def _encode_fmov_imm(
     if fmt_width == 4:
         raise AssemblerError("FP immediate not supported for 4-bit formats", line)
 
-    # Check literal suffix matches instruction suffix
     if fp_imm.fmt is not None and fp_imm.fmt != dst_fmt:
         raise AssemblerError("FP immediate suffix mismatch", line)
 
     _validate_fp_reg_width(dst_reg, dst_fmt, line)
 
-    from pysim8.fp_formats import float_to_bytes
-
-    data, _exc = float_to_bytes(fp_imm.value, dst_fmt)
+    data, exc = float_to_bytes(fp_imm.value, dst_fmt)
+    _check_e4m3_range(exc, dst_fmt, line)
 
     fpm_byte = encode_fpm(dst_reg.phys, dst_reg.pos, dst_fmt)
 
@@ -301,7 +299,7 @@ def _encode_instruction(
         if mnemonic == "FMOV" and len(operands) == 2 and isinstance(operands[1], OpFpImm):
             return _encode_fmov_imm(operands, dst_suffix, line)
 
-        instr = _find_fp_insn(mnemonic, operands, line)
+        instr = _find_insn(mnemonic, operands, line, table=BY_MNEMONIC_FP)
         if mnemonic in FP_CONTROL_MNEMONICS:
             # Control: no FPM, just opcode + operand bytes
             return [int(instr.op)] + [_encode_operand(op) for op in operands]
@@ -311,30 +309,44 @@ def _encode_instruction(
     return [int(instr.op)] + [_encode_operand(op) for op in operands]
 
 
-# ── Two-pass assembly ───────────────────────────────────────────────
+# ── Two-pass assembly (pass 1 + pass 2) ─────────────────────────────
 
 
-def assemble(source: str, arch: int = 1) -> AssembleResult:
+def assemble(source: str, arch: int = 1, base_path: Path | None = None) -> AssembleResult:
     """Assemble source code into machine code.
+
+    Args:
+        source: Assembly source text.
+        arch: Architecture version (1=integer-only, 2=with FPU). Default 1.
+        base_path: Directory for resolving @include paths.
+            Pass None when assembling from an in-memory string — @include raises an error.
 
     Returns AssembleResult with:
         code — machine code bytes
         labels — label name → address
-        mapping — code position → source line
+        mapping — code position → (filename, line_no); filename=None for root file
     """
+    # ── Phase 0: preprocessing (@include resolution) ─
     try:
-        parsed = parse_lines(source, arch=arch)
+        prep = preprocess(source, base_path)
+    except PreprocessError as e:
+        raise AssemblerError(e.message, e.line, filename=e.filename) from e
+
+    try:
+        parsed = parse_lines(prep.source, arch=arch)
     except ParseError as e:
-        raise AssemblerError(e.message, e.line) from e
+        filename, orig_line = prep.line_map.get(e.line, (None, e.line))
+        raise AssemblerError(e.message, orig_line, filename=filename) from e
 
     # ── Pass 1: generate code, collect labels ───────
     code: list[int] = []
     labels: dict[str, int] = {}
-    mapping: dict[int, int] = {}
-    label_patches: list[tuple[int, str, int]] = []
+    mapping: dict[int, SourceLoc] = {}
+    label_patches: list[tuple[int, str, SourceLoc]] = []
 
     for pline in parsed:
         pos = len(code)
+        loc = prep.line_map.get(pline.line_no, (None, pline.line_no))
 
         if pline.label is not None:
             labels[pline.label] = pos
@@ -344,49 +356,44 @@ def assemble(source: str, arch: int = 1) -> AssembleResult:
 
         operands = pline.operands if pline.operands is not None else []
 
-        encoded = _encode_instruction(
-            pline.mnemonic,
-            operands,
-            pline.line_no,
-            dst_suffix=pline.dst_suffix,
-            src_suffix=pline.src_suffix,
-            arch=arch,
-        )
+        try:
+            encoded = _encode_instruction(
+                pline.mnemonic,
+                operands,
+                pline.line_no,
+                dst_suffix=pline.dst_suffix,
+                src_suffix=pline.src_suffix,
+                arch=arch,
+            )
+        except AssemblerError as e:
+            filename, orig_line = loc
+            raise AssemblerError(e.message, orig_line, filename=filename) from e
 
         if pline.mnemonic != "DB":
-            mapping[pos] = pline.line_no
+            mapping[pos] = loc
 
-        if operands:
-            for i, op in enumerate(operands):
-                if isinstance(op, (OpLabel, OpAddrLabel)):
-                    # For FP data instructions, FPM bytes are
-                    # reordered before non-FP bytes. Calculate
-                    # the correct position of the label byte.
-                    is_fp_data = (
-                        arch >= 2 and pline.mnemonic in MNEMONICS_FP and pline.mnemonic not in FP_CONTROL_MNEMONICS
-                    )
-                    if is_fp_data:
-                        fp_count = sum(1 for o in operands if isinstance(o, OpFpReg))
-                        non_fp_idx = sum(1 for o in operands[:i] if not isinstance(o, OpFpReg))
-                        label_patches.append(
-                            (
-                                pos + 1 + fp_count + non_fp_idx,
-                                op.name,
-                                pline.line_no,
-                            )
-                        )
-                    else:
-                        label_patches.append((pos + 1 + i, op.name, pline.line_no))
+        for i, op in enumerate(operands):
+            if isinstance(op, (OpLabel, OpAddrLabel)):
+                # For FP data instructions, FPM bytes are
+                # reordered before non-FP bytes. Calculate
+                # the correct position of the label byte.
+                is_fp_data = arch >= 2 and pline.mnemonic in MNEMONICS_FP and pline.mnemonic not in FP_CONTROL_MNEMONICS
+                if is_fp_data:
+                    fp_count = sum(1 for o in operands if isinstance(o, OpFpReg))
+                    non_fp_idx = sum(1 for o in operands[:i] if not isinstance(o, OpFpReg))
+                    label_patches.append((pos + 1 + fp_count + non_fp_idx, op.name, loc))
+                else:
+                    label_patches.append((pos + 1 + i, op.name, loc))
 
         code.extend(encoded)
 
     # ── Pass 2: resolve labels ──────────────────────
-    for patch_pos, label_name, line_no in label_patches:
+    for patch_pos, label_name, (filename, orig_line) in label_patches:
         if label_name not in labels:
-            raise AssemblerError(f"Undefined label: {label_name}", line_no)
+            raise AssemblerError(f"Undefined label: {label_name}", orig_line, filename=filename)
         addr = labels[label_name]
         if addr < 0 or addr > 255:
-            raise AssemblerError(f"{addr} must have a value between 0-255", line_no)
+            raise AssemblerError(f"{addr} must have a value between 0-255", orig_line, filename=filename)
         code[patch_pos] = addr
 
     return AssembleResult(code=code, labels=labels, mapping=mapping)

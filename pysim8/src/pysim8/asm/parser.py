@@ -13,7 +13,12 @@ from dataclasses import dataclass
 
 from pysim8.isa import (
     FP_CONTROL_MNEMONICS,
+    FP_DB_SUFFIX_TO_FMT,
+    FP_FMT_F,
+    FP_FMT_N1,
+    FP_FMT_N2,
     FP_REGISTERS,
+    FORBIDDEN_FP_LABEL_NAMES,
     MNEMONIC_ALIASES,
     MNEMONICS,
     MNEMONICS_FP,
@@ -44,10 +49,12 @@ __all__ = [
 class AsmError(Exception):
     """Base error for all assembly-related errors."""
 
-    def __init__(self, message: str, line: int) -> None:
+    def __init__(self, message: str, line: int, filename: str | None = None) -> None:
         self.message = message
         self.line = line
-        super().__init__(f"Line {line}: {message}")
+        self.filename = filename
+        loc = f"{filename}:{line}" if filename else f"line {line}"
+        super().__init__(f"{loc}: {message}")
 
 
 class ParseError(AsmError):
@@ -212,7 +219,7 @@ _RE_REG_OFFSET = re.compile(r"^([A-Za-z]+)\s*([+-])\s*(\d+)$")
 _RE_REG_ONLY = re.compile(r"^([A-Za-z]+)$")
 
 
-def _parse_bracket_operand(inner: str, line: int) -> OpAddr | OpRegAddr:
+def _parse_bracket_operand(inner: str, line: int) -> OpAddr | OpRegAddr | OpAddrLabel:
     """Parse content inside brackets: [addr], [reg], [reg±offset]."""
     inner = inner.strip()
 
@@ -287,49 +294,51 @@ def _try_const(token: str, line: int) -> Operand | None:
     return None
 
 
-def _resolve_fp_imm_suffix(suffix_str: str | None, line: int) -> int | None:
-    """Resolve FP immediate literal suffix to fmt code (None if no suffix)."""
-    if suffix_str is None:
-        return None
-    from pysim8.isa import FP_DB_SUFFIX_TO_FMT
-
-    suffix = suffix_str[1:].upper()  # strip leading _
-    if suffix not in FP_DB_SUFFIX_TO_FMT:
-        raise ParseError("Invalid float literal", line)
-    return FP_DB_SUFFIX_TO_FMT[suffix]
+_RE_FLOAT = re.compile(r"^([+-]?)(\d+\.\d*|\.\d+)([eE][+-]?\d+)?(_\w+)?$")
+_RE_FLOAT_SPECIAL = re.compile(r"^([+-]?)(inf|nan)(_\w+)?$", re.IGNORECASE)
 
 
-def _try_fp_imm(token: str, line: int) -> Operand | None:
-    """Try to parse FP immediate literal: 1.5, 1.5_o3, inf, nan_h."""
+def _match_float_token(token: str, line: int) -> tuple[float, str | None] | None:
+    """Match a float token → (value, suffix_str), or None if not a float."""
     m = _RE_FLOAT_SPECIAL.match(token)
     if m:
-        sign_str = m.group(1)
-        name = m.group(2)
-        suffix_str = m.group(3)
-        fmt = _resolve_fp_imm_suffix(suffix_str, line)
+        sign_str, name, suffix_str = m.group(1), m.group(2), m.group(3)
         if name.lower() == "inf":
             val = float("-inf") if sign_str == "-" else float("inf")
         else:
             val = float("nan")
             if sign_str == "-":
                 val = -val
-        return OpFpImm(val, fmt)
+        return val, suffix_str
 
     m = _RE_FLOAT.match(token)
     if m:
-        sign_str = m.group(1)
-        num = m.group(2)
-        exp = m.group(3)
-        suffix_str = m.group(4)
-        fmt = _resolve_fp_imm_suffix(suffix_str, line)
-        text = (sign_str or "") + num + (exp or "")
+        sign_str, num, exp, suffix_str = m.group(1), m.group(2), m.group(3), m.group(4)
         try:
-            val = float(text)
+            val = float((sign_str or "") + num + (exp or ""))
         except ValueError:
             raise ParseError("Invalid float literal", line)
-        return OpFpImm(val, fmt)
+        return val, suffix_str
 
     return None
+
+
+def _resolve_fp_imm_suffix(suffix_str: str | None, line: int) -> int | None:
+    """Resolve FP immediate literal suffix to fmt code (None if no suffix)."""
+    if suffix_str is None:
+        return None
+    suffix = suffix_str[1:].upper()
+    if suffix not in FP_DB_SUFFIX_TO_FMT:
+        raise ParseError("Invalid float literal", line)
+    return FP_DB_SUFFIX_TO_FMT[suffix]
+
+
+def _try_fp_imm(token: str, line: int) -> Operand | None:
+    result = _match_float_token(token, line)
+    if result is None:
+        return None
+    val, suffix_str = result
+    return OpFpImm(val, _resolve_fp_imm_suffix(suffix_str, line))
 
 
 def _try_label(token: str, line: int) -> Operand | None:
@@ -365,17 +374,12 @@ def _parse_operand(token: str, line: int) -> Operand:
 
 # ── Float literal parsing ──────────────────────────────────────────
 
-_RE_FLOAT = re.compile(r"^([+-]?)(\d+\.\d*|\.\d+)([eE][+-]?\d+)?(_\w+)?$")
-_RE_FLOAT_SPECIAL = re.compile(r"^([+-]?)(inf|nan)(_\w+)?$", re.IGNORECASE)
-
 
 def _resolve_db_float_suffix(suffix_str: str | None, line: int) -> int:
     """Resolve DB float suffix to format code. Default is float32."""
-    from pysim8.isa import FP_DB_SUFFIX_TO_FMT, FP_FMT_F, FP_FMT_N1, FP_FMT_N2
-
     if suffix_str is None:
-        return FP_FMT_F  # default float32
-    suffix = suffix_str[1:].upper()  # strip leading _
+        return FP_FMT_F
+    suffix = suffix_str[1:].upper()
     if suffix not in FP_DB_SUFFIX_TO_FMT:
         raise ParseError("Invalid float literal", line)
     fmt = FP_DB_SUFFIX_TO_FMT[suffix]
@@ -385,38 +389,11 @@ def _resolve_db_float_suffix(suffix_str: str | None, line: int) -> int:
 
 
 def _parse_float_literal(token: str, line: int) -> OpFloat | None:
-    """Try to parse a float literal: 1.4, 1.4_h, inf_f, nan_h."""
-    # Try special values first
-    m = _RE_FLOAT_SPECIAL.match(token)
-    if m:
-        sign_str = m.group(1)
-        name = m.group(2)
-        suffix_str = m.group(3)
-        fmt = _resolve_db_float_suffix(suffix_str, line)
-        if name.lower() == "inf":
-            val = float("-inf") if sign_str == "-" else float("inf")
-        else:
-            val = float("nan")
-            if sign_str == "-":
-                val = -val
-        return OpFloat(val, fmt)
-
-    # Try numeric float
-    m = _RE_FLOAT.match(token)
-    if m:
-        sign_str = m.group(1)
-        num = m.group(2)
-        exp = m.group(3)
-        suffix_str = m.group(4)
-        fmt = _resolve_db_float_suffix(suffix_str, line)
-        text = (sign_str or "") + num + (exp or "")
-        try:
-            val = float(text)
-        except ValueError:
-            raise ParseError("Invalid float literal", line)
-        return OpFloat(val, fmt)
-
-    return None
+    result = _match_float_token(token, line)
+    if result is None:
+        return None
+    val, suffix_str = result
+    return OpFloat(val, _resolve_db_float_suffix(suffix_str, line))
 
 
 # ── DB operand parsing ──────────────────────────────────────────────
@@ -538,17 +515,9 @@ def parse_line(raw: str, line_no: int, arch: int = 1) -> ParsedLine:
     label_match = re.match(r"^([.A-Za-z]\w*)\s*:", text)
     if label_match:
         label_name = label_match.group(1)
-        # Validate label
-        if label_name.upper() in REGISTERS:
-            raise ParseError(
-                f"Label contains keyword: {label_name.upper()}",
-                line_no,
-            )
-        if arch >= 2 and label_name.upper() in FP_REGISTERS:
-            raise ParseError(
-                f"Label contains keyword: {label_name.upper()}",
-                line_no,
-            )
+        up = label_name.upper()
+        if up in REGISTERS or (arch >= 2 and up in FORBIDDEN_FP_LABEL_NAMES):
+            raise ParseError(f"Label contains keyword: {up}", line_no)
         result.label = label_name.lower()
         text = text[label_match.end() :].strip()
 
@@ -610,13 +579,7 @@ def parse_line(raw: str, line_no: int, arch: int = 1) -> ParsedLine:
         result.operands = []
         return result
 
-    # Split and parse operands
-    if operand_str:
-        tokens = _split_operands(operand_str)
-        result.operands = [_parse_operand(t, line_no) for t in tokens]
-    else:
-        result.operands = []
-
+    result.operands = [_parse_operand(t, line_no) for t in _split_operands(operand_str)]
     return result
 
 
@@ -629,7 +592,6 @@ def parse_lines(source: str, arch: int = 1) -> list[ParsedLine]:
     for i, raw in enumerate(lines, start=1):
         p = parse_line(raw, i, arch=arch)
 
-        # Check for duplicate labels
         if p.label is not None:
             if p.label in labels_seen:
                 raise ParseError(f"Duplicate label: {p.label}", i)

@@ -69,7 +69,8 @@ src/pysim8/
   fp_formats.py     IEEE 754 encode/decode (float32, float16, bfloat16, OFP8)
   asm/
     parser.py       Tokenizer and parser (source -> parsed lines)
-    codegen.py      Two-pass assembler (parsed lines -> machine code)
+    preprocess.py   Preprocessor: @include resolution (source file -> annotated lines)
+    codegen.py      Two-pass assembler (annotated lines -> machine code)
     cli.py          CLI entry point (pysim8-asm)
   sim/
     cpu.py          CPU control unit: step/run pipeline

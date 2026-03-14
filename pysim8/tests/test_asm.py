@@ -232,15 +232,15 @@ class TestSourceMapping:
 
     def test_149_two_instructions(self) -> None:
         m = asm_mapping("MOV A, 1\nMOV B, 2")
-        assert m == {0: 1, 3: 2}
+        assert m == {0: (None, 1), 3: (None, 2)}
 
     def test_150_db_excluded(self) -> None:
         m = asm_mapping("DB 42\nINC A")
-        assert m == {1: 2}
+        assert m == {1: (None, 2)}
 
     def test_151_label_no_bytes(self) -> None:
         m = asm_mapping("label: HLT")
-        assert m == {0: 1}
+        assert m == {0: (None, 1)}
 
 
 # ── 5.6.3 Jump Aliases (tests 39-44) ────────────────────────────────
@@ -582,20 +582,9 @@ class TestLabelEdgeCases:
         assert result.code == [6, 0, 1]
         assert result.labels["start"] == 0
 
-    def test_label_sp_forbidden(self) -> None:
-        err = asm_error("SP: DB 0")
-        assert "keyword" in err.message.lower()
-
-    def test_label_dp_forbidden(self) -> None:
-        err = asm_error("DP: DB 0")
-        assert "keyword" in err.message.lower()
-
-    def test_label_c_forbidden(self) -> None:
-        err = asm_error("C: DB 0")
-        assert "keyword" in err.message.lower()
-
-    def test_label_d_forbidden(self) -> None:
-        err = asm_error("D: DB 0")
+    @pytest.mark.parametrize("reg", ["SP", "DP", "C", "D"])
+    def test_label_register_forbidden(self, reg: str) -> None:
+        err = asm_error(f"{reg}: DB 0")
         assert "keyword" in err.message.lower()
 
     def test_forward_reference_in_call(self) -> None:
@@ -672,6 +661,29 @@ class TestDbEdgeCases:
         err = asm_error("DB 256")
         assert "value between 0-255" in err.message
 
+    def test_db_float_e4m3_ok(self) -> None:
+        # 1.5 is representable in E4M3 → 1 byte
+        result = assemble("DB 1.5_o3", arch=2).code
+        assert len(result) == 1
+
+    def test_db_float_e4m3_overflow_error(self) -> None:
+        # 500.0 > 448 (E4M3 max finite) → assembler error
+        with pytest.raises(AssemblerError) as exc_info:
+            assemble("DB 500.0_o3", arch=2)
+        assert "Float value out of range" in exc_info.value.message
+        assert "E4M3" in exc_info.value.message
+
+    def test_fmov_imm_e4m3_overflow_error(self) -> None:
+        with pytest.raises(AssemblerError) as exc_info:
+            assemble("FMOV.O3 FQA, 500.0", arch=2)
+        assert "Float value out of range" in exc_info.value.message
+        assert "E4M3" in exc_info.value.message
+
+    def test_db_float_e5m2_overflow_saturates(self) -> None:
+        # E5M2 has Inf → overflow silently produces ±Inf byte (no error)
+        result = assemble("DB 1.0e40_o2", arch=2).code
+        assert len(result) == 1
+
 
 # ── Exhaustiveness guards ─────────────────────────────────────────
 
@@ -683,15 +695,19 @@ class TestExhaustiveness:
         operand_types = get_args(Operand)
         encoded_types = {t for t in operand_types if t.__name__ != "OpString"}
         for op_type in encoded_types:
-            assert hasattr(op_type, "__dataclass_fields__"), (
-                f"{op_type} is not a dataclass"
-            )
+            assert hasattr(op_type, "__dataclass_fields__"), f"{op_type} is not a dataclass"
 
     def test_operand_matches_covers_all_ot_variants(self) -> None:
         from pysim8.asm.parser import (
-            OpReg, OpConst, OpAddr, OpRegAddr, OpLabel,
-            OpFpReg, OpFpImm,
+            OpReg,
+            OpConst,
+            OpAddr,
+            OpRegAddr,
+            OpLabel,
+            OpFpReg,
+            OpFpImm,
         )
+
         test_operands = {
             OpType.REG: OpReg(0),
             OpType.REG_STACK: OpReg(0),
@@ -705,13 +721,9 @@ class TestExhaustiveness:
         }
         covered = set(test_operands.keys())
         all_variants = set(OpType)
-        assert covered == all_variants, (
-            f"Uncovered OpType variants: {all_variants - covered}"
-        )
+        assert covered == all_variants, f"Uncovered OpType variants: {all_variants - covered}"
         for ot, op in test_operands.items():
-            assert _operand_matches(op, ot) is True, (
-                f"_operand_matches({op!r}, {ot}) returned False"
-            )
+            assert _operand_matches(op, ot) is True, f"_operand_matches({op!r}, {ot}) returned False"
 
 
 # ── Parser edge cases ─────────────────────────────────────────────
@@ -730,7 +742,7 @@ class TestParserEdges:
 
     def test_invalid_address(self) -> None:
         with pytest.raises(AssemblerError):
-            assemble('MOV A, [+]\nHLT')
+            assemble("MOV A, [+]\nHLT")
 
     def test_string_operand(self) -> None:
         result = assemble('DB "AB"\nHLT')
@@ -759,11 +771,12 @@ class TestParserEdges:
 
     def test_char_literal(self) -> None:
         from pysim8.sim import CPU
+
         result = assemble("MOV A, 'X'\nHLT")
         cpu = CPU()
         cpu.load(result.code)
         cpu.run()
-        assert cpu.a == ord('X')
+        assert cpu.a == ord("X")
 
     def test_invalid_register_in_offset(self) -> None:
         """[XYZ+5] where XYZ is not a register (parser line 230)."""
@@ -783,12 +796,13 @@ class TestParserEdges:
     def test_multi_char_in_try_parse_number(self) -> None:
         """Multi-char literal returns None in _try_parse_number (line 181)."""
         from pysim8.asm.parser import _try_parse_number
+
         assert _try_parse_number("'abc'") is None
 
     def test_string_with_comma_in_db(self) -> None:
         """Comma inside string should not split operands (line 535)."""
         result = assemble('DB "a,b"\nHLT')
-        assert result.code[:3] == [ord('a'), ord(','), ord('b')]
+        assert result.code[:3] == [ord("a"), ord(","), ord("b")]
 
     def test_empty_operands_no_arg_insn(self) -> None:
         """No-arg instruction sets operands=[] (line 657)."""
@@ -820,13 +834,17 @@ class TestPropParser:
         code = assemble(f"DB {n}").code
         assert code == [n]
 
-    @given(st.text(
-        alphabet=st.characters(whitelist_categories=('L',), min_codepoint=65, max_codepoint=90),
-        min_size=1, max_size=8,
-    ))
+    @given(
+        st.text(
+            alphabet=st.characters(whitelist_categories=("L",), min_codepoint=65, max_codepoint=90),
+            min_size=1,
+            max_size=8,
+        )
+    )
     def test_random_label_name(self, name: str) -> None:
         """Random uppercase labels work if not a keyword."""
         from pysim8.isa import REGISTERS, FP_REGISTERS, MNEMONICS, MNEMONICS_FP
+
         assume(name.upper() not in REGISTERS)
         assume(name.upper() not in FP_REGISTERS)
         assume(name.upper() not in MNEMONICS)
@@ -836,10 +854,18 @@ class TestPropParser:
         result = assemble(src)
         assert name.lower() in result.labels
 
-    @given(st.sampled_from([
-        "MOV A, 256", "MOV A, -1", "MOV A, 300",
-        "DB 256", "DB -1", "DB 999",
-    ]))
+    @given(
+        st.sampled_from(
+            [
+                "MOV A, 256",
+                "MOV A, -1",
+                "MOV A, 300",
+                "DB 256",
+                "DB -1",
+                "DB 999",
+            ]
+        )
+    )
     def test_out_of_range_constants(self, src: str) -> None:
         """Values outside 0-255 are rejected."""
         with pytest.raises(AssemblerError):
@@ -946,42 +972,39 @@ class TestParserDirect:
     def test_try_string_in_operand_chain(self) -> None:
         """_parse_operand with quoted string → OpString (line 282)."""
         from pysim8.asm.parser import _parse_operand, OpString
+
         result = _parse_operand('"hello"', 1)
         assert isinstance(result, OpString)
         assert result.text == "hello"
 
     def test_try_fp_imm_malformed_float(self) -> None:
-        """_try_fp_imm with unparseable float → ParseError (lines 336-337)."""
-        from pysim8.asm.parser import _try_fp_imm
-        # The regex _RE_FLOAT matches "1.e999999999999999999" — valid regex
-        # but float() can't parse certain edge cases.
-        # Actually, we need something the regex matches but float() rejects.
-        # The regex is: ^([+-]?)(\d+\.\d*|\.\d+)([eE][+-]?\d+)?(_\w+)?$
-        # Python float() handles everything the regex accepts.
-        # So lines 336-337 are genuinely hard to reach via normal parsing.
-        # Let's just verify the error path works by calling directly.
+        """_try_fp_imm with unparseable float → ParseError."""
         import unittest.mock as mock
+        from pysim8.asm.parser import _try_fp_imm
+
         with mock.patch("builtins.float", side_effect=ValueError("bad")):
-            from pysim8.asm.parser import _try_fp_imm
             with pytest.raises(ParseError, match="Invalid float"):
                 _try_fp_imm("1.0", 1)
 
     def test_parse_float_literal_malformed(self) -> None:
-        """_parse_float_literal with unparseable float (lines 432-433)."""
+        """_parse_float_literal with unparseable float → ParseError."""
         import unittest.mock as mock
+        from pysim8.asm.parser import _parse_float_literal
+
         with mock.patch("builtins.float", side_effect=ValueError("bad")):
-            from pysim8.asm.parser import _parse_float_literal
             with pytest.raises(ParseError, match="Invalid float"):
                 _parse_float_literal("1.0", 1)
 
     def test_split_operands_with_string(self) -> None:
         """_split_operands with quoted string containing comma (line 535)."""
         from pysim8.asm.parser import _split_operands
+
         result = _split_operands('"a,b"')
         assert result == ['"a,b"']
 
     def test_split_operands_empty_input(self) -> None:
         """_split_operands with empty string (line 546→548)."""
         from pysim8.asm.parser import _split_operands
+
         result = _split_operands("")
         assert result == []
