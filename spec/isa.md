@@ -432,7 +432,7 @@ For the complete opcode mapping, see [Opcode Table](opcodes.md).
 
 ### Encoding by Instruction Size
 
-The tables below cover integer instructions (opcodes 0-97). For FP instruction encoding (opcodes 128-160, up to 4 bytes), see [FP Encoding Summary](#fp-encoding-summary).
+The tables below cover integer instructions (opcodes 0-97). For FP instruction encoding (opcodes 128-162, up to 4 bytes), see [FP Encoding Summary](#fp-encoding-summary).
 
 **1-byte** `[opcode]`:
 
