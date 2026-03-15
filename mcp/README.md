@@ -14,6 +14,15 @@ cd mcp
 uv sync
 ```
 
+## Tests
+
+```bash
+cd mcp
+uv run pytest
+```
+
+Tool logic lives in plain `tool_*` functions in `server.py` — tests import them directly, no MCP transport involved. One test (`test_mcp_tools_registered`) verifies that exactly the 5 expected tools are exposed and nothing extra leaks.
+
 ## Run standalone
 
 ```bash
@@ -82,7 +91,7 @@ Verify with `/mcp` in Claude Code to check the server is connected and all 5 too
 
 ## Tools
 
-All tools that create or run code accept an optional `arch` parameter:
+`assemble_source`, `run_program`, and `run_binary` accept an optional `arch` parameter:
 
 - `arch=1` — integer-only CPU (v1)
 - `arch=2` — with FPU coprocessor (v2, **default**)
@@ -92,7 +101,8 @@ All tools that create or run code accept an optional `arch` parameter:
 Assemble source code into machine code.
 
 - **Input:** `source` — assembly text, `arch` (default 2)
-- **Output:** `code_hex` (hex string), `labels` (label table), `mapping` (code position -> source line)
+- **Output:** `code_hex` (hex string), `labels` (label table), `mapping` (code byte offset → `[filename, line_no]`)
+- **Note:** Filesystem `@include` is not supported (no local path context). URL `@include` (`https://...`) works. Use the CLI for multi-file projects with local files.
 
 ### `run_program`
 
@@ -117,10 +127,21 @@ Disassemble machine code.
 
 ### `get_spec`
 
-Read a section of the CPU specification.
+Read a section of the CPU specification, optionally sliced by line range.
 
-- **Input:** `section` — one of: `isa`, `opcodes`, `errors`, `cpu`, `mem`, `uarch`, `asm`, `spec`, `tests`
-- **Output:** markdown content
+- **Input:** `section` — one of: `isa`, `opcodes`, `errors`, `cpu`, `mem`, `uarch`, `asm`, `spec`, `fp`
+- **Input (optional):** `start_line`, `end_line` — 1-based, inclusive. Default: full file.
+- **Output:** `content`, `total_lines` (always), `start_line`/`end_line` (when range given)
+- **Tip:** fetch without a range first to get `total_lines`, then read in chunks.
+
+### `search_spec`
+
+Search for a string across spec files.
+
+- **Input:** `query` — case-insensitive substring
+- **Input (optional):** `section` — limit to one section; `context` — surrounding lines (default 2)
+- **Output:** `matches` list with `section`, `line`, `text`, `context`, `context_start_line`; and `total`
+- **Tip:** use `line` from a match with `get_spec(section, start_line, end_line)` to read the surrounding area.
 
 ## CPU state format
 
@@ -145,10 +166,3 @@ The `fpu` field is only present when `arch=2`. It contains:
 Possible `state` values: `IDLE`, `RUNNING`, `HALTED`, `FAULT`.
 
 When the step limit is reached (state `RUNNING`), a `warning` field is added to the response.
-
-## Tests
-
-```bash
-cd mcp
-uv run pytest
-```

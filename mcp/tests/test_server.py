@@ -6,12 +6,13 @@ import asyncio
 
 import sim8_mcp.server as srv
 
-# Access underlying functions through FunctionTool.fn
-assemble_source = srv.assemble_source.fn
-run_program = srv.run_program.fn
-run_binary = srv.run_binary.fn
-disassemble = srv.disassemble.fn
-get_spec = srv.get_spec.fn
+# Import plain logic functions directly — no FastMCP internals needed.
+assemble_source = srv.tool_assemble_source
+run_program = srv.tool_run_program
+run_binary = srv.tool_run_binary
+disassemble = srv.tool_disassemble
+get_spec = srv.tool_get_spec
+search_spec = srv.tool_search_spec
 
 
 # ── MCP registration ─────────────────────────────────────────────
@@ -19,7 +20,7 @@ get_spec = srv.get_spec.fn
 
 def test_mcp_tools_registered() -> None:
     tools = asyncio.run(srv.mcp._tool_manager.get_tools())
-    expected = {"assemble_source", "run_program", "run_binary", "disassemble", "get_spec"}
+    expected = {"assemble_source", "run_program", "run_binary", "disassemble", "get_spec", "search_spec"}
     assert expected == set(tools.keys())
 
 
@@ -177,8 +178,77 @@ def test_get_spec_valid() -> None:
     assert "error" not in result
     assert "content" in result
     assert len(result["content"]) > 0
+    assert "total_lines" in result
 
 
 def test_get_spec_invalid() -> None:
     result = get_spec("nonexistent")
+    assert "error" in result
+
+
+def test_get_spec_range() -> None:
+    full = get_spec("isa")
+    sliced = get_spec("isa", start_line=1, end_line=5)
+    assert "error" not in sliced
+    assert sliced["start_line"] == 1
+    assert sliced["end_line"] == 5
+    assert sliced["total_lines"] == full["total_lines"]
+    assert len(sliced["content"].splitlines()) == 5
+
+
+def test_get_spec_range_clamps_to_file() -> None:
+    full = get_spec("cpu")
+    total = full["total_lines"]
+    result = get_spec("cpu", start_line=1, end_line=total + 999)
+    assert result["end_line"] == total
+
+
+def test_get_spec_fp_section() -> None:
+    result = get_spec("fp")
+    assert "error" not in result
+    assert "content" in result
+
+
+def test_get_spec_tests_not_exposed() -> None:
+    assert "error" in get_spec("tests")
+    assert "error" in get_spec("tests-fp")
+
+
+# ── search_spec ───────────────────────────────────────────────────
+
+
+def test_search_spec_finds_match() -> None:
+    result = search_spec("MOV")
+    assert "error" not in result
+    assert result["total"] > 0
+    assert all("section" in m and "line" in m and "text" in m for m in result["matches"])
+
+
+def test_search_spec_section_filter() -> None:
+    result = search_spec("register", section="isa")
+    assert "error" not in result
+    assert all(m["section"] == "isa" for m in result["matches"])
+
+
+def test_search_spec_context_lines() -> None:
+    result = search_spec("FAULT", section="errors", context=1)
+    assert result["total"] > 0
+    for m in result["matches"]:
+        assert "context" in m
+        assert len(m["context"]) <= 3  # 1 before + match + 1 after
+
+
+def test_search_spec_no_match() -> None:
+    result = search_spec("xyzzy_does_not_exist")
+    assert result["total"] == 0
+    assert result["matches"] == []
+
+
+def test_search_spec_invalid_section() -> None:
+    result = search_spec("foo", section="nonexistent")
+    assert "error" in result
+
+
+def test_search_spec_empty_query() -> None:
+    result = search_spec("")
     assert "error" in result
