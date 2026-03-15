@@ -19,7 +19,8 @@ export { PAGE_SIZE };
 
 export const asm = {
     labels: {}, // label name → address
-    mapping: {}, // address → source line (1-based)
+    mapping: {}, // address → source line (1-based, flat)
+    lineMap: null, // Map<flatLine, {file: string|null, line: number}>
     instrStarts: new Set(),
     codeLen: 0,
 };

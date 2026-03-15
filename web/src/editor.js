@@ -29,7 +29,23 @@ const ALL_REGISTERS_RE = new RegExp(
 let cmView = null;
 let cmExecEffect = null;
 let cmScrollIntoView = null;
-let cmBpField = null;
+let cmSetBps = null;
+let _onBpToggle = null;
+
+/** Register a callback invoked when the user clicks the BP gutter: fn(lineNo: number). */
+export function setOnBpToggle(fn) {
+    _onBpToggle = fn;
+}
+
+/**
+ * Load a Set<lineNo> into the editor's BP gutter (mirrors the global store for the
+ * currently active file). Call this after switching tabs or clearing breakpoints.
+ * @param {Set<number>} set
+ */
+export function syncBpFromStore(set) {
+    if (!cmView || !cmSetBps) return;
+    cmView.dispatch({ effects: cmSetBps.of(set) });
+}
 
 export function highlightExecLine(line) {
     if (!cmView || !cmExecEffect) return;
@@ -40,13 +56,30 @@ export function highlightExecLine(line) {
     }
 }
 
-export function getBreakpoints() {
-    if (!cmView || !cmBpField) return new Set();
-    return cmView.state.field(cmBpField);
-}
-
 export function getEditorSource() {
     return cmView ? cmView.state.doc.toString() : document.querySelector("#editor-container textarea")?.value || "";
+}
+
+export function setEditorSource(text) {
+    if (!cmView) return;
+    // Clear the exec-line in the same transaction as the doc change so the
+    // stale decoration never gets mapped (and potentially misplaced) in the
+    // new document before highlightExecLine() fires.
+    const effects = cmExecEffect ? [cmExecEffect.of(0)] : [];
+    cmView.dispatch({
+        changes: { from: 0, to: cmView.state.doc.length, insert: text },
+        effects,
+    });
+}
+
+export function clearExecLine() {
+    if (!cmView || !cmExecEffect) return;
+    cmView.dispatch({ effects: cmExecEffect.of(0) });
+}
+
+export function focusEditor() {
+    if (!cmView) return;
+    cmView.focus();
 }
 
 export async function initEditor(container, defaultCode) {
@@ -98,6 +131,9 @@ export async function initEditor(container, defaultCode) {
                         };
                     }
                 }
+                // When the document changes, old positions are stale — clear the decoration
+                // to avoid applying it to a document it no longer matches.
+                if (tr.docChanged) return { line: -1, decos: Decoration.none };
                 return state;
             },
         });
@@ -106,6 +142,7 @@ export async function initEditor(container, defaultCode) {
         const asmLang = StreamLanguage.define({
             token(s) {
                 if (s.match(/;.*/)) return "comment";
+                if (s.match(/@include\b/i)) return "moduleKeyword";
                 if (s.match(ALL_MNEMONICS_RE)) return "keyword";
                 if (s.match(ALL_REGISTERS_RE)) return "variableName";
                 if (s.match(/\b0x[0-9A-Fa-f]+\b/)) return "number";
@@ -156,6 +193,7 @@ export async function initEditor(container, defaultCode) {
 
         const sim8Highlight = HighlightStyle.define([
             { tag: tags.keyword, class: "cm-hl-kw" },
+            { tag: tags.moduleKeyword, class: "cm-hl-directive" },
             { tag: tags.variableName, class: "cm-hl-var" },
             { tag: tags.number, class: "cm-hl-num" },
             { tag: tags.string, class: "cm-hl-str" },
@@ -164,7 +202,8 @@ export async function initEditor(container, defaultCode) {
             { tag: tags.labelName, class: "cm-hl-lbl" },
         ]);
 
-        const toggleBp = StateEffect.define();
+        const setBps = StateEffect.define();
+        cmSetBps = setBps;
 
         const bpField = StateField.define({
             create() {
@@ -172,17 +211,11 @@ export async function initEditor(container, defaultCode) {
             },
             update(bps, tr) {
                 for (const e of tr.effects) {
-                    if (e.is(toggleBp)) {
-                        const next = new Set(bps);
-                        if (next.has(e.value)) next.delete(e.value);
-                        else next.add(e.value);
-                        return next;
-                    }
+                    if (e.is(setBps)) return new Set(e.value);
                 }
                 return bps;
             },
         });
-        cmBpField = bpField;
 
         class BpMarker extends GutterMarker {
             constructor(active = false) {
@@ -219,7 +252,7 @@ export async function initEditor(container, defaultCode) {
             },
             domEventHandlers: {
                 click(view, line) {
-                    view.dispatch({ effects: toggleBp.of(view.state.doc.lineAt(line.from).number) });
+                    _onBpToggle?.(view.state.doc.lineAt(line.from).number);
                     return true;
                 },
             },
@@ -360,6 +393,14 @@ export async function initEditor(container, defaultCode) {
         ];
 
         function sim8CompletionSource(context) {
+            const atWord = context.matchBefore(/@\w*/i);
+            if (atWord && (atWord.from < atWord.to || context.explicit)) {
+                return {
+                    from: atWord.from,
+                    options: [{ label: "@include", type: "keyword", detail: '"filename.asm"' }],
+                };
+            }
+
             const word = context.matchBefore(/[\w.]+/);
             if (!word || (word.from === word.to && !context.explicit)) return null;
 

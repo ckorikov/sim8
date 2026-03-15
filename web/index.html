@@ -10,15 +10,9 @@
             rel="stylesheet"
         />
         <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet" />
+        <link rel="stylesheet" href="tailwind.css" />
         <link rel="stylesheet" href="sim.css" />
-        <script src="https://cdn.tailwindcss.com"></script>
         <script src="https://cdn.jsdelivr.net/npm/@antv/x6@2.19.2/dist/index.js"></script>
-
-        <script>
-            tailwind.config = {
-                theme: { extend: { fontFamily: { mono: ["'JetBrains Mono'", "monospace"] } } },
-            };
-        </script>
     </head>
 
     <body class="h-screen flex flex-col overflow-hidden">
@@ -127,21 +121,18 @@
                 style="background: var(--t-nav); width: var(--s-split); flex-shrink: 0"
             >
                 <div
-                    class="px-4 py-2 flex items-center justify-between flex-shrink-0"
-                    style="border-bottom: 1px solid var(--t-border)"
+                    class="flex items-center flex-shrink-0"
+                    style="border-bottom: 1px solid var(--t-border); height: 33px"
                 >
-                    <span class="text-[10px] font-bold uppercase tracking-widest" style="color: var(--t-dim)"
-                        >code</span
-                    >
+                    <div id="tab-bar" class="flex items-center overflow-x-auto flex-1 self-stretch"></div>
                     <a
                         href="https://github.com/ckorikov/sim8/blob/main/spec/isa.md"
                         target="_blank"
-                        class="text-[10px] no-underline uppercase tracking-wider"
+                        class="text-[10px] no-underline uppercase tracking-wider px-3 flex-shrink-0 self-center"
                         style="color: var(--a-orange)"
                         >isa ref</a
                     >
                 </div>
-
                 <div id="editor-container" class="flex-1 overflow-hidden" style="background: var(--t-canvas)"></div>
 
                 <div id="asm-error" class="hidden"></div>

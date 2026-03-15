@@ -3,7 +3,7 @@
  * Wires CPU, assembler, and all UI modules together.
  */
 
-import { assemble, AsmError } from "../lib/asm.js";
+import { assembleAsync, AsmError } from "../lib/asm.js";
 import { CpuState } from "../lib/core.js";
 import { BY_CODE_FP } from "../lib/isa.js";
 
@@ -14,59 +14,41 @@ import { renderMemory } from "./ui/mem.js";
 import { renderDisplay } from "./ui/display.js";
 import { renderLabels } from "./ui/labels.js";
 import { setupControls, stopRun, isRunning, updateRunBtnColor } from "./controls.js";
-import { initEditor, highlightExecLine, getEditorSource, getBreakpoints } from "./editor.js";
+import { initEditor, highlightExecLine, clearExecLine } from "./editor.js";
+import { initTabs, saveCurrentTab, getVirtualFiles, getMainSource, switchTabForExec } from "./tabs.js";
+import { breakpoints } from "./breakpoints.js";
 import { flashWire, initWires, updateWireColors, WIRE_DATA, WIRE_FP, WIRE_IO } from "./wires.js";
 import { fitDiagram, setupSplitHandle, adjustBlockPositions } from "./layout.js";
 
-// ── Default example code ───────────────────────────────────────
-
-const defaultCode = `; Simple example
-; Writes Hello World to the output
-
-        JMP start
-hello:
-        DB "Hello World!"    ; Variable
-        DB 0                 ; String terminator
-
-start:
-        MOV C, hello         ; Point to var
-        MOV D, 232           ; Point to output
-        CALL print
-        HLT                  ; Stop execution
-
-print:                       ; print(C:*from, D:*to)
-        PUSH A
-        PUSH B
-        MOV B, 0
-
-.loop:
-        MOV A, [C]           ; Get char from var
-        MOV [D], A           ; Write to output
-        INC C
-        INC D
-        CMP B, [C]           ; Check if end
-        JNZ .loop            ; jump if not
-
-        POP B
-        POP A
-        RET
-
-`;
-
 // ── Render all ─────────────────────────────────────────────────
+
+function showExecLine() {
+    const flatLine = getExecLine();
+    if (flatLine === undefined) {
+        clearExecLine();
+        return;
+    }
+    const loc = asm.lineMap?.get(flatLine);
+    if (loc) {
+        switchTabForExec(loc.file);
+        highlightExecLine(loc.line);
+    } else {
+        highlightExecLine(flatLine);
+    }
+}
 
 function renderAll() {
     renderCPU();
     renderFPU();
     renderMemory();
     renderDisplay();
-    const line = getExecLine();
-    highlightExecLine(line !== undefined ? line : -1);
+    showExecLine();
 }
 
 // ── Assembly ───────────────────────────────────────────────────
 
-function doAssemble(source) {
+async function doAssemble() {
+    saveCurrentTab();
     const errEl = document.getElementById("asm-error");
     errEl.classList.add("hidden");
     errEl.textContent = "";
@@ -75,20 +57,22 @@ function doAssemble(source) {
     asm.codeLen = 0;
     asm.labels = {};
     asm.mapping = {};
+    asm.lineMap = null;
     asm.instrStarts = new Set();
 
     try {
-        const result = assemble(source);
+        const result = await assembleAsync(getMainSource(), 2, getVirtualFiles());
         asm.codeLen = result.code.length;
         asm.labels = result.labels;
         asm.mapping = result.mapping;
+        asm.lineMap = result.lineMap;
         asm.instrStarts = new Set(Object.keys(result.mapping).map(Number));
         cpu.load(result.code);
         renderLabels();
         renderAll();
         return true;
     } catch (e) {
-        errEl.textContent = e instanceof AsmError ? `Line ${e.line}: ${e.message}` : "Internal error: " + e.message;
+        errEl.textContent = e instanceof AsmError ? String(e) : "Internal error: " + e.message;
         errEl.classList.remove("hidden");
         renderLabels();
         renderAll();
@@ -99,10 +83,7 @@ function doAssemble(source) {
 // ── Step / Reset ───────────────────────────────────────────────
 
 function ioChanged(snapshot) {
-    for (let addr = IO_BASE; addr < PAGE_SIZE; addr++) {
-        if (cpu.mem.get(addr) !== snapshot[addr - IO_BASE]) return true;
-    }
-    return false;
+    return snapshot.some((v, i) => cpu.mem.get(IO_BASE + i) !== v);
 }
 
 function stepCPU() {
@@ -127,10 +108,9 @@ function stepCPU() {
     return wasRunning ? cpu.cycles - prevCycles : 0;
 }
 
-function resetCPU() {
+async function resetCPU() {
     if (isRunning()) stopRun();
-    doAssemble(getEditorSource());
-    highlightExecLine(-1);
+    await doAssemble();
 }
 
 // ── Controls wiring ────────────────────────────────────────────
@@ -143,7 +123,7 @@ setupControls({
     onStep: stepCPU,
     onReset: resetCPU,
     renderCPU,
-    getBreakpoints,
+    checkBp: (flatLine) => breakpoints.checkFlat(flatLine, asm.lineMap),
     getExecLine,
 });
 
@@ -151,7 +131,7 @@ setupControls({
 
 document.getElementById("btn-assemble").addEventListener("click", () => {
     if (isRunning()) stopRun();
-    doAssemble(getEditorSource());
+    doAssemble();
 });
 
 // ── Theme toggle ───────────────────────────────────────────────
@@ -187,4 +167,6 @@ requestAnimationFrame(() => {
 
 setupSplitHandle(fitDiagram);
 
-initEditor(document.getElementById("editor-container"), defaultCode);
+initEditor(document.getElementById("editor-container"), "").then(() => {
+    initTabs();
+});

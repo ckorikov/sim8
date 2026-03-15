@@ -20,6 +20,9 @@ export default [
                 requestAnimationFrame: "readonly",
                 getComputedStyle: "readonly",
                 localStorage: "readonly",
+                TextDecoder: "readonly",
+                TextEncoder: "readonly",
+                CSS: "readonly",
                 // CDN libs
                 X6: "readonly",
             },
@@ -30,7 +33,7 @@ export default [
         },
     },
     {
-        files: ["__tests__/**/*.js"],
+        files: ["tests/**/*.js"],
         languageOptions: {
             globals: {
                 describe: "readonly",

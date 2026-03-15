@@ -12,7 +12,7 @@ const speedSel = document.getElementById("speed-select");
 let runTimer = null;
 let stepTimer = null;
 
-let _onStep, _onReset, _renderCPU, _getBreakpoints, _getExecLine;
+let _onStep, _onReset, _renderCPU, _checkBp, _getExecLine;
 let _skipBpOnce = false;
 
 export function updateRunBtnColor() {
@@ -36,7 +36,7 @@ function setRunUI(running) {
 function tick() {
     if (!_skipBpOnce) {
         const execLine = _getExecLine?.();
-        if (execLine !== undefined && _getBreakpoints?.().has(execLine)) {
+        if (_checkBp?.(execLine)) {
             stopRun();
             return;
         }
@@ -57,10 +57,10 @@ function tick() {
     runTimer = setTimeout(tick, getSpeedMs() * cost);
 }
 
-function startRun() {
+async function startRun() {
     if (runTimer) return;
     if (cpu.state === CpuState.HALTED || cpu.state === CpuState.FAULT) {
-        _onReset();
+        await _onReset();
     }
     _skipBpOnce = true;
     setRunUI(true);
@@ -85,11 +85,11 @@ export function isRunning() {
     return runTimer !== null;
 }
 
-export function setupControls({ onStep, onReset, renderCPU, getBreakpoints, getExecLine }) {
+export function setupControls({ onStep, onReset, renderCPU, checkBp, getExecLine }) {
     _onStep = onStep;
     _onReset = onReset;
     _renderCPU = renderCPU;
-    _getBreakpoints = getBreakpoints;
+    _checkBp = checkBp;
     _getExecLine = getExecLine;
 
     btnRun.addEventListener("click", () => {
