@@ -12,13 +12,13 @@ import re
 from dataclasses import dataclass
 
 from pysim8.isa import (
+    FORBIDDEN_FP_LABEL_NAMES,
     FP_CONTROL_MNEMONICS,
     FP_DB_SUFFIX_TO_FMT,
     FP_FMT_F,
     FP_FMT_N1,
     FP_FMT_N2,
     FP_REGISTERS,
-    FORBIDDEN_FP_LABEL_NAMES,
     MNEMONIC_ALIASES,
     MNEMONICS,
     MNEMONICS_FP,

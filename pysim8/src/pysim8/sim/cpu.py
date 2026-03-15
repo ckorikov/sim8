@@ -15,7 +15,7 @@ from .registers import CpuState, RegisterFile
 from .tracing import TraceCallback, TraceEvent
 
 if TYPE_CHECKING:
-    from .decoder import Instruction
+    from .decoder import DecodedInsn
     from .handlers import Handler
 
 __all__ = ["CPU"]
@@ -242,7 +242,7 @@ class CPU(HandlersMixin, HandlersFpMixin):
 
     # ── Cost computation ───────────────────────────────────────────────
 
-    def _compute_cost(self, instr: "Instruction") -> int:
+    def _compute_cost(self, instr: "DecodedInsn") -> int:
         if instr.op in self._cost_overrides:
             return self._cost_overrides[instr.op]
         d = self._instr_def[instr.op]

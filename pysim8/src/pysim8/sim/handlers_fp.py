@@ -53,9 +53,14 @@ class HandlersFpMixin:
     regs: RegisterFile
     _dispatch: dict[Op, Handler]
 
-    def _direct_addr(self, offset: int) -> int: ...
-    def _indirect_addr(self, encoded: int) -> int: ...
-    def _decode_gpr(self, code: int) -> int: ...
+    def _direct_addr(self, offset: int) -> int:
+        raise NotImplementedError
+
+    def _indirect_addr(self, encoded: int) -> int:
+        raise NotImplementedError
+
+    def _decode_gpr(self, code: int) -> int:
+        raise NotImplementedError
 
     # ── FPU access ─────────────────────────────────────────────────
 

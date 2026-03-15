@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import math
 import struct
-from typing import NamedTuple
+from typing import NamedTuple, cast
 
 from pysim8.isa import (
     FP_FMT_BF as _FMT_BF,
@@ -126,7 +126,7 @@ def encode_float32(
 
 def decode_float32(data: bytes) -> float:
     """Decode little-endian float32 bytes to Python float."""
-    return struct.unpack("<f", data)[0]
+    return cast(float, struct.unpack("<f", data)[0])
 
 
 # ── float16 ──────────────────────────────────────────────────────
@@ -168,7 +168,7 @@ def encode_float16(
 
 def decode_float16(data: bytes) -> float:
     """Decode little-endian float16 bytes to Python float."""
-    return struct.unpack("<e", data)[0]
+    return cast(float, struct.unpack("<e", data)[0])
 
 
 # ── bfloat16 ─────────────────────────────────────────────────────
@@ -254,7 +254,7 @@ def decode_bfloat16(data: bytes) -> float:
     # bfloat16 is the upper 16 bits of float32 in LE
     # so bfloat16 LE bytes go at positions [2:3] of float32 LE
     padded = b"\x00\x00" + data[:2]
-    return struct.unpack("<f", padded)[0]
+    return cast(float, struct.unpack("<f", padded)[0])
 
 
 # ── OFP8 E4M3 ───────────────────────────────────────────────────
@@ -326,9 +326,9 @@ def decode_ofp8_e4m3(byte_val: int) -> float:
         # Denorm or zero
         if mant == 0:
             return -0.0 if sign else 0.0
-        val = (mant / (1 << _E4M3_MANT_BITS)) * (2 ** (1 - _E4M3_BIAS))
+        val: float = (mant / (1 << _E4M3_MANT_BITS)) * float(2 ** (1 - _E4M3_BIAS))
     else:
-        val = (1.0 + mant / (1 << _E4M3_MANT_BITS)) * (2 ** (exp - _E4M3_BIAS))
+        val = (1.0 + mant / (1 << _E4M3_MANT_BITS)) * float(2 ** (exp - _E4M3_BIAS))
 
     return -val if sign else val
 
@@ -393,9 +393,9 @@ def decode_ofp8_e5m2(byte_val: int) -> float:
     if exp == 0:
         if mant == 0:
             return -0.0 if sign else 0.0
-        val = (mant / (1 << _E5M2_MANT_BITS)) * (2 ** (1 - _E5M2_BIAS))
+        val: float = (mant / (1 << _E5M2_MANT_BITS)) * float(2 ** (1 - _E5M2_BIAS))
     else:
-        val = (1.0 + mant / (1 << _E5M2_MANT_BITS)) * (2 ** (exp - _E5M2_BIAS))
+        val = (1.0 + mant / (1 << _E5M2_MANT_BITS)) * float(2 ** (exp - _E5M2_BIAS))
 
     return -val if sign else val
 

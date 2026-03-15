@@ -89,6 +89,7 @@ src/pysim8/
 tests/
   test_asm.py         Assembler tests (integer)
   test_asm_fp.py      Assembler tests (FP instructions)
+  test_asm_include.py Preprocessor tests (@include: filesystem and URL)
   test_sim.py         Simulator tests (integer)
   test_sim_fp.py      Simulator tests (FP instructions)
   test_sim_ieee754.py IEEE 754 edge cases (±0, ±∞, NaN, subnormals)

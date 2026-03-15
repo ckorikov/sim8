@@ -204,33 +204,34 @@ class HandlersMixin:
         d[Op.DIV_CONST] = self._make_div(self._src_muldiv_const)
 
         # -- Bitwise: AND/OR/XOR (4 variants each) --
-        for base, alu_fn in [
+        for base, bitwise_fn in [
             (Op.AND_REG_REG, ALU.and_op),
             (Op.OR_REG_REG, ALU.or_op),
             (Op.XOR_REG_REG, ALU.xor_op),
         ]:
-            d[Op(base + 0)] = self._make_bitwise_2op(alu_fn, self._src_gpr_reg)
-            d[Op(base + 1)] = self._make_bitwise_2op(alu_fn, self._src_regaddr)
-            d[Op(base + 2)] = self._make_bitwise_2op(alu_fn, self._src_addr)
-            d[Op(base + 3)] = self._make_bitwise_2op(alu_fn, self._src_const)
+            d[Op(base + 0)] = self._make_bitwise_2op(bitwise_fn, self._src_gpr_reg)
+            d[Op(base + 1)] = self._make_bitwise_2op(bitwise_fn, self._src_regaddr)
+            d[Op(base + 2)] = self._make_bitwise_2op(bitwise_fn, self._src_addr)
+            d[Op(base + 3)] = self._make_bitwise_2op(bitwise_fn, self._src_const)
 
         # -- NOT --
         d[Op.NOT_REG] = self._h_not
 
         # -- Shift: SHL/SHR (4 variants each) --
-        for base, alu_fn in [(Op.SHL_REG_REG, ALU.shl), (Op.SHR_REG_REG, ALU.shr)]:
-            d[Op(base + 0)] = self._make_shift_2op(alu_fn, self._src_gpr_reg)
-            d[Op(base + 1)] = self._make_shift_2op(alu_fn, self._src_regaddr)
-            d[Op(base + 2)] = self._make_shift_2op(alu_fn, self._src_addr)
-            d[Op(base + 3)] = self._make_shift_2op(alu_fn, self._src_const)
+        for base, shift_fn in [(Op.SHL_REG_REG, ALU.shl), (Op.SHR_REG_REG, ALU.shr)]:
+            d[Op(base + 0)] = self._make_shift_2op(shift_fn, self._src_gpr_reg)
+            d[Op(base + 1)] = self._make_shift_2op(shift_fn, self._src_regaddr)
+            d[Op(base + 2)] = self._make_shift_2op(shift_fn, self._src_addr)
+            d[Op(base + 3)] = self._make_shift_2op(shift_fn, self._src_const)
 
         self._check_dispatch_complete(d)
 
     @staticmethod
     def _check_dispatch_complete(d: dict[Op, Handler]) -> None:
         """Verify every non-HLT, non-FP Op has a handler."""
-        _fp_ops = {Op(c) for c in BY_CODE_FP}
-        missing = {op for op in Op if op != Op.HLT} - _fp_ops - set(d)
+        _fp_ops: set[Op] = {Op(c) for c in BY_CODE_FP}
+        all_ops: set[Op] = {op for op in Op if op != Op.HLT}
+        missing = all_ops - _fp_ops - set(d)
         if missing:
             names = ", ".join(sorted(op.name for op in missing))
             raise RuntimeError(f"Dispatch table missing handlers: {names}")

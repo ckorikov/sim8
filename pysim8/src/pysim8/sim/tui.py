@@ -8,6 +8,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from typing import Any
 
 import click
 from rich import box
@@ -415,7 +416,7 @@ def run_headless(
     cpu.run(max_steps=max_steps)
 
     if json_out:
-        state: dict = {
+        state: dict[str, Any] = {
             "code": code,
             "state": cpu.state.value,
             "steps": cpu.steps,
