@@ -1,0 +1,190 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "sim8 Assembly",
+  "scopeName": "source.sim8asm",
+  "fileTypes": [],
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#label-def" },
+    { "include": "#directive" },
+    { "include": "#fp-instruction" },
+    { "include": "#fp-control" },
+    { "include": "#db-pseudo" },
+    { "include": "#mnemonic" },
+    { "include": "#memory" },
+    { "include": "#page-expr" },
+    { "include": "#string" },
+    { "include": "#char-literal" },
+    { "include": "#float-literal" },
+    { "include": "#number" },
+    { "include": "#register" }
+  ],
+  "repository": {
+
+    "comment": {
+      "name": "comment.line.semicolon.sim8",
+      "match": ";.*$"
+    },
+
+    "label-def": {
+      "comment": "Label definitions: start:  or  .loop:",
+      "match": "^\\s*(\\.?[A-Za-z_][A-Za-z0-9_]*)\\s*(:)",
+      "captures": {
+        "1": { "name": "entity.name.function.label.sim8" },
+        "2": { "name": "punctuation.separator.label.sim8" }
+      }
+    },
+
+    "directive": {
+      "patterns": [
+        {
+          "comment": "@page N  or  @page N, M",
+          "match": "(?i)(@page)\\s+(\\d+)(?:\\s*,\\s*(\\d+))?",
+          "captures": {
+            "1": { "name": "keyword.control.directive.sim8" },
+            "2": { "name": "constant.numeric.integer.sim8" },
+            "3": { "name": "constant.numeric.integer.sim8" }
+          }
+        },
+        {
+          "comment": "@include \"path\"",
+          "begin": "(?i)(@include)\\s+",
+          "end": "$",
+          "beginCaptures": {
+            "1": { "name": "keyword.control.directive.sim8" }
+          },
+          "patterns": [
+            { "include": "#string" }
+          ]
+        }
+      ]
+    },
+
+    "fp-instruction": {
+      "comment": "FP instructions with format suffix(es): FADD.H  FCVT.F.H  FMOV.BF",
+      "match": "(?i)\\b(FMOV|FADD|FSUB|FMUL|FDIV|FCMP|FABS|FNEG|FSQRT|FCVT|FITOF|FFTOI|FCLASS|FMADD)((?:\\.(?:E\\d+M\\d+|BF|O[23]|N[12]|[FH]))+)\\b",
+      "captures": {
+        "1": { "name": "keyword.mnemonic.fp.sim8" },
+        "2": { "name": "storage.type.fp-format.sim8" }
+      }
+    },
+
+    "fp-control": {
+      "comment": "FP control/status instructions (no format suffix)",
+      "match": "(?i)\\b(FSTAT|FCFG|FSCFG|FCLR)\\b",
+      "name": "keyword.mnemonic.fp.sim8"
+    },
+
+    "db-pseudo": {
+      "match": "(?i)\\bDB\\b",
+      "name": "keyword.other.db.sim8"
+    },
+
+    "mnemonic": {
+      "comment": "Integer instruction mnemonics and jump aliases",
+      "match": "(?i)\\b(HLT|MOV|ADD|SUB|INC|DEC|CMP|JMP|JC|JNC|JZ|JNZ|JA|JNA|JB|JNAE|JNB|JAE|JE|JNE|JNBE|JBE|PUSH|POP|CALL|RET|MUL|DIV|AND|OR|XOR|NOT|SHL|SAL|SHR|SAR)\\b",
+      "name": "keyword.mnemonic.sim8"
+    },
+
+    "register": {
+      "comment": "All registers: FP 4-bit (FOA-FOP), FP 8-bit (FQA-FQH), FP 16-bit (FHA-FHD), FP 32-bit (FA,FB), integer (A,B,C,D,SP,DP)",
+      "match": "(?i)\\b(FO[A-Pa-p]|FQ[A-Ha-h]|FH[A-Da-d]|F[ABab]|SP|DP|[ABCD])\\b",
+      "name": "support.type.register.sim8"
+    },
+
+    "memory": {
+      "comment": "Memory addressing: [reg]  [reg+offset]  [addr]  [label]",
+      "name": "meta.memory-access.sim8",
+      "begin": "\\[",
+      "end": "\\]",
+      "beginCaptures": { "0": { "name": "punctuation.section.brackets.begin.sim8" } },
+      "endCaptures": { "0": { "name": "punctuation.section.brackets.end.sim8" } },
+      "patterns": [
+        { "include": "#register" },
+        { "include": "#number" },
+        {
+          "match": "[+\\-]",
+          "name": "keyword.operator.arithmetic.sim8"
+        },
+        {
+          "match": "\\.?[A-Za-z_][A-Za-z0-9_]*",
+          "name": "variable.other.label.sim8"
+        }
+      ]
+    },
+
+    "page-expr": {
+      "comment": "Page label expression: {label} → resolves to page number",
+      "name": "meta.page-expression.sim8",
+      "begin": "\\{",
+      "end": "\\}",
+      "beginCaptures": { "0": { "name": "punctuation.section.braces.begin.sim8" } },
+      "endCaptures": { "0": { "name": "punctuation.section.braces.end.sim8" } },
+      "patterns": [
+        {
+          "match": "\\.?[A-Za-z_][A-Za-z0-9_]*",
+          "name": "variable.other.label.sim8"
+        }
+      ]
+    },
+
+    "string": {
+      "name": "string.quoted.double.sim8",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.sim8",
+          "match": "\\\\."
+        }
+      ]
+    },
+
+    "char-literal": {
+      "comment": "Single character literal: 'A'",
+      "name": "string.quoted.single.sim8",
+      "match": "'[^'\\\\]'"
+    },
+
+    "float-literal": {
+      "patterns": [
+        {
+          "comment": "Float with decimal point, optional exponent, optional FP format suffix: 1.5  3.14_h  1.0e-3_bf",
+          "match": "(?i)(?<![\\w])(?:\\d+\\.\\d*|\\.\\d+)(?:[eE][+-]?\\d+)?(?:_(?:E\\d+M\\d+|BF|O[23]|N[12]|[FH]))?\\b",
+          "name": "constant.numeric.float.sim8"
+        },
+        {
+          "comment": "Special float constants: inf  nan",
+          "match": "(?i)\\b(inf|nan)\\b",
+          "name": "constant.language.float.sim8"
+        }
+      ]
+    },
+
+    "number": {
+      "patterns": [
+        {
+          "comment": "Hex literal: 0xFF  0xC8",
+          "match": "(?i)\\b0x[0-9A-F]+\\b",
+          "name": "constant.numeric.hex.sim8"
+        },
+        {
+          "comment": "Octal literal: 0o310",
+          "match": "(?i)\\b0o[0-7]+\\b",
+          "name": "constant.numeric.octal.sim8"
+        },
+        {
+          "comment": "Binary literal: 11001000b",
+          "match": "(?i)\\b[01]+b\\b",
+          "name": "constant.numeric.binary.sim8"
+        },
+        {
+          "comment": "Decimal literal: 200  200d",
+          "match": "\\b\\d+[dD]?\\b",
+          "name": "constant.numeric.integer.sim8"
+        }
+      ]
+    }
+
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "name": "sim8-asm",
+  "displayName": "sim8 Assembly",
+  "description": "Syntax highlighting for sim8 8-bit CPU assembler (v2, FPU support)",
+  "version": "0.1.0",
+  "publisher": "sim8",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ckorikov/sim8"
+  },
+  "license": "MIT",
+  "main": "./dist/extension.js",
+  "activationEvents": ["onLanguage:sim8asm"],
+  "scripts": {
+    "vscode:prepublish": "npm run lint && npm run bundle",
+    "bundle": "esbuild src/extension.js --bundle --platform=node --external:vscode --outfile=dist/extension.js",
+    "lint": "eslint src/"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "esbuild": "^0.25.0",
+    "eslint": "^9.0.0"
+  },
+  "files": [
+    "dist",
+    "syntaxes",
+    "language-configuration.json"
+  ],
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": ["Programming Languages"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "sim8asm",
+        "aliases": ["sim8 Assembly", "sim8asm"],
+        "extensions": [".asm"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "sim8asm",
+        "scopeName": "source.sim8asm",
+        "path": "./syntaxes/sim8asm.tmLanguage.json"
+      }
+    ]
+  }
+}
