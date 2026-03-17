@@ -15,6 +15,7 @@ import {
     FP_CONTROL_MNEMONICS,
     MNEMONIC_ALIASES,
     GPR_CODES,
+    ARITH_CODES,
     STACK_CODES,
     FP_REGISTERS,
     FORBIDDEN_FP_LABEL_NAMES,
@@ -31,6 +32,7 @@ import {
 } from "./isa.js";
 
 import { floatToBytes } from "./fp.js";
+import { PAGE_SIZE, IO_START } from "./core.js";
 
 // ── Error ────────────────────────────────────────────────────────
 
@@ -63,6 +65,7 @@ const TAG_ADDR_LABEL = "addr_label";
 const TAG_FP_REG = "fp_reg";
 const TAG_FLOAT = "float";
 const TAG_FP_IMM = "fp_imm";
+const TAG_PAGE_LABEL = "page_label";
 
 // ── Number parsing ───────────────────────────────────────────────
 
@@ -274,6 +277,17 @@ function _tryFpImm(token, line) {
     return _parseFloatValue(token, line, TAG_FP_IMM, null, false);
 }
 
+const _RE_PAGE_LABEL = /^\{(.+)\}$/;
+
+function _tryPageLabel(token, line) {
+    const m = _RE_PAGE_LABEL.exec(token);
+    if (!m) return null;
+    const inner = m[1].trim();
+    if (!inner) throw new AsmError("Syntax error", line);
+    if (!_RE_LABEL.test(inner)) throw new AsmError("Syntax error", line);
+    return { tag: TAG_PAGE_LABEL, name: inner.toLowerCase() };
+}
+
 function _tryLabel(token, _line) {
     if (_RE_LABEL.test(token)) {
         return { tag: TAG_LABEL, name: token.toLowerCase() };
@@ -281,7 +295,7 @@ function _tryLabel(token, _line) {
     return null;
 }
 
-const _OPERAND_PARSERS = [_tryBracket, _tryRegister, _tryString, _tryConst, _tryFpImm, _tryLabel];
+const _OPERAND_PARSERS = [_tryBracket, _tryPageLabel, _tryRegister, _tryString, _tryConst, _tryFpImm, _tryLabel];
 
 function _parseOperand(token, line) {
     token = token.trim();
@@ -408,6 +422,41 @@ function _splitOperands(operandStr) {
 // ── Line parsing ─────────────────────────────────────────────────
 
 const _RE_LABEL_DEF = /^([.A-Za-z]\w*)\s*:/;
+const _RE_PAGE_DIRECTIVE = /^\s*@page\b/i;
+const _RE_PAGE_FULL = /^\s*@page\s+(\S+)(?:\s*,\s*(\S+))?\s*$/i;
+
+function _parsePageDirective(text, lineNo, result) {
+    if (/^[.A-Za-z]\w*\s*:/.test(text)) {
+        throw new AsmError("@page must be on its own line", lineNo);
+    }
+    const m = _RE_PAGE_FULL.exec(text);
+    if (!m) {
+        if (/^\s*@page\s*$/i.test(text)) {
+            throw new AsmError("@page: missing page number", lineNo);
+        }
+        throw new AsmError("@page: invalid syntax", lineNo);
+    }
+    const pageVal = _tryParseNumber(m[1]);
+    if (pageVal === null) {
+        throw new AsmError("@page: invalid syntax", lineNo);
+    }
+    if (pageVal < 0 || pageVal > 255) {
+        throw new AsmError("@page value must be 0-255", lineNo);
+    }
+    result.mnemonic = "@PAGE";
+    result.operands = [{ tag: TAG_CONST, value: pageVal }];
+    if (m[2] !== undefined) {
+        const offsetVal = _tryParseNumber(m[2]);
+        if (offsetVal === null) {
+            throw new AsmError("@page: invalid offset", lineNo);
+        }
+        if (offsetVal < 0 || offsetVal > 255) {
+            throw new AsmError("@page offset must be 0-255", lineNo);
+        }
+        result.operands.push({ tag: TAG_CONST, value: offsetVal });
+    }
+    return result;
+}
 
 function _parseLine(raw, lineNo, arch) {
     const text = _tokenizeLine(raw);
@@ -422,6 +471,9 @@ function _parseLine(raw, lineNo, arch) {
     };
 
     if (!text) return result;
+
+    // @page directive (must come before label check)
+    if (_RE_PAGE_DIRECTIVE.test(text)) return _parsePageDirective(text, lineNo, result);
 
     let remaining = text;
 
@@ -545,12 +597,14 @@ function _operandMatches(op, ot) {
     switch (ot) {
         case OpType.REG:
             return op.tag === TAG_REG;
-        case OpType.REG_STACK:
-            return op.tag === TAG_REG && STACK_CODES.has(op.code);
+        case OpType.REG_ARITH:
+            return op.tag === TAG_REG && ARITH_CODES.has(op.code);
         case OpType.REG_GPR:
             return op.tag === TAG_REG && GPR_CODES.has(op.code);
+        case OpType.REG_STACK:
+            return op.tag === TAG_REG && STACK_CODES.has(op.code);
         case OpType.IMM:
-            return op.tag === TAG_CONST || op.tag === TAG_LABEL;
+            return op.tag === TAG_CONST || op.tag === TAG_LABEL || op.tag === TAG_PAGE_LABEL;
         case OpType.MEM:
             return op.tag === TAG_ADDR || op.tag === TAG_ADDR_LABEL;
         case OpType.REGADDR:
@@ -581,6 +635,8 @@ function _encodeOperand(op) {
             return 0; // placeholder for pass 2
         case TAG_ADDR_LABEL:
             return 0; // placeholder for pass 2
+        case TAG_PAGE_LABEL:
+            return 0; // placeholder for pass 2
         default:
             throw new Error(`unexpected operand: ${op.tag}`);
     }
@@ -588,7 +644,7 @@ function _encodeOperand(op) {
 
 // ── Instruction matching ─────────────────────────────────────────
 
-function _findInsn(mnemonic, operands, line, table) {
+function _findInstr(mnemonic, operands, line, table) {
     if (table == null) table = BY_MNEMONIC;
     const candidates = table[mnemonic];
     if (!candidates) {
@@ -749,14 +805,14 @@ function _encodeInstruction(mnemonic, operands, line, dstSuffix, srcSuffix, arch
             return _encodeFmovImm(operands, dstSuffix, line);
         }
 
-        const instr = _findInsn(mnemonic, operands, line, BY_MNEMONIC_FP);
+        const instr = _findInstr(mnemonic, operands, line, BY_MNEMONIC_FP);
         if (FP_CONTROL_MNEMONICS.has(mnemonic)) {
             return [instr.op, ...operands.map((op) => _encodeOperand(op))];
         }
         return _encodeFpInstruction(instr, operands, dstSuffix, srcSuffix, line);
     }
 
-    const instr = _findInsn(mnemonic, operands, line, BY_MNEMONIC);
+    const instr = _findInstr(mnemonic, operands, line, BY_MNEMONIC);
     return [instr.op, ...operands.map((op) => _encodeOperand(op))];
 }
 
@@ -818,13 +874,202 @@ function _preprocess(source, files) {
     return { flat: outLines.join("\n"), lineMap };
 }
 
+// ── Jump/call mnemonics (for cross-page validation) ──────────────
+
+const _JUMP_MNEMONICS = new Set(["JMP", "JC", "JNC", "JZ", "JNZ", "JA", "JNA", "CALL"]);
+
 // ── Two-pass assembly (pass 1 + pass 2) ──────────────────────────
 
+function _pass1HandlePage(st, pline) {
+    st.hasPageDirective = true;
+    const pageNum = pline.operands[0].value;
+    if (!st.seenPages.has(pageNum)) {
+        st.seenPages.add(pageNum);
+        st.pageCodes[pageNum] = [];
+    }
+    st.currentPage = pageNum;
+    st.pageLocs[pageNum] = pline.lineNo;
+    if (pline.operands.length > 1) {
+        const targetOffset = pline.operands[1].value;
+        const currentLen = st.pageCodes[pageNum].length;
+        if (targetOffset < currentLen) {
+            throw new AsmError(
+                `@page ${pageNum}: offset ${targetOffset} is before current position ${currentLen}`,
+                pline.lineNo,
+            );
+        }
+        for (let i = currentLen; i < targetOffset; i++) {
+            st.pageCodes[pageNum].push(0);
+        }
+    }
+}
+
+function _pass1(parsed, arch) {
+    const st = {
+        pageCodes: { 0: [] },
+        currentPage: 0,
+        seenPages: new Set([0]),
+        hasPageDirective: false,
+        pageLocs: {},
+    };
+    const labelInfo = {}; // name → { page, offset }
+    const pageMapping = []; // [{ page, offset, lineNo }]
+    const labelPatches = []; // [{ page, pos, name, isPageRef, isJump, lineNo }]
+
+    for (const pline of parsed) {
+        if (pline.label !== null) {
+            const pos = st.pageCodes[st.currentPage].length;
+            labelInfo[pline.label] = { page: st.currentPage, offset: pos };
+        }
+
+        if (pline.mnemonic === null) continue;
+
+        if (pline.mnemonic === "@PAGE") {
+            _pass1HandlePage(st, pline);
+            continue;
+        }
+
+        const operands = pline.operands || [];
+        const pos = st.pageCodes[st.currentPage].length;
+
+        const encoded = _encodeInstruction(
+            pline.mnemonic,
+            operands,
+            pline.lineNo,
+            pline.dstSuffix,
+            pline.srcSuffix,
+            arch,
+        );
+
+        if (pline.mnemonic !== "DB") {
+            pageMapping.push({ page: st.currentPage, offset: pos, lineNo: pline.lineNo });
+        }
+
+        const isJump = _JUMP_MNEMONICS.has(pline.mnemonic);
+
+        for (let i = 0; i < operands.length; i++) {
+            const op = operands[i];
+            if (op.tag !== TAG_LABEL && op.tag !== TAG_ADDR_LABEL && op.tag !== TAG_PAGE_LABEL) continue;
+            const isPageRef = op.tag === TAG_PAGE_LABEL;
+            const isFpData = arch >= 2 && MNEMONICS_FP.has(pline.mnemonic) && !FP_CONTROL_MNEMONICS.has(pline.mnemonic);
+            let patchPos;
+            if (isFpData) {
+                const fpCount = operands.filter((o) => o.tag === TAG_FP_REG).length;
+                const nonFpIdx = operands.slice(0, i).filter((o) => o.tag !== TAG_FP_REG).length;
+                patchPos = pos + 1 + fpCount + nonFpIdx;
+            } else {
+                patchPos = pos + 1 + i;
+            }
+            labelPatches.push({
+                page: st.currentPage,
+                pos: patchPos,
+                name: op.name,
+                isPageRef,
+                isJump,
+                lineNo: pline.lineNo,
+            });
+        }
+
+        st.pageCodes[st.currentPage].push(...encoded);
+    }
+
+    return {
+        pageCodes: st.pageCodes,
+        hasPageDirective: st.hasPageDirective,
+        labelInfo,
+        pageLocs: st.pageLocs,
+        pageMapping,
+        labelPatches,
+    };
+}
+
+function _checkPageOverflow(st, lineMap) {
+    if (!st.hasPageDirective) return;
+    for (const [page, data] of Object.entries(st.pageCodes)) {
+        if (data.length > PAGE_SIZE) {
+            const flatLine = st.pageLocs[page] || 1;
+            const loc = lineMap?.get(flatLine);
+            throw new AsmError(
+                `Page ${page} overflow: ${data.length} bytes exceeds ${PAGE_SIZE}`,
+                loc ? loc.line : flatLine,
+                loc ? loc.file : null,
+            );
+        }
+    }
+    if (st.pageCodes[0] && st.pageCodes[0].length > IO_START) {
+        console.warn(
+            `Page 0 output is ${st.pageCodes[0].length} bytes; I/O region (${IO_START}-${PAGE_SIZE - 1}) will be overwritten`,
+        );
+    }
+}
+
+function _pass2(st) {
+    for (const patch of st.labelPatches) {
+        const { page: patchPage, pos: patchPos, name: labelName, isPageRef, isJump, lineNo } = patch;
+        if (!(labelName in st.labelInfo)) {
+            throw new AsmError(`Undefined label: ${labelName}`, lineNo);
+        }
+        const { page: labelPage, offset: labelOffset } = st.labelInfo[labelName];
+
+        if (isPageRef) {
+            st.pageCodes[patchPage][patchPos] = labelPage;
+        } else {
+            if (labelOffset < 0 || labelOffset > 255) {
+                throw new AsmError(`${labelOffset} must have a value between 0-255`, lineNo);
+            }
+            if (isJump && labelPage !== patchPage) {
+                if (patchPage === 0) {
+                    throw new AsmError(
+                        `jump target '${labelName}' is on page ${labelPage}, but IP executes only on page 0`,
+                        lineNo,
+                    );
+                } else {
+                    throw new AsmError(`cross-page jump from page ${patchPage} to page ${labelPage}`, lineNo);
+                }
+            }
+            st.pageCodes[patchPage][patchPos] = labelOffset;
+        }
+    }
+}
+
+function _buildOutput(st) {
+    const multi = st.hasPageDirective;
+
+    // Flatten code
+    let code;
+    if (multi) {
+        const maxPage = Math.max(...Object.keys(st.pageCodes).map(Number));
+        code = new Array((maxPage + 1) * PAGE_SIZE).fill(0);
+        for (const [page, data] of Object.entries(st.pageCodes)) {
+            const base = Number(page) * PAGE_SIZE;
+            for (let i = 0; i < data.length; i++) {
+                code[base + i] = data[i];
+            }
+        }
+    } else {
+        code = st.pageCodes[0];
+    }
+
+    // Labels: name → memory address
+    const labels = {};
+    for (const [name, info] of Object.entries(st.labelInfo)) {
+        labels[name] = multi ? info.page * PAGE_SIZE + info.offset : info.offset;
+    }
+
+    // Mapping: flat code position → lineNo
+    const mapping = {};
+    for (const entry of st.pageMapping) {
+        const flatPos = multi ? entry.page * PAGE_SIZE + entry.offset : entry.offset;
+        mapping[flatPos] = entry.lineNo;
+    }
+
+    return { code, labels, mapping };
+}
+
 export function assemble(source, arch = 2, files = {}) {
-    // Phase 0: preprocessing (errors thrown here already carry correct filename)
+    // Phase 0: preprocessing
     const { flat, lineMap } = _preprocess(source, files);
 
-    // Translate a flat-source AsmError to original file + line using lineMap
     const _locErr = (e) => {
         if (e instanceof AsmError) {
             const loc = lineMap.get(e.line);
@@ -840,70 +1085,19 @@ export function assemble(source, arch = 2, files = {}) {
         throw _locErr(e);
     }
 
-    // Pass 1: generate code, collect labels
-    const code = [];
-    const labels = {};
-    const mapping = {};
-    const labelPatches = []; // [patchPos, labelName, lineNo]
-
     try {
-        for (const pline of parsed) {
-            const pos = code.length;
-
-            if (pline.label !== null) {
-                labels[pline.label] = pos;
-            }
-
-            if (pline.mnemonic === null) continue;
-
-            const operands = pline.operands || [];
-
-            const encoded = _encodeInstruction(
-                pline.mnemonic,
-                operands,
-                pline.lineNo,
-                pline.dstSuffix,
-                pline.srcSuffix,
-                arch,
-            );
-
-            if (pline.mnemonic !== "DB") {
-                mapping[pos] = pline.lineNo;
-            }
-
-            for (let i = 0; i < operands.length; i++) {
-                const op = operands[i];
-                if (op.tag !== TAG_LABEL && op.tag !== TAG_ADDR_LABEL) continue;
-                const isFpData =
-                    arch >= 2 && MNEMONICS_FP.has(pline.mnemonic) && !FP_CONTROL_MNEMONICS.has(pline.mnemonic);
-                if (isFpData) {
-                    const fpCount = operands.filter((o) => o.tag === TAG_FP_REG).length;
-                    const nonFpIdx = operands.slice(0, i).filter((o) => o.tag !== TAG_FP_REG).length;
-                    labelPatches.push([pos + 1 + fpCount + nonFpIdx, op.name, pline.lineNo]);
-                } else {
-                    labelPatches.push([pos + 1 + i, op.name, pline.lineNo]);
-                }
-            }
-
-            code.push(...encoded);
-        }
-
+        // Pass 1: generate code
+        const st = _pass1(parsed, arch);
+        // Page overflow check
+        _checkPageOverflow(st, lineMap);
         // Pass 2: resolve labels
-        for (const [patchPos, labelName, lineNo] of labelPatches) {
-            if (!(labelName in labels)) {
-                throw new AsmError(`Undefined label: ${labelName}`, lineNo);
-            }
-            const addr = labels[labelName];
-            if (addr < 0 || addr > 255) {
-                throw new AsmError(`${addr} must have a value between 0-255`, lineNo);
-            }
-            code[patchPos] = addr;
-        }
+        _pass2(st);
+        // Build output
+        const { code, labels, mapping } = _buildOutput(st);
+        return { code, labels, mapping, lineMap };
     } catch (e) {
         throw _locErr(e);
     }
-
-    return { code, labels, mapping, lineMap };
 }
 
 // ── Async assembly with URL @include support ──────────────────────
