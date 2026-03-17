@@ -34,6 +34,7 @@ __all__ = [
     "OpString",
     "OpLabel",
     "OpAddrLabel",
+    "OpPageLabel",
     "OpFpReg",
     "OpFloat",
     "OpFpImm",
@@ -115,6 +116,13 @@ class OpAddrLabel:
 
 
 @dataclass(frozen=True, slots=True)
+class OpPageLabel:
+    """Page number of label: {label} → resolves to label's page in pass 2."""
+
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
 class OpFpReg:
     """FP register operand: FA/FB, FHA-FHD, FQA-FQH, FOA-FOP."""
 
@@ -140,7 +148,9 @@ class OpFpImm:
     fmt: int | None  # FP_FMT_* or None (resolved from instruction suffix)
 
 
-Operand = OpReg | OpConst | OpAddr | OpRegAddr | OpString | OpLabel | OpAddrLabel | OpFpReg | OpFloat | OpFpImm
+Operand = (
+    OpReg | OpConst | OpAddr | OpRegAddr | OpString | OpLabel | OpAddrLabel | OpPageLabel | OpFpReg | OpFloat | OpFpImm
+)
 
 
 # ── Parsed line ─────────────────────────────────────────────────────
@@ -341,6 +351,22 @@ def _try_fp_imm(token: str, line: int) -> Operand | None:
     return OpFpImm(val, _resolve_fp_imm_suffix(suffix_str, line))
 
 
+_RE_PAGE_LABEL = re.compile(r"^\{(.+)\}$")
+
+
+def _try_page_label(token: str, line: int) -> Operand | None:
+    """Try to parse {label} → page number of label."""
+    m = _RE_PAGE_LABEL.match(token)
+    if not m:
+        return None
+    inner = m.group(1).strip()
+    if not inner:
+        raise ParseError("Syntax error", line)
+    if not _RE_LABEL.match(inner):
+        raise ParseError("Syntax error", line)
+    return OpPageLabel(inner.lower())
+
+
 def _try_label(token: str, line: int) -> Operand | None:
     """Try to parse label reference (identifier not matching above)."""
     if _RE_LABEL.match(token):
@@ -348,12 +374,13 @@ def _try_label(token: str, line: int) -> Operand | None:
     return None
 
 
-# Order matters: bracket is unambiguous ('['), register is a finite set,
-# string is unambiguous ('"'), number has specific formats,
+# Order matters: bracket is unambiguous ('['), page label is unambiguous ('{'),
+# register is a finite set, string is unambiguous ('"'), number has specific formats,
 # FP imm catches float literals (must come before label to grab inf/nan),
 # label is the fallback for any remaining identifier.
 _OPERAND_PARSERS = [
     _try_bracket,
+    _try_page_label,
     _try_register,
     _try_string,
     _try_const,
@@ -502,6 +529,13 @@ def _split_operands(operand_str: str) -> list[str]:
     return [p for p in parts if p]
 
 
+_RE_PAGE_DIRECTIVE = re.compile(r"^\s*@page\b", re.IGNORECASE)
+_RE_PAGE_FULL = re.compile(r"^\s*@page\s+(\S+)(?:\s*,\s*(\S+))?\s*$", re.IGNORECASE)
+_RE_PAGE_BARE = re.compile(r"^\s*@page\s*$", re.IGNORECASE)
+_RE_LABEL_DEF = re.compile(r"^([.A-Za-z]\w*)\s*:")
+_RE_LABEL_START = re.compile(r"^[.A-Za-z]\w*\s*:")
+
+
 def parse_line(raw: str, line_no: int, arch: int = 1) -> ParsedLine:
     """Parse a single source line."""
     text = _tokenize_line(raw)
@@ -511,8 +545,33 @@ def parse_line(raw: str, line_no: int, arch: int = 1) -> ParsedLine:
     if not text:
         return result
 
+    # @page directive (must come before label check)
+    if _RE_PAGE_DIRECTIVE.match(text):
+        if _RE_LABEL_START.match(text):
+            raise ParseError("@page must be on its own line", line_no)
+        m = _RE_PAGE_FULL.match(text)
+        if not m:
+            if _RE_PAGE_BARE.match(text):
+                raise ParseError("@page: missing page number", line_no)
+            raise ParseError("@page: invalid syntax", line_no)
+        page_val = _try_parse_number(m.group(1))
+        if page_val is None:
+            raise ParseError("@page: invalid syntax", line_no)
+        if page_val < 0 or page_val > 255:
+            raise ParseError("@page value must be 0-255", line_no)
+        result.mnemonic = "@PAGE"
+        result.operands = [OpConst(page_val)]
+        if m.group(2) is not None:
+            offset_val = _try_parse_number(m.group(2))
+            if offset_val is None:
+                raise ParseError("@page: invalid offset", line_no)
+            if offset_val < 0 or offset_val > 255:
+                raise ParseError("@page offset must be 0-255", line_no)
+            result.operands.append(OpConst(offset_val))
+        return result
+
     # Check for label
-    label_match = re.match(r"^([.A-Za-z]\w*)\s*:", text)
+    label_match = _RE_LABEL_DEF.match(text)
     if label_match:
         label_name = label_match.group(1)
         up = label_name.upper()

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import NamedTuple
 
 from pysim8.asm.parser import (
     AsmError,
@@ -16,15 +17,18 @@ from pysim8.asm.parser import (
     OpFpImm,
     OpFpReg,
     OpLabel,
+    OpPageLabel,
     OpReg,
     OpRegAddr,
     OpString,
+    ParsedLine,
     ParseError,
     parse_lines,
 )
-from pysim8.asm.preprocess import PreprocessError, SourceLoc, preprocess
+from pysim8.asm.preprocess import PreprocessError, PreprocessResult, SourceLoc, preprocess
 from pysim8.fp_formats import FpExceptions, float_to_bytes
 from pysim8.isa import (
+    ARITH_CODES,
     BY_MNEMONIC,
     BY_MNEMONIC_FP,
     FP_CONTROL_MNEMONICS,
@@ -41,6 +45,7 @@ from pysim8.isa import (
     encode_fpm,
     encode_regaddr,
 )
+from pysim8.sim.memory import IO_START, PAGE_SIZE
 
 __all__ = ["assemble", "AssemblerError", "AssembleResult"]
 
@@ -66,12 +71,14 @@ def _operand_matches(op: Operand, ot: OpType) -> bool:
     match ot:
         case OpType.REG:
             return isinstance(op, OpReg)
-        case OpType.REG_STACK:
-            return isinstance(op, OpReg) and op.code in STACK_CODES
+        case OpType.REG_ARITH:
+            return isinstance(op, OpReg) and op.code in ARITH_CODES
         case OpType.REG_GPR:
             return isinstance(op, OpReg) and op.code in GPR_CODES
+        case OpType.REG_STACK:
+            return isinstance(op, OpReg) and op.code in STACK_CODES
         case OpType.IMM:
-            return isinstance(op, (OpConst, OpLabel))
+            return isinstance(op, (OpConst, OpLabel, OpPageLabel))
         case OpType.MEM:
             return isinstance(op, (OpAddr, OpAddrLabel))
         case OpType.REGADDR:
@@ -98,10 +105,12 @@ def _encode_operand(op: Operand) -> int:
             return 0  # placeholder for pass 2
         case OpAddrLabel():
             return 0  # placeholder for pass 2
+        case OpPageLabel():
+            return 0  # placeholder for pass 2
     raise AssertionError(f"unexpected operand: {op!r}")
 
 
-def _find_insn(
+def _find_instr(
     mnemonic: str,
     operands: list[Operand],
     line: int,
@@ -298,62 +307,134 @@ def _encode_instruction(
         if mnemonic == "FMOV" and len(operands) == 2 and isinstance(operands[1], OpFpImm):
             return _encode_fmov_imm(operands, dst_suffix, line)
 
-        instr = _find_insn(mnemonic, operands, line, table=BY_MNEMONIC_FP)
+        instr = _find_instr(mnemonic, operands, line, table=BY_MNEMONIC_FP)
         if mnemonic in FP_CONTROL_MNEMONICS:
             # Control: no FPM, just opcode + operand bytes
             return [int(instr.op)] + [_encode_operand(op) for op in operands]
         return _encode_fp_instruction(instr, operands, dst_suffix, src_suffix, line)
 
-    instr = _find_insn(mnemonic, operands, line)
+    instr = _find_instr(mnemonic, operands, line)
     return [int(instr.op)] + [_encode_operand(op) for op in operands]
 
 
-# ── Two-pass assembly (pass 1 + pass 2) ─────────────────────────────
+# ── Jump/call mnemonics (for cross-page validation) ──────────────
+
+_JUMP_MNEMONICS = frozenset({"JMP", "JC", "JNC", "JZ", "JNZ", "JA", "JNA", "CALL"})
+
+# ── Patch descriptor ─────────────────────────────────────────────
 
 
-def assemble(source: str, arch: int = 1, base_path: Path | None = None) -> AssembleResult:
-    """Assemble source code into machine code.
+class LabelPatch(NamedTuple):
+    """Describes a label reference that needs resolution in Pass 2."""
 
-    Args:
-        source: Assembly source text.
-        arch: Architecture version (1=integer-only, 2=with FPU). Default 1.
-        base_path: Directory for resolving @include paths.
-            Pass None when assembling from an in-memory string — @include raises an error.
+    page: int
+    pos: int
+    name: str
+    is_page_ref: bool
+    is_jump: bool
+    loc: SourceLoc
 
-    Returns AssembleResult with:
-        code — machine code bytes
-        labels — label name → address
-        mapping — code position → (filename, line_no); filename=None for root file
-    """
-    # ── Phase 0: preprocessing (@include resolution) ─
-    try:
-        prep = preprocess(source, base_path)
-    except PreprocessError as e:
-        raise AssemblerError(e.message, e.line, filename=e.filename) from e
 
-    try:
-        parsed = parse_lines(prep.source, arch=arch)
-    except ParseError as e:
-        filename, orig_line = prep.line_map.get(e.line, (None, e.line))
-        raise AssemblerError(e.message, orig_line, filename=filename) from e
+# ── Pass 1 state ─────────────────────────────────────────────────
 
-    # ── Pass 1: generate code, collect labels ───────
-    code: list[int] = []
-    labels: dict[str, int] = {}
-    mapping: dict[int, SourceLoc] = {}
-    label_patches: list[tuple[int, str, SourceLoc]] = []
+
+@dataclass(slots=True)
+class _Pass1State:
+    """Mutable state accumulated during Pass 1."""
+
+    page_codes: dict[int, list[int]] = field(default_factory=lambda: {0: []})
+    current_page: int = 0
+    seen_pages: set[int] = field(default_factory=lambda: {0})
+    has_page_directive: bool = False
+    label_info: dict[str, tuple[int, int]] = field(default_factory=dict)
+    page_mapping: dict[tuple[int, int], SourceLoc] = field(default_factory=dict)
+    label_patches: list[LabelPatch] = field(default_factory=list)
+    page_locs: dict[int, SourceLoc] = field(default_factory=dict)
+
+
+# ── Pass 1: code generation ──────────────────────────────────────
+
+
+def _pass1_handle_page(
+    st: _Pass1State,
+    operands: list[Operand],
+    loc: SourceLoc,
+) -> None:
+    """Handle @PAGE directive."""
+    st.has_page_directive = True
+    if not operands or not isinstance(operands[0], OpConst):
+        raise AssemblerError("@page: internal error (bad operand)", loc[1], filename=loc[0])
+    page_num = operands[0].value
+    filename, orig_line = loc
+
+    if page_num not in st.seen_pages:
+        st.seen_pages.add(page_num)
+        st.page_codes[page_num] = []
+
+    st.current_page = page_num
+    st.page_locs[page_num] = loc
+
+    # Handle optional offset
+    if len(operands) > 1:
+        if not isinstance(operands[1], OpConst):
+            raise AssemblerError("@page: internal error (bad offset operand)", orig_line, filename=filename)
+        target_offset = operands[1].value
+        current_len = len(st.page_codes[page_num])
+        if target_offset < current_len:
+            raise AssemblerError(
+                f"@page {page_num}: offset {target_offset} is before current position {current_len}",
+                orig_line,
+                filename=filename,
+            )
+        # Pad with zeros to reach target offset
+        st.page_codes[page_num].extend([0] * (target_offset - current_len))
+
+
+def _pass1_collect_label_patches(
+    st: _Pass1State,
+    operands: list[Operand],
+    pos: int,
+    mnemonic: str,
+    is_jump: bool,
+    loc: SourceLoc,
+    arch: int,
+) -> None:
+    """Record label references that need resolution in Pass 2."""
+    for i, op in enumerate(operands):
+        if not isinstance(op, (OpLabel, OpAddrLabel, OpPageLabel)):
+            continue
+        is_page_ref = isinstance(op, OpPageLabel)
+        # For FP data instructions, FPM bytes are reordered before non-FP bytes.
+        is_fp_data = arch >= 2 and mnemonic in MNEMONICS_FP and mnemonic not in FP_CONTROL_MNEMONICS
+        if is_fp_data:
+            fp_count = sum(1 for o in operands if isinstance(o, OpFpReg))
+            non_fp_idx = sum(1 for o in operands[:i] if not isinstance(o, OpFpReg))
+            patch_pos = pos + 1 + fp_count + non_fp_idx
+        else:
+            patch_pos = pos + 1 + i
+        st.label_patches.append(LabelPatch(st.current_page, patch_pos, op.name, is_page_ref, is_jump, loc))
+
+
+def _pass1(parsed: list[ParsedLine], prep: PreprocessResult, arch: int) -> _Pass1State:
+    """Pass 1: generate code, collect labels and patches."""
+    st = _Pass1State()
 
     for pline in parsed:
-        pos = len(code)
-        loc = prep.line_map.get(pline.line_no, (None, pline.line_no))
+        loc = prep.line_map.get(pline.line_no, (None, pline.line_no))  # type: ignore[union-attr]
 
         if pline.label is not None:
-            labels[pline.label] = pos
+            pos = len(st.page_codes[st.current_page])
+            st.label_info[pline.label] = (st.current_page, pos)
 
         if pline.mnemonic is None:
             continue
 
+        if pline.mnemonic == "@PAGE":
+            _pass1_handle_page(st, pline.operands or [], loc)
+            continue
+
         operands = pline.operands if pline.operands is not None else []
+        pos = len(st.page_codes[st.current_page])
 
         try:
             encoded = _encode_instruction(
@@ -369,30 +450,151 @@ def assemble(source: str, arch: int = 1, base_path: Path | None = None) -> Assem
             raise AssemblerError(e.message, orig_line, filename=filename) from e
 
         if pline.mnemonic != "DB":
-            mapping[pos] = loc
+            st.page_mapping[(st.current_page, pos)] = loc
 
-        for i, op in enumerate(operands):
-            if isinstance(op, (OpLabel, OpAddrLabel)):
-                # For FP data instructions, FPM bytes are
-                # reordered before non-FP bytes. Calculate
-                # the correct position of the label byte.
-                is_fp_data = arch >= 2 and pline.mnemonic in MNEMONICS_FP and pline.mnemonic not in FP_CONTROL_MNEMONICS
-                if is_fp_data:
-                    fp_count = sum(1 for o in operands if isinstance(o, OpFpReg))
-                    non_fp_idx = sum(1 for o in operands[:i] if not isinstance(o, OpFpReg))
-                    label_patches.append((pos + 1 + fp_count + non_fp_idx, op.name, loc))
-                else:
-                    label_patches.append((pos + 1 + i, op.name, loc))
+        _pass1_collect_label_patches(
+            st,
+            operands,
+            pos,
+            pline.mnemonic,
+            pline.mnemonic in _JUMP_MNEMONICS,
+            loc,
+            arch,
+        )
 
-        code.extend(encoded)
+        st.page_codes[st.current_page].extend(encoded)
 
-    # ── Pass 2: resolve labels ──────────────────────
-    for patch_pos, label_name, (filename, orig_line) in label_patches:
-        if label_name not in labels:
+    return st
+
+
+# ── Page overflow check ──────────────────────────────────────────
+
+
+def _check_page_overflow(st: _Pass1State) -> None:
+    """Check page size limits (only when @page directives are present)."""
+    if not st.has_page_directive:
+        return
+    for page, data in st.page_codes.items():
+        if len(data) > PAGE_SIZE:
+            filename, line = st.page_locs.get(page, (None, 1))
+            raise AssemblerError(
+                f"Page {page} overflow: {len(data)} bytes exceeds {PAGE_SIZE}",
+                line,
+                filename=filename,
+            )
+    if 0 in st.page_codes and len(st.page_codes[0]) > IO_START:
+        import warnings
+
+        warnings.warn(
+            f"Page 0 output is {len(st.page_codes[0])} bytes; I/O region ({IO_START}-{PAGE_SIZE - 1}) will be overwritten",
+            stacklevel=3,
+        )
+
+
+# ── Pass 2: label resolution ─────────────────────────────────────
+
+
+def _pass2(st: _Pass1State) -> None:
+    """Resolve label references and validate cross-page jumps."""
+    for patch in st.label_patches:
+        patch_page, patch_pos, label_name = patch.page, patch.pos, patch.name
+        is_page_ref, is_jump = patch.is_page_ref, patch.is_jump
+        filename, orig_line = patch.loc
+        if label_name not in st.label_info:
             raise AssemblerError(f"Undefined label: {label_name}", orig_line, filename=filename)
-        addr = labels[label_name]
-        if addr < 0 or addr > 255:
-            raise AssemblerError(f"{addr} must have a value between 0-255", orig_line, filename=filename)
-        code[patch_pos] = addr
+        label_page, label_offset = st.label_info[label_name]
+
+        if is_page_ref:
+            st.page_codes[patch_page][patch_pos] = label_page
+        else:
+            if label_offset < 0 or label_offset > 255:
+                raise AssemblerError(
+                    f"{label_offset} must have a value between 0-255",
+                    orig_line,
+                    filename=filename,
+                )
+            if is_jump and label_page != patch_page:
+                if patch_page == 0:
+                    raise AssemblerError(
+                        f"jump target '{label_name}' is on page {label_page}, but IP executes only on page 0",
+                        orig_line,
+                        filename=filename,
+                    )
+                else:
+                    raise AssemblerError(
+                        f"cross-page jump from page {patch_page} to page {label_page}",
+                        orig_line,
+                        filename=filename,
+                    )
+            st.page_codes[patch_page][patch_pos] = label_offset
+
+
+# ── Build output ─────────────────────────────────────────────────
+
+
+def _build_output(st: _Pass1State) -> AssembleResult:
+    """Flatten page codes into final AssembleResult."""
+    multi = st.has_page_directive
+
+    # Flatten code
+    if multi:
+        max_page = max(st.page_codes.keys())
+        code: list[int] = [0] * ((max_page + 1) * PAGE_SIZE)
+        for page, data in st.page_codes.items():
+            base = page * PAGE_SIZE
+            for i, b in enumerate(data):
+                code[base + i] = b
+    else:
+        code = st.page_codes[0]
+
+    # Labels: name → memory address
+    labels: dict[str, int] = {}
+    for name, (page, offset) in st.label_info.items():
+        labels[name] = page * PAGE_SIZE + offset if multi else offset
+
+    # Mapping: flat code position → SourceLoc
+    mapping: dict[int, SourceLoc] = {}
+    for (page, offset), loc in st.page_mapping.items():
+        flat_pos = page * PAGE_SIZE + offset if multi else offset
+        mapping[flat_pos] = loc
 
     return AssembleResult(code=code, labels=labels, mapping=mapping)
+
+
+# ── Main entry point ─────────────────────────────────────────────
+
+
+def assemble(source: str, arch: int = 1, base_path: Path | None = None) -> AssembleResult:
+    """Assemble source code into machine code.
+
+    Pipeline: Phase 0 (preprocessing) → Pass 1 (codegen) → Pass 2 (label resolution).
+
+    Args:
+        source: Assembly source text.
+        arch: Architecture version (1=integer-only, 2=with FPU). Default 1.
+        base_path: Directory for resolving @include paths.
+
+    Returns AssembleResult with code, labels, and source mapping.
+    """
+    # Phase 0: preprocessing (@include resolution)
+    try:
+        prep = preprocess(source, base_path)
+    except PreprocessError as e:
+        raise AssemblerError(e.message, e.line, filename=e.filename) from e
+
+    try:
+        parsed = parse_lines(prep.source, arch=arch)
+    except ParseError as e:
+        filename, orig_line = prep.line_map.get(e.line, (None, e.line))
+        raise AssemblerError(e.message, orig_line, filename=filename) from e
+
+    # Pass 1: generate code, collect labels
+    st = _pass1(parsed, prep, arch)
+
+    # Page overflow check (multi-page only)
+    _check_page_overflow(st)
+
+    # Pass 2: resolve labels
+    _pass2(st)
+
+    return _build_output(st)
