@@ -21,8 +21,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from pysim8.asm import assemble, AssemblerError
-
+from pysim8.asm import AssemblerError, assemble
 
 # ── helpers ──────────────────────────────────────────────────────────
 
@@ -455,7 +454,7 @@ class TestUrlInclude:
         assert "fetch failed" in err.message
 
     def test_circular_url_include_raises_asm_error(self) -> None:
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import patch
 
         # Simulate a.asm that includes itself via URL
         call_count = 0
@@ -477,6 +476,48 @@ class TestUrlInclude:
             # base_path=None → normally @include raises "no filesystem context"
             result = assemble('CALL remote\nHLT\n@include "https://example.com/lib.asm"', base_path=None)
         assert "remote" in result.labels
+
+
+# ── §5.8 + §5.9 @page + @include interaction ─────────────────────────
+
+
+class TestPageIncludeInteraction:
+    """@include after @page emits included content to that page."""
+
+    def test_include_after_page_emits_to_page(self, tmp_path: Path) -> None:
+        (tmp_path / "data.asm").write_text("DB 10, 20, 30\n")
+        code = asm_inc('HLT\n@page 1\n@include "data.asm"', tmp_path)
+        assert code[256] == 10
+        assert code[257] == 20
+        assert code[258] == 30
+
+    def test_include_label_on_page(self, tmp_path: Path) -> None:
+        (tmp_path / "lib.asm").write_text("table: DB 42\n")
+        result = assemble('HLT\n@page 1\n@include "lib.asm"', base_path=tmp_path)
+        assert result.labels["table"] == 256  # page 1, offset 0
+
+    def test_page_directive_inside_included_file(self, tmp_path: Path) -> None:
+        (tmp_path / "pages.asm").write_text("@page 2\nDB 99\n")
+        code = asm_inc('HLT\n@page 1\nDB 1\n@include "pages.asm"', tmp_path)
+        assert code[256] == 1  # page 1
+        assert code[512] == 99  # page 2 (switched inside include)
+
+
+# ── §5.8 No include guards ───────────────────────────────────────────
+
+
+class TestNoIncludeGuards:
+    """Repeated inclusion duplicates content → typically causes duplicate label error."""
+
+    def test_double_include_duplicate_label(self, tmp_path: Path) -> None:
+        (tmp_path / "lib.asm").write_text("helper: RET\n")
+        err = asm_inc_error('@include "lib.asm"\n@include "lib.asm"\nHLT', tmp_path)
+        assert "Duplicate label" in err.message
+
+    def test_double_include_no_label_ok(self, tmp_path: Path) -> None:
+        (tmp_path / "data.asm").write_text("DB 1, 2\n")
+        code = asm_inc('@include "data.asm"\n@include "data.asm"\nHLT', tmp_path)
+        assert code[0:4] == [1, 2, 1, 2]
 
 
 # ── helpers ───────────────────────────────────────────────────────────
