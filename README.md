@@ -89,6 +89,16 @@ npm run build      # esbuild → docs/sim.bundle.js
 
 See [web/](web/) for source structure.
 
+## VS Code Extension
+
+Syntax highlighting for `.asm` files (integer + FP mnemonics, registers, directives, labels, literals).
+
+```bash
+code --install-extension vscode-sim8/sim8-asm-0.1.0.vsix
+```
+
+See [vscode-sim8/README.md](vscode-sim8/README.md) for the full list of highlighted constructs.
+
 ## MCP Server
 
 [Model Context Protocol](https://modelcontextprotocol.io/) server that exposes sim8 tools to LLMs (Claude Desktop, Claude Code, etc.).
