@@ -29,6 +29,16 @@ pysim8/         Python toolchain (assembler, simulator, disassembler)
 web/            Browser simulator (vanilla JS, esbuild)
 
 mcp/            MCP server (LLM tool access to assembler, simulator, disassembler)
+
+vscode-sim8/    VS Code extension (syntax highlighting for .asm files)
+
+examples/       Sample assembly programs
+  hello.asm             Hello World (single page)
+  hello-mp-code.asm     Hello World, multi-page (code segment)
+  hello-mp-data.asm     Hello World, multi-page (data segment)
+  quadratic.asm         Quadratic equation solver using FPU
+
+ieee754-test-suite/  IEEE 754 conformance test vectors (.fptest)
 ```
 
 ## Formal Verification
@@ -84,7 +94,7 @@ Browser-based hardware diagram simulator. Vanilla JS, bundled with esbuild, serv
 cd web && npm install
 
 npm test           # vitest (unit + integration + cross-validation vs pysim8)
-npm run build      # esbuild → docs/sim.bundle.js
+npm run build      # esbuild → dist/sim.bundle.js
 ```
 
 See [web/](web/) for source structure.
