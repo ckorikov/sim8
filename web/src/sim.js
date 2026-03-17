@@ -14,7 +14,7 @@ import { renderMemory } from "./ui/mem.js";
 import { renderDisplay } from "./ui/display.js";
 import { renderLabels } from "./ui/labels.js";
 import { setupControls, stopRun, isRunning, updateRunBtnColor } from "./controls.js";
-import { initEditor, highlightExecLine, clearExecLine } from "./editor.js";
+import { initEditor, highlightExecLine, clearExecLine, showDiagnostic, clearDiagnostics } from "./editor.js";
 import { initTabs, saveCurrentTab, getVirtualFiles, getMainSource, switchTabForExec } from "./tabs.js";
 import { breakpoints } from "./breakpoints.js";
 import { flashWire, initWires, updateWireColors, WIRE_DATA, WIRE_FP, WIRE_IO } from "./wires.js";
@@ -52,6 +52,7 @@ async function doAssemble() {
     const errEl = document.getElementById("asm-error");
     errEl.classList.add("hidden");
     errEl.textContent = "";
+    clearDiagnostics();
 
     cpu.reset();
     asm.codeLen = 0;
@@ -74,6 +75,7 @@ async function doAssemble() {
     } catch (e) {
         errEl.textContent = e instanceof AsmError ? String(e) : "Internal error: " + e.message;
         errEl.classList.remove("hidden");
+        if (e instanceof AsmError && e.line >= 1) showDiagnostic(e.line, e.message);
         renderLabels();
         renderAll();
         return false;

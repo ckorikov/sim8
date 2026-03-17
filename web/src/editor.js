@@ -20,7 +20,10 @@ import {
     FP_FMT_N2,
 } from "../lib/isa.js";
 
-const ALL_MNEMONICS_RE = new RegExp("\\b(" + [...MNEMONICS, ...MNEMONICS_FP].join("|") + ")\\b", "i");
+const ALL_MNEMONICS_RE = new RegExp(
+    "\\b(" + [...MNEMONICS, ...MNEMONICS_FP, ...Object.keys(MNEMONIC_ALIASES)].join("|") + ")\\b",
+    "i",
+);
 const ALL_REGISTERS_RE = new RegExp(
     "\\b(" + [...Object.keys(REGISTERS), ...Object.keys(FP_REGISTERS)].join("|") + ")\\b",
     "i",
@@ -28,6 +31,7 @@ const ALL_REGISTERS_RE = new RegExp(
 
 let cmView = null;
 let cmExecEffect = null;
+let cmSetDiagnostics = null;
 let cmScrollIntoView = null;
 let cmSetBps = null;
 let _onBpToggle = null;
@@ -77,6 +81,24 @@ export function clearExecLine() {
     cmView.dispatch({ effects: cmExecEffect.of(0) });
 }
 
+export function showDiagnostic(line, message) {
+    if (!cmView || !cmSetDiagnostics) return;
+    const doc = cmView.state.doc;
+    if (line < 1 || line > doc.lines) return;
+    const lineObj = doc.line(line);
+    cmView.dispatch(
+        cmSetDiagnostics(cmView.state, [{ from: lineObj.from, to: lineObj.to, severity: "error", message }]),
+    );
+    if (cmScrollIntoView) {
+        cmView.dispatch({ effects: cmScrollIntoView(lineObj.from, { y: "center" }) });
+    }
+}
+
+export function clearDiagnostics() {
+    if (!cmView || !cmSetDiagnostics) return;
+    cmView.dispatch(cmSetDiagnostics(cmView.state, []));
+}
+
 export function focusEditor() {
     if (!cmView) return;
     cmView.focus();
@@ -87,10 +109,12 @@ export async function initEditor(container, defaultCode) {
         const [
             { EditorView, basicSetup },
             { EditorState, StateEffect, StateField },
-            { Decoration, GutterMarker, gutter },
+            { Decoration, GutterMarker, gutter, keymap },
             { StreamLanguage, HighlightStyle, syntaxHighlighting },
             { tags },
             { autocompletion },
+            { toggleComment, indentWithTab },
+            { setDiagnostics },
         ] = await Promise.all([
             import("https://esm.sh/codemirror"),
             import("https://esm.sh/@codemirror/state"),
@@ -98,7 +122,11 @@ export async function initEditor(container, defaultCode) {
             import("https://esm.sh/@codemirror/language"),
             import("https://esm.sh/@lezer/highlight"),
             import("https://esm.sh/@codemirror/autocomplete"),
+            import("https://esm.sh/@codemirror/commands"),
+            import("https://esm.sh/@codemirror/lint"),
         ]);
+
+        cmSetDiagnostics = setDiagnostics;
 
         const setExecLine = StateEffect.define();
         cmExecEffect = setExecLine;
@@ -142,7 +170,7 @@ export async function initEditor(container, defaultCode) {
         const asmLang = StreamLanguage.define({
             token(s) {
                 if (s.match(/;.*/)) return "comment";
-                if (s.match(/@include\b/i)) return "moduleKeyword";
+                if (s.match(/@(?:include|page)\b/i)) return "moduleKeyword";
                 if (s.match(ALL_MNEMONICS_RE)) return "keyword";
                 if (s.match(ALL_REGISTERS_RE)) return "variableName";
                 if (s.match(/\b0x[0-9A-Fa-f]+\b/)) return "number";
@@ -153,6 +181,7 @@ export async function initEditor(container, defaultCode) {
                 s.next();
                 return null;
             },
+            languageData: { commentTokens: { line: ";" } },
         });
 
         const sim8Theme = EditorView.theme(
@@ -265,7 +294,7 @@ export async function initEditor(container, defaultCode) {
             SUB: "dest = dest - src; sets C, Z",
             INC: "dest = dest + 1; sets C, Z",
             DEC: "dest = dest - 1; sets C, Z",
-            CMP: "Compare (sets Z, C without storing)",
+            CMP: "dest - src (no store); Z=1 if equal, C=1 if src > dest",
             MUL: "A = A * src; sets C, Z",
             DIV: "A = A / src (integer); FAULT if src=0",
             AND: "dest = dest & src; C=0, sets Z",
@@ -275,12 +304,12 @@ export async function initEditor(container, defaultCode) {
             SHL: "dest = dest << n; sets C if overflow",
             SHR: "dest = dest >>> n; sets C if bits lost",
             JMP: "Unconditional jump",
-            JZ: "Jump if Z=1 (equal)",
-            JNZ: "Jump if Z=0 (not equal)",
-            JC: "Jump if C=1 (borrow/underflow)",
-            JNC: "Jump if C=0 (no borrow)",
-            JA: "Jump if C=0 and Z=0 (unsigned greater)",
-            JNA: "Jump if C=1 or Z=1 (unsigned <=)",
+            JC: "Jump if C=1 (carry); after CMP: <",
+            JNC: "Jump if C=0 (no carry); after CMP: >=",
+            JZ: "Jump if Z=1 (zero); after CMP: ==",
+            JNZ: "Jump if Z=0 (not zero); after CMP: !=",
+            JA: "Jump if C=0 and Z=0 (above); after CMP: >",
+            JNA: "Jump if C=1 or Z=1 (not above); after CMP: <=",
             PUSH: "Push to stack; SP--; FAULT if SP=0",
             POP: "Pop from stack; SP++; FAULT if SP>=231",
             CALL: "Push return addr, jump to target",
@@ -307,7 +336,8 @@ export async function initEditor(container, defaultCode) {
         };
         const SIG_LABELS = {
             [OpType.REG]: "reg",
-            [OpType.REG_STACK]: "reg|SP",
+            [OpType.REG_ARITH]: "reg|SP",
+            [OpType.REG_STACK]: "gpr|DP",
             [OpType.REG_GPR]: "gpr",
             [OpType.IMM]: "imm",
             [OpType.MEM]: "[addr]",
@@ -397,7 +427,10 @@ export async function initEditor(container, defaultCode) {
             if (atWord && (atWord.from < atWord.to || context.explicit)) {
                 return {
                     from: atWord.from,
-                    options: [{ label: "@include", type: "keyword", detail: '"filename.asm"' }],
+                    options: [
+                        { label: "@include", type: "keyword", detail: '"filename.asm"' },
+                        { label: "@page", type: "keyword", detail: "N[, offset]" },
+                    ],
                 };
             }
 
@@ -443,6 +476,7 @@ export async function initEditor(container, defaultCode) {
                     bpField,
                     debugGutter,
                     autocompletion({ override: [sim8CompletionSource] }),
+                    keymap.of([{ key: "Mod-/", run: toggleComment }, indentWithTab]),
                 ],
             }),
             parent: container,
