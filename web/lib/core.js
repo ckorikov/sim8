@@ -414,6 +414,7 @@ export class CPU {
     load(code) {
         this.reset();
         this.mem.load(code);
+        this._peakMem = code.length;
     }
 
     step() {
