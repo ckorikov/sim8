@@ -11,7 +11,7 @@ function asmOk(source, files = {}) {
     return assemble(source, 2, files);
 }
 
-function asmErr(source, files = {}) {
+function asmError(source, files = {}) {
     try {
         assemble(source, 2, files);
     } catch (e) {
@@ -56,17 +56,17 @@ describe("@include preprocessor", () => {
             "a.asm": '@include "b.asm"',
             "b.asm": '@include "a.asm"',
         };
-        const err = asmErr('@include "a.asm"', files);
+        const err = asmError('@include "a.asm"', files);
         expect(err.message).toMatch(/circular include/i);
     });
 
     it('file not found → AsmError mentioning "file not found"', () => {
-        const err = asmErr('@include "missing.asm"', {});
+        const err = asmError('@include "missing.asm"', {});
         expect(err.message).toMatch(/file not found/i);
     });
 
     it('invalid syntax (missing quotes) → AsmError mentioning "invalid syntax"', () => {
-        const err = asmErr("@include lib/print.asm", {});
+        const err = asmError("@include lib/print.asm", {});
         expect(err.message).toMatch(/invalid syntax/i);
     });
 
@@ -79,7 +79,7 @@ describe("@include preprocessor", () => {
             files[`depth${i}.asm`] = `@include "depth${i + 1}.asm"`;
         }
         files["depth17.asm"] = "HLT";
-        const err = asmErr('@include "depth0.asm"', files);
+        const err = asmError('@include "depth0.asm"', files);
         expect(err.message).toMatch(/max include depth exceeded/i);
     });
 
@@ -152,7 +152,7 @@ describe("@include preprocessor", () => {
     it("duplicate label across main and included file → AsmError with filename of included file", () => {
         const files = { "dup.asm": "lbl: RET" };
         // Preprocessor merges both; assembler detects the duplicate label in the included file
-        const err = asmErr('lbl: HLT\n@include "dup.asm"', files);
+        const err = asmError('lbl: HLT\n@include "dup.asm"', files);
         expect(err.message).toMatch(/duplicate label/i);
         expect(err.filename).toBe("dup.asm");
     });
@@ -161,34 +161,34 @@ describe("@include preprocessor", () => {
 
     it("AsmError from included file carries filename", () => {
         const files = { "bad.asm": "INVALID_OP" };
-        const err = asmErr('@include "bad.asm"', files);
+        const err = asmError('@include "bad.asm"', files);
         expect(err.filename).toBe("bad.asm");
     });
 
     it("AsmError from root file has null filename", () => {
-        const err = asmErr("INVALID_OP", {});
+        const err = asmError("INVALID_OP", {});
         expect(err.filename).toBeNull();
     });
 
     // ── Malformed @include syntax variants ──────────────────────
 
     it("@include without quotes → invalid syntax", () => {
-        const err = asmErr("@include lib/foo.asm", {});
+        const err = asmError("@include lib/foo.asm", {});
         expect(err.message).toMatch(/invalid syntax/i);
     });
 
     it("@include with only opening quote → invalid syntax", () => {
-        const err = asmErr('@include "lib/foo.asm', {});
+        const err = asmError('@include "lib/foo.asm', {});
         expect(err.message).toMatch(/invalid syntax/i);
     });
 
     it("@include with empty path string → invalid syntax", () => {
-        const err = asmErr('@include ""', {});
+        const err = asmError('@include ""', {});
         expect(err.message).toMatch(/invalid syntax/i);
     });
 
     it("@include with trailing content → invalid syntax", () => {
-        const err = asmErr('@include "lib.asm" ; comment', {});
+        const err = asmError('@include "lib.asm" ; comment', {});
         expect(err.message).toMatch(/invalid syntax/i);
     });
 });
@@ -279,5 +279,66 @@ describe("@include URL (assembleAsync, spec §5.8)", () => {
     it("backward compat: assemble() without URL still works synchronously", () => {
         const { code } = assemble("HLT");
         expect(code).toHaveLength(1);
+    });
+});
+
+// ── @page + @include interaction ─────────────────────────────────────
+
+describe("@page + @include interaction", () => {
+    it("@include after @page emits to that page", () => {
+        const files = { "data.asm": "DB 10, 20, 30" };
+        const { code } = asmOk('HLT\n@page 1\n@include "data.asm"', files);
+        expect(code[256]).toBe(10);
+        expect(code[257]).toBe(20);
+        expect(code[258]).toBe(30);
+    });
+
+    it("label from @include on page 1 has correct address", () => {
+        const files = { "lib.asm": "table: DB 42" };
+        const { labels } = asmOk('HLT\n@page 1\n@include "lib.asm"', files);
+        expect(labels.table).toBe(256); // page 1, offset 0
+    });
+
+    it("@page directive inside included file switches page", () => {
+        const files = { "pages.asm": "@page 2\nDB 99" };
+        const { code } = asmOk('HLT\n@page 1\nDB 1\n@include "pages.asm"', files);
+        expect(code[256]).toBe(1); // page 1
+        expect(code[512]).toBe(99); // page 2
+    });
+});
+
+// ── No include guards ────────────────────────────────────────────────
+
+describe("no include guards", () => {
+    it("double include with label → duplicate label error", () => {
+        const files = { "lib.asm": "helper: RET" };
+        const err = asmError('@include "lib.asm"\n@include "lib.asm"\nHLT', files);
+        expect(err.message).toMatch(/duplicate label/i);
+    });
+
+    it("double include without labels → data duplicated", () => {
+        const files = { "data.asm": "DB 1, 2" };
+        const { code } = asmOk('@include "data.asm"\n@include "data.asm"\nHLT', files);
+        expect(Array.from(code.slice(0, 4))).toEqual([1, 2, 1, 2]);
+    });
+});
+
+// ── Additional spec coverage ─────────────────────────────────────────
+
+describe("additional @include spec coverage", () => {
+    it("max depth 16 passes", () => {
+        const files = {};
+        for (let i = 0; i < 15; i++) {
+            files[`depth${i}.asm`] = `@include "depth${i + 1}.asm"`;
+        }
+        files["depth15.asm"] = "HLT";
+        const { code } = asmOk('@include "depth0.asm"', files);
+        expect(code).toContain(0); // HLT
+    });
+
+    it("error in included file carries line number", () => {
+        const files = { "bad.asm": "MOV A, 1\nINVALID_OP" };
+        const err = asmError('@include "bad.asm"', files);
+        expect(err.line).toBe(2);
     });
 });

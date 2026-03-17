@@ -13,7 +13,7 @@ import { encodeFloat32, encodeFloat16 } from "../lib/fp.js";
 // ── Helpers ─────────────────────────────────────────────────────────
 
 /** Shorthand: assemble and return just the code bytes. */
-function code(source, arch = 2) {
+function asm(source, arch = 2) {
     return assemble(source, arch).code;
 }
 
@@ -33,69 +33,69 @@ function asmError(source, arch = 2) {
 
 describe("basic instructions", () => {
     it("HLT", () => {
-        expect(code("HLT")).toEqual([Op.HLT]);
+        expect(asm("HLT")).toEqual([Op.HLT]);
     });
 
     it("MOV A, 42", () => {
-        expect(code("MOV A, 42")).toEqual([Op.MOV_REG_CONST, Reg.A, 42]);
+        expect(asm("MOV A, 42")).toEqual([Op.MOV_REG_CONST, Reg.A, 42]);
     });
 
     it("MOV A, B", () => {
-        expect(code("MOV A, B")).toEqual([Op.MOV_REG_REG, Reg.A, Reg.B]);
+        expect(asm("MOV A, B")).toEqual([Op.MOV_REG_REG, Reg.A, Reg.B]);
     });
 
     it("MOV A, [0x50]", () => {
-        expect(code("MOV A, [0x50]")).toEqual([Op.MOV_REG_ADDR, Reg.A, 0x50]);
+        expect(asm("MOV A, [0x50]")).toEqual([Op.MOV_REG_ADDR, Reg.A, 0x50]);
     });
 
     it("MOV A, [B]", () => {
         const ra = encodeRegaddr(Reg.B, 0);
-        expect(code("MOV A, [B]")).toEqual([Op.MOV_REG_REGADDR, Reg.A, ra]);
+        expect(asm("MOV A, [B]")).toEqual([Op.MOV_REG_REGADDR, Reg.A, ra]);
     });
 
     it("MOV A, [B+5]", () => {
         const ra = encodeRegaddr(Reg.B, 5);
-        expect(code("MOV A, [B+5]")).toEqual([Op.MOV_REG_REGADDR, Reg.A, ra]);
+        expect(asm("MOV A, [B+5]")).toEqual([Op.MOV_REG_REGADDR, Reg.A, ra]);
     });
 
     it("MOV [0x50], A", () => {
-        expect(code("MOV [0x50], A")).toEqual([Op.MOV_ADDR_REG, 0x50, Reg.A]);
+        expect(asm("MOV [0x50], A")).toEqual([Op.MOV_ADDR_REG, 0x50, Reg.A]);
     });
 
     it("ADD A, 10", () => {
-        expect(code("ADD A, 10")).toEqual([Op.ADD_REG_CONST, Reg.A, 10]);
+        expect(asm("ADD A, 10")).toEqual([Op.ADD_REG_CONST, Reg.A, 10]);
     });
 
     it("SUB A, B", () => {
-        expect(code("SUB A, B")).toEqual([Op.SUB_REG_REG, Reg.A, Reg.B]);
+        expect(asm("SUB A, B")).toEqual([Op.SUB_REG_REG, Reg.A, Reg.B]);
     });
 
     it("CMP A, 42", () => {
-        expect(code("CMP A, 42")).toEqual([Op.CMP_REG_CONST, Reg.A, 42]);
+        expect(asm("CMP A, 42")).toEqual([Op.CMP_REG_CONST, Reg.A, 42]);
     });
 
     it("INC A", () => {
-        expect(code("INC A")).toEqual([Op.INC_REG, Reg.A]);
+        expect(asm("INC A")).toEqual([Op.INC_REG, Reg.A]);
     });
 
     it("DEC B", () => {
-        expect(code("DEC B")).toEqual([Op.DEC_REG, Reg.B]);
+        expect(asm("DEC B")).toEqual([Op.DEC_REG, Reg.B]);
     });
 
     it("JMP 0x50", () => {
-        expect(code("JMP 0x50")).toEqual([Op.JMP_ADDR, 0x50]);
+        expect(asm("JMP 0x50")).toEqual([Op.JMP_ADDR, 0x50]);
     });
 
     it("PUSH 42", () => {
-        expect(code("PUSH 42")).toEqual([Op.PUSH_CONST, 42]);
+        expect(asm("PUSH 42")).toEqual([Op.PUSH_CONST, 42]);
     });
 
     it("RET", () => {
-        expect(code("RET")).toEqual([Op.RET]);
+        expect(asm("RET")).toEqual([Op.RET]);
     });
 
     it("NOT A", () => {
-        expect(code("NOT A")).toEqual([Op.NOT_REG, Reg.A]);
+        expect(asm("NOT A")).toEqual([Op.NOT_REG, Reg.A]);
     });
 });
 
@@ -103,27 +103,27 @@ describe("basic instructions", () => {
 
 describe("number formats", () => {
     it("hexadecimal: MOV A, 0xFF", () => {
-        expect(code("MOV A, 0xFF")).toEqual([Op.MOV_REG_CONST, Reg.A, 255]);
+        expect(asm("MOV A, 0xFF")).toEqual([Op.MOV_REG_CONST, Reg.A, 255]);
     });
 
     it("octal: MOV A, 0o77", () => {
-        expect(code("MOV A, 0o77")).toEqual([Op.MOV_REG_CONST, Reg.A, 63]);
+        expect(asm("MOV A, 0o77")).toEqual([Op.MOV_REG_CONST, Reg.A, 63]);
     });
 
     it("binary: MOV A, 11111111b", () => {
-        expect(code("MOV A, 11111111b")).toEqual([Op.MOV_REG_CONST, Reg.A, 255]);
+        expect(asm("MOV A, 11111111b")).toEqual([Op.MOV_REG_CONST, Reg.A, 255]);
     });
 
     it("decimal with suffix: MOV A, 42d", () => {
-        expect(code("MOV A, 42d")).toEqual([Op.MOV_REG_CONST, Reg.A, 42]);
+        expect(asm("MOV A, 42d")).toEqual([Op.MOV_REG_CONST, Reg.A, 42]);
     });
 
     it("char literal: MOV A, 'H'", () => {
-        expect(code("MOV A, 'H'")).toEqual([Op.MOV_REG_CONST, Reg.A, 72]);
+        expect(asm("MOV A, 'H'")).toEqual([Op.MOV_REG_CONST, Reg.A, 72]);
     });
 
     it("zero: MOV A, 0", () => {
-        expect(code("MOV A, 0")).toEqual([Op.MOV_REG_CONST, Reg.A, 0]);
+        expect(asm("MOV A, 0")).toEqual([Op.MOV_REG_CONST, Reg.A, 0]);
     });
 });
 
@@ -183,35 +183,35 @@ describe("labels", () => {
 
 describe("DB directive", () => {
     it("DB 1, 2, 3", () => {
-        expect(code("DB 1, 2, 3")).toEqual([1, 2, 3]);
+        expect(asm("DB 1, 2, 3")).toEqual([1, 2, 3]);
     });
 
     it('DB "Hello"', () => {
-        expect(code('DB "Hello"')).toEqual([72, 101, 108, 108, 111]);
+        expect(asm('DB "Hello"')).toEqual([72, 101, 108, 108, 111]);
     });
 
     it("DB 0xFF", () => {
-        expect(code("DB 0xFF")).toEqual([255]);
+        expect(asm("DB 0xFF")).toEqual([255]);
     });
 
     it("DB 'A'", () => {
-        expect(code("DB 'A'")).toEqual([65]);
+        expect(asm("DB 'A'")).toEqual([65]);
     });
 
     it("DB float32 (arch=2): DB 1.0", () => {
-        const result = code("DB 1.0");
+        const result = asm("DB 1.0");
         const { data } = encodeFloat32(1.0);
         expect(result).toEqual(Array.from(data));
     });
 
     it("DB float16 suffix: DB 1.0_h", () => {
-        const result = code("DB 1.0_h");
+        const result = asm("DB 1.0_h");
         const { data } = encodeFloat16(1.0);
         expect(result).toEqual(Array.from(data));
     });
 
     it("DB OFP8 E4M3 representable: DB 1.5_o3 → 1 byte", () => {
-        expect(code("DB 1.5_o3")).toHaveLength(1);
+        expect(asm("DB 1.5_o3")).toHaveLength(1);
     });
 
     it("DB OFP8 E4M3 overflow (>448) → assembler error", () => {
@@ -227,7 +227,7 @@ describe("DB directive", () => {
     });
 
     it("DB OFP8 E5M2 overflow silently saturates to Inf byte", () => {
-        expect(code("DB 1.0e40_o2")).toHaveLength(1);
+        expect(asm("DB 1.0e40_o2")).toHaveLength(1);
     });
 });
 
@@ -235,11 +235,11 @@ describe("DB directive", () => {
 
 describe("mnemonic aliases", () => {
     it("JE is alias for JZ", () => {
-        expect(code("JE 10")).toEqual([Op.JZ_ADDR, 10]);
+        expect(asm("JE 10")).toEqual([Op.JZ_ADDR, 10]);
     });
 
     it("JNE is alias for JNZ", () => {
-        expect(code("JNE 10")).toEqual([Op.JNZ_ADDR, 10]);
+        expect(asm("JNE 10")).toEqual([Op.JNZ_ADDR, 10]);
     });
 });
 
@@ -252,54 +252,54 @@ describe("FP instructions", () => {
     const fpm_FHB_H = encodeFpm(0, 1, FP_FMT_H); // 0x09
 
     it("FMOV.F32 FA, [0x50] -- load from address", () => {
-        expect(code("FMOV.F FA, [0x50]")).toEqual([Op.FMOV_FP_ADDR, fpm_FA_F32, 0x50]);
+        expect(asm("FMOV.F FA, [0x50]")).toEqual([Op.FMOV_FP_ADDR, fpm_FA_F32, 0x50]);
     });
 
     it("FMOV.F32 [0x50], FA -- store to address", () => {
-        expect(code("FMOV.F [0x50], FA")).toEqual([Op.FMOV_ADDR_FP, fpm_FA_F32, 0x50]);
+        expect(asm("FMOV.F [0x50], FA")).toEqual([Op.FMOV_ADDR_FP, fpm_FA_F32, 0x50]);
     });
 
     it("FADD.F FA, [0x50] -- FP add from memory", () => {
-        expect(code("FADD.F FA, [0x50]")).toEqual([Op.FADD_FP_ADDR, fpm_FA_F32, 0x50]);
+        expect(asm("FADD.F FA, [0x50]")).toEqual([Op.FADD_FP_ADDR, fpm_FA_F32, 0x50]);
     });
 
     it("FMOV.F FA, FB -- register to register", () => {
-        expect(code("FMOV.F FA, FB")).toEqual([Op.FMOV_RR, fpm_FA_F32, fpm_FB_F32]);
+        expect(asm("FMOV.F FA, FB")).toEqual([Op.FMOV_RR, fpm_FA_F32, fpm_FB_F32]);
     });
 
     it("FADD.H FHA, FHB -- reg-reg FP add", () => {
-        expect(code("FADD.H FHA, FHB")).toEqual([Op.FADD_RR, fpm_FHA_H, fpm_FHB_H]);
+        expect(asm("FADD.H FHA, FHB")).toEqual([Op.FADD_RR, fpm_FHA_H, fpm_FHB_H]);
     });
 
     it("FCVT.F.H FA, FHA -- format conversion with dual suffix", () => {
-        expect(code("FCVT.F.H FA, FHA")).toEqual([Op.FCVT_FP_FP, fpm_FA_F32, fpm_FHA_H]);
+        expect(asm("FCVT.F.H FA, FHA")).toEqual([Op.FCVT_FP_FP, fpm_FA_F32, fpm_FHA_H]);
     });
 
     it("FSTAT A -- control instruction (no suffix)", () => {
-        expect(code("FSTAT A")).toEqual([Op.FSTAT_GPR, Reg.A]);
+        expect(asm("FSTAT A")).toEqual([Op.FSTAT_GPR, Reg.A]);
     });
 
     it("FCLR -- no operands, no suffix", () => {
-        expect(code("FCLR")).toEqual([Op.FCLR]);
+        expect(asm("FCLR")).toEqual([Op.FCLR]);
     });
 
     it("FABS.F FA -- unary FP", () => {
-        expect(code("FABS.F FA")).toEqual([Op.FABS_FP, fpm_FA_F32]);
+        expect(asm("FABS.F FA")).toEqual([Op.FABS_FP, fpm_FA_F32]);
     });
 
     it("FCLASS.F A, FA -- GPR receives classification, FPM before GPR in encoding", () => {
-        expect(code("FCLASS.F A, FA")).toEqual([Op.FCLASS_GPR_FP, fpm_FA_F32, Reg.A]);
+        expect(asm("FCLASS.F A, FA")).toEqual([Op.FCLASS_GPR_FP, fpm_FA_F32, Reg.A]);
     });
 
     it("FFTOI.F A, FA -- GPR, FP; encoding: [opcode, fpm, gpr]", () => {
-        expect(code("FFTOI.F A, FA")).toEqual([Op.FFTOI_GPR_FP, fpm_FA_F32, Reg.A]);
+        expect(asm("FFTOI.F A, FA")).toEqual([Op.FFTOI_GPR_FP, fpm_FA_F32, Reg.A]);
     });
 
     it("FMOV.O3 FQA, 1.0 -- FP immediate 8-bit", () => {
         // FQA = phys=0, pos=0, fmt=O3
         const fpm_FQA_O3 = encodeFpm(0, 0, FP_FMT_O3);
         // 1.0 in E4M3: exp=7(bias), mant=0 → (0_0111_000)b = 0x38
-        expect(code("FMOV.O3 FQA, 1.0")).toEqual([Op.FMOV_FP_IMM8, fpm_FQA_O3, 0x38]);
+        expect(asm("FMOV.O3 FQA, 1.0")).toEqual([Op.FMOV_FP_IMM8, fpm_FQA_O3, 0x38]);
     });
 });
 
@@ -366,19 +366,19 @@ describe("error cases", () => {
 
 describe("comments and whitespace", () => {
     it("inline comment ignored: MOV A, 42 ; comment", () => {
-        expect(code("MOV A, 42 ; this is a comment")).toEqual([Op.MOV_REG_CONST, Reg.A, 42]);
+        expect(asm("MOV A, 42 ; this is a comment")).toEqual([Op.MOV_REG_CONST, Reg.A, 42]);
     });
 
     it("empty lines are ignored", () => {
-        expect(code("\n\nHLT\n\n")).toEqual([Op.HLT]);
+        expect(asm("\n\nHLT\n\n")).toEqual([Op.HLT]);
     });
 
     it("leading and trailing whitespace is ignored", () => {
-        expect(code("   MOV A, 42   ")).toEqual([Op.MOV_REG_CONST, Reg.A, 42]);
+        expect(asm("   MOV A, 42   ")).toEqual([Op.MOV_REG_CONST, Reg.A, 42]);
     });
 
     it("comment-only lines are ignored", () => {
-        expect(code("; comment\nHLT\n; another")).toEqual([Op.HLT]);
+        expect(asm("; comment\nHLT\n; another")).toEqual([Op.HLT]);
     });
 });
 
@@ -386,7 +386,7 @@ describe("comments and whitespace", () => {
 
 describe("complex programs", () => {
     it("multi-instruction sequence", () => {
-        expect(code("MOV A, 1\nADD A, 2\nHLT")).toEqual([
+        expect(asm("MOV A, 1\nADD A, 2\nHLT")).toEqual([
             Op.MOV_REG_CONST,
             Reg.A,
             1,
@@ -446,14 +446,14 @@ describe("FP edge cases", () => {
 
     it("FMOV.F32 FA, [B+3] -- FP with regaddr offset", () => {
         const ra = encodeRegaddr(Reg.B, 3);
-        expect(code("FADD.F FA, [B+3]")).toEqual([Op.FADD_FP_REGADDR, encodeFpm(0, 0, FP_FMT_F), ra]);
+        expect(asm("FADD.F FA, [B+3]")).toEqual([Op.FADD_FP_REGADDR, encodeFpm(0, 0, FP_FMT_F), ra]);
     });
 
     it("case-insensitive FP register names", () => {
-        expect(code("FABS.F fa")).toEqual([Op.FABS_FP, encodeFpm(0, 0, FP_FMT_F)]);
+        expect(asm("FABS.F fa")).toEqual([Op.FABS_FP, encodeFpm(0, 0, FP_FMT_F)]);
     });
 
     it("case-insensitive FP suffixes", () => {
-        expect(code("FABS.f FA")).toEqual([Op.FABS_FP, encodeFpm(0, 0, FP_FMT_F)]);
+        expect(asm("FABS.f FA")).toEqual([Op.FABS_FP, encodeFpm(0, 0, FP_FMT_F)]);
     });
 });
