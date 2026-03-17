@@ -12,11 +12,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.2.2
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4.4.0
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install vsce
         run: npm install -g @vscode/vsce
@@ -33,7 +33,7 @@ jobs:
         working-directory: vscode-sim8
         run: vsce package
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4.6.2
         with:
           name: sim8-asm-vsix
           path: vscode-sim8/*.vsix
