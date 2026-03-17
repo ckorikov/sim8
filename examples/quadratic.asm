@@ -4,16 +4,17 @@
         JMP start
 
 output: DB 232
-coef_a: DB 1.0_h                 ; a = 1
-coef_b: DB -5.0_h                ; b = -5
-coef_c: DB 6.0_h                 ; c = 6
+coef_a: DB 1.0_h
+coef_b: DB -5.0_h
+coef_c: DB 6.0_h
 
-msg_x1:     DB "x1="
-            DB 0
-msg_x2:     DB " x2="
-            DB 0
-msg_err:    DB "no real"
-            DB 0
+msg_x1: DB "x1="
+        DB 0
+msg_x2: DB " x2="
+        DB 0
+msg_err:
+        DB "no real"
+        DB 0
 
 start:
         ; 2a -> FHC
