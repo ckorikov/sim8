@@ -22,13 +22,14 @@ from pysim8.isa import (
 # Sample operand values per (position, operand_type).
 _SAMPLES: dict[tuple[int, OpType], int] = {
     (0, OpType.REG): 2,
-    (0, OpType.REG_STACK): 0,
+    (0, OpType.REG_ARITH): 0,
+    (0, OpType.REG_STACK): 1,
     (0, OpType.REG_GPR): 1,
     (0, OpType.IMM): 42,
     (0, OpType.MEM): 100,
     (0, OpType.REGADDR): (3 << 3) | 2,
     (1, OpType.REG): 3,
-    (1, OpType.REG_STACK): 4,
+    (1, OpType.REG_ARITH): 4,
     (1, OpType.REG_GPR): 3,
     (1, OpType.IMM): 99,
     (1, OpType.MEM): 200,

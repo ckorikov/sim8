@@ -10,23 +10,12 @@ from __future__ import annotations
 import struct
 
 import pytest
+from conftest import asm_bytes, asm_error
 from hypothesis import given
 from hypothesis import strategies as st
 
-from pysim8.asm import assemble, AssemblerError
-from pysim8.asm.parser import OpFpImm, OpConst
-
-
-def asm_bytes(source: str, arch: int = 2) -> list[int]:
-    """Assemble and return machine code bytes."""
-    return assemble(source, arch=arch).code
-
-
-def asm_error(source: str, arch: int = 2) -> AssemblerError:
-    """Assemble expecting an error; return the exception."""
-    with pytest.raises(AssemblerError) as exc_info:
-        assemble(source, arch=arch)
-    return exc_info.value
+from pysim8.asm import assemble
+from pysim8.asm.parser import OpConst, OpFpImm
 
 
 class TestFpmEncoding:
@@ -255,9 +244,7 @@ class TestDbFloatLiterals:
     def test_db_float_array(self) -> None:
         """DB 1.0, 2.0 -> 8 bytes (two float32)."""
         code = asm_bytes("DB 1.0, 2.0")
-        expected = list(struct.pack("<f", 1.0)) + list(
-            struct.pack("<f", 2.0)
-        )
+        expected = list(struct.pack("<f", 1.0)) + list(struct.pack("<f", 2.0))
         assert code == expected
 
     def test_db_negative_float(self) -> None:
@@ -284,10 +271,7 @@ class TestFpErrors:
     def test_arch1_rejects_fp(self) -> None:
         """arch=1 does not recognize FP mnemonics."""
         e = asm_error("FADD.F FA, [0x50]\nHLT", arch=1)
-        assert (
-            "Invalid instruction" in e.message
-            or "Syntax error" in e.message
-        )
+        assert "Invalid instruction" in e.message or "Syntax error" in e.message
 
     def test_missing_suffix(self) -> None:
         """FP data instruction without suffix -> error."""
@@ -297,18 +281,12 @@ class TestFpErrors:
     def test_width_mismatch(self) -> None:
         """Suffix width doesn't match register width."""
         e = asm_error("FADD.F FHA, [0x50]\nHLT")
-        assert (
-            "match" in e.message.lower()
-            or "width" in e.message.lower()
-        )
+        assert "match" in e.message.lower() or "width" in e.message.lower()
 
     def test_unknown_suffix(self) -> None:
         """Unknown format suffix."""
         e = asm_error("FADD.X FA, [0x50]\nHLT")
-        assert (
-            "suffix" in e.message.lower()
-            or "Invalid" in e.message
-        )
+        assert "suffix" in e.message.lower() or "Invalid" in e.message
 
     def test_fp_reg_as_label_forbidden(self) -> None:
         """FP register name as label is forbidden."""
@@ -336,16 +314,12 @@ class TestLabelWithFpInstructions:
 
     def test_fp_and_label_coexist(self) -> None:
         """FP instructions and labels in the same program."""
-        code = asm_bytes(
-            "FABS.F FA\nJMP end\nend: HLT"
-        )
+        code = asm_bytes("FABS.F FA\nJMP end\nend: HLT")
         assert code == [142, 0x00, 31, 4, 0]
 
     def test_label_before_fp_instruction(self) -> None:
         """Label on an FP instruction line."""
-        result = assemble(
-            "start: FABS.F FA\nHLT", arch=2
-        )
+        result = assemble("start: FABS.F FA\nHLT", arch=2)
         assert result.code == [142, 0x00, 0]
         assert result.labels["start"] == 0
 
@@ -358,12 +332,18 @@ class TestRegressionArch1:
 
     def test_mov_reg_const(self) -> None:
         assert asm_bytes("MOV A, 42\nHLT", arch=1) == [
-            6, 0, 42, 0,
+            6,
+            0,
+            42,
+            0,
         ]
 
     def test_add(self) -> None:
         assert asm_bytes("ADD A, B\nHLT", arch=1) == [
-            10, 0, 1, 0,
+            10,
+            0,
+            1,
+            0,
         ]
 
 
@@ -517,11 +497,7 @@ class TestFpParserEdges:
 
     def test_fp_control_with_suffix_error(self) -> None:
         e = asm_error("FSTAT.H A\nHLT")
-        assert (
-            "suffix" in e.message.lower()
-            or "invalid" in e.message.lower()
-            or "syntax" in e.message.lower()
-        )
+        assert "suffix" in e.message.lower() or "invalid" in e.message.lower() or "syntax" in e.message.lower()
 
     def test_fcvt_missing_suffix(self) -> None:
         e = asm_error("FCVT.H FHA, FHB\nHLT")
@@ -561,18 +537,12 @@ class TestFpCodegenEdges:
     def test_fcvt_non_fpreg_error(self) -> None:
         e = asm_error("FCVT.H.F A, B\nHLT", arch=2)
         assert (
-            "syntax" in e.message.lower()
-            or "invalid" in e.message.lower()
-            or "does not support" in e.message.lower()
+            "syntax" in e.message.lower() or "invalid" in e.message.lower() or "does not support" in e.message.lower()
         )
 
     def test_fmov_imm_4bit_error(self) -> None:
         e = asm_error("FMOV.N1 FOA, 1.0\nHLT", arch=2)
-        assert (
-            "not supported" in e.message.lower()
-            or "invalid" in e.message.lower()
-            or "syntax" in e.message.lower()
-        )
+        assert "not supported" in e.message.lower() or "invalid" in e.message.lower() or "syntax" in e.message.lower()
 
     def test_fmov_imm_suffix_mismatch(self) -> None:
         e = asm_error("FMOV.H FHA, 1.0_bf\nHLT", arch=2)
@@ -645,10 +615,12 @@ class TestFcvtSameFormatBan:
 class TestIsaEdges:
     def test_validate_fpm_reserved_fmt(self) -> None:
         from pysim8.isa import validate_fpm
+
         assert validate_fpm(0b00_000_101) is False
 
     def test_validate_fpm_invalid_pos(self) -> None:
         from pysim8.isa import validate_fpm
+
         assert validate_fpm(0b00_001_000) is False
 
     def test_db_unsupported_operand(self) -> None:
@@ -670,9 +642,7 @@ class TestIsaEdges:
         """FMOV.H with integer register dst → error (line 266)."""
         e = asm_error("FMOV.H A, 1.0\nHLT", arch=2)
         assert (
-            "syntax" in e.message.lower()
-            or "invalid" in e.message.lower()
-            or "does not support" in e.message.lower()
+            "syntax" in e.message.lower() or "invalid" in e.message.lower() or "does not support" in e.message.lower()
         )
 
     def test_fmov_imm_no_suffix(self) -> None:
@@ -691,6 +661,7 @@ class TestIsaEdges:
         """FP_IMM8/FP_IMM16 matching (line 67-68)."""
         from pysim8.asm.codegen import _operand_matches
         from pysim8.isa import OpType
+
         fp_imm = OpFpImm(value=1.0, fmt=None)
         assert _operand_matches(fp_imm, OpType.FP_IMM8)
         assert _operand_matches(fp_imm, OpType.FP_IMM16)
@@ -705,13 +676,15 @@ class TestIsaEdges:
         """DB with multiple floats exercises OpFloat loop-back branch."""
         from pysim8.asm.codegen import _encode_db
         from pysim8.asm.parser import OpFloat
+
         result = _encode_db([OpFloat(1.0, 0), OpFloat(2.0, 0)], 1)
         assert result == list(struct.pack("<f", 1.0)) + list(struct.pack("<f", 2.0))
 
     def test_db_unsupported_operand_type(self) -> None:
         """DB with unexpected operand type raises AssemblerError."""
-        from pysim8.asm.codegen import _encode_db_operand, AssemblerError
+        from pysim8.asm.codegen import AssemblerError, _encode_db_operand
         from pysim8.asm.parser import OpReg
+
         result: list[int] = []
         with pytest.raises(AssemblerError) as exc_info:
             _encode_db_operand(OpReg(0), 1, result)
@@ -719,12 +692,14 @@ class TestIsaEdges:
 
     def test_encode_regaddr_invalid_reg(self) -> None:
         from pysim8.isa import encode_regaddr
+
         with pytest.raises(ValueError) as exc_info:
             encode_regaddr(6, 0)
         assert "invalid register code" in str(exc_info.value).lower()
 
     def test_encode_regaddr_offset_out_of_range(self) -> None:
         from pysim8.isa import encode_regaddr
+
         with pytest.raises(ValueError) as exc_info:
             encode_regaddr(0, 16)
         assert "offset out of range" in str(exc_info.value).lower()
@@ -768,8 +743,8 @@ class TestParserCoverage:
 
     def test_string_operand_in_db(self) -> None:
         """DB "hello" exercises _try_string path (line 282)."""
-        code = asm_bytes("DB \"XY\"")
-        assert code == [ord('X'), ord('Y')]
+        code = asm_bytes('DB "XY"')
+        assert code == [ord("X"), ord("Y")]
 
     def test_fp_suffix_unknown_dot_non_fp(self) -> None:
         """MOV.F A, B — dot in non-FP mnemonic → unknown (line 596→604)."""
@@ -786,33 +761,23 @@ class TestFpCrazyInput:
     def test_fmov_no_operands(self) -> None:
         e = asm_error("FMOV.F\nHLT")
         assert (
-            "syntax" in e.message.lower()
-            or "invalid" in e.message.lower()
-            or "does not support" in e.message.lower()
+            "syntax" in e.message.lower() or "invalid" in e.message.lower() or "does not support" in e.message.lower()
         )
 
     def test_fmov_one_operand(self) -> None:
         e = asm_error("FMOV.F FA\nHLT")
         assert (
-            "syntax" in e.message.lower()
-            or "invalid" in e.message.lower()
-            or "does not support" in e.message.lower()
+            "syntax" in e.message.lower() or "invalid" in e.message.lower() or "does not support" in e.message.lower()
         )
 
     def test_fmov_three_operands(self) -> None:
         e = asm_error("FMOV.F FA, [10], [20]\nHLT")
-        assert (
-            "syntax" in e.message.lower()
-            or "invalid" in e.message.lower()
-            or "too many" in e.message.lower()
-        )
+        assert "syntax" in e.message.lower() or "invalid" in e.message.lower() or "too many" in e.message.lower()
 
     def test_fadd_no_operands(self) -> None:
         e = asm_error("FADD.F\nHLT", arch=2)
         assert (
-            "syntax" in e.message.lower()
-            or "invalid" in e.message.lower()
-            or "does not support" in e.message.lower()
+            "syntax" in e.message.lower() or "invalid" in e.message.lower() or "does not support" in e.message.lower()
         )
 
     def test_fabs_extra_operand(self) -> None:
@@ -828,9 +793,7 @@ class TestFpCrazyInput:
         """FCVT with 3+ suffixes is a syntax error."""
         e = asm_error("FCVT.H.F.BF FHA, FA\nHLT", arch=2)
         assert (
-            "syntax" in e.message.lower()
-            or "invalid" in e.message.lower()
-            or "does not support" in e.message.lower()
+            "syntax" in e.message.lower() or "invalid" in e.message.lower() or "does not support" in e.message.lower()
         )
 
     def test_fmov_imm_float32_reject(self) -> None:
@@ -876,13 +839,22 @@ class TestFpCrazyInput:
 class TestPropFpAssembly:
     """Property-based tests for FP assembler."""
 
-    @given(st.sampled_from([
-        ("FABS", "FA", 0x00), ("FNEG", "FA", 0x00), ("FSQRT", "FA", 0x00),
-        ("FABS", "FHA", 0x01), ("FNEG", "FHB", 0x09),
-        ("FABS", "FQA", 0x03), ("FNEG", "FQD", 0x1C),
-    ]))
+    @given(
+        st.sampled_from(
+            [
+                ("FABS", "FA", 0x00),
+                ("FNEG", "FA", 0x00),
+                ("FSQRT", "FA", 0x00),
+                ("FABS", "FHA", 0x01),
+                ("FNEG", "FHB", 0x09),
+                ("FABS", "FQA", 0x03),
+                ("FNEG", "FQD", 0x1C),
+            ]
+        )
+    )
     def test_unary_fpm_encoding(
-        self, args: tuple[str, str, int],
+        self,
+        args: tuple[str, str, int],
     ) -> None:
         """Unary FP instructions: opcode + FPM + HLT."""
         mnem, reg, expected_fpm = args
@@ -893,8 +865,7 @@ class TestPropFpAssembly:
     @given(st.sampled_from(["F", "H", "BF", "O3", "O2", "E8M23", "E5M10"]))
     def test_all_suffixes_accepted(self, sfx: str) -> None:
         """Every documented suffix is accepted by the assembler."""
-        reg = {"F": "FA", "H": "FHA", "BF": "FHB", "O3": "FQA",
-               "O2": "FQB", "E8M23": "FA", "E5M10": "FHA"}[sfx]
+        reg = {"F": "FA", "H": "FHA", "BF": "FHB", "O3": "FQA", "O2": "FQB", "E8M23": "FA", "E5M10": "FHA"}[sfx]
         code = asm_bytes(f"FABS.{sfx} {reg}\nHLT")
         assert code[0] == 142
         assert code[2] == 0
@@ -907,21 +878,24 @@ class TestCodegenEdgeCoverage:
         """_operand_matches returns False for unrecognized operand type."""
         from pysim8.asm.codegen import _operand_matches
         from pysim8.asm.parser import OpReg
+
         assert _operand_matches(OpReg(0), "NOT_AN_OPTYPE") is False
 
     def test_encode_operand_unexpected_type(self) -> None:
         """_encode_operand raises on unexpected operand type."""
         from pysim8.asm.codegen import _encode_operand
         from pysim8.asm.parser import OpString
+
         with pytest.raises(AssertionError) as exc_info:
             _encode_operand(OpString("hi"))
         assert "unexpected operand" in str(exc_info.value).lower()
 
-    def test_find_insn_invalid_fp_mnemonic(self) -> None:
-        """_find_insn with FP table raises on invalid mnemonic."""
-        from pysim8.asm.codegen import _find_insn, AssemblerError
+    def test_find_instr_invalid_fp_mnemonic(self) -> None:
+        """_find_instr with FP table raises on invalid mnemonic."""
+        from pysim8.asm.codegen import AssemblerError, _find_instr
         from pysim8.isa import BY_MNEMONIC_FP
+
         with pytest.raises(AssemblerError) as exc_info:
-            _find_insn("BOGUS", [], 1, table=BY_MNEMONIC_FP)
+            _find_instr("BOGUS", [], 1, table=BY_MNEMONIC_FP)
         msg = str(exc_info.value).lower()
         assert "invalid instruction" in msg and "bogus" in msg

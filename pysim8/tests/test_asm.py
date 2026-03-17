@@ -6,39 +6,14 @@ Tests are assembler-only: assemble source → verify bytes / labels / mapping / 
 from typing import get_args
 
 import pytest
-from hypothesis import given, settings, assume
+from conftest import asm_bytes, asm_error, asm_mapping
+from hypothesis import assume, given
 from hypothesis import strategies as st
 
-from pysim8.asm import assemble, AssemblerError
-from pysim8.asm.parser import Operand, parse_number, ParseError
-from pysim8.asm.codegen import _operand_matches, _encode_operand
+from pysim8.asm import AssemblerError, assemble
+from pysim8.asm.codegen import _operand_matches
+from pysim8.asm.parser import Operand, ParseError, parse_number
 from pysim8.isa import OpType
-
-
-# ── helpers ──────────────────────────────────────────────────────────
-
-
-def asm_bytes(source: str) -> list[int]:
-    """Assemble and return machine code bytes."""
-    return assemble(source).code
-
-
-def asm_labels(source: str) -> dict[str, int]:
-    """Assemble and return label table."""
-    return assemble(source).labels
-
-
-def asm_mapping(source: str) -> dict[int, int]:
-    """Assemble and return source mapping."""
-    return assemble(source).mapping
-
-
-def asm_error(source: str) -> AssemblerError:
-    """Assemble expecting an error; return the exception."""
-    with pytest.raises(AssemblerError) as exc_info:
-        assemble(source)
-    return exc_info.value
-
 
 # ── 5.16.1 Bytecode Verification (tests 110-120) ────────────────────
 
@@ -699,19 +674,19 @@ class TestExhaustiveness:
 
     def test_operand_matches_covers_all_ot_variants(self) -> None:
         from pysim8.asm.parser import (
-            OpReg,
-            OpConst,
             OpAddr,
-            OpRegAddr,
-            OpLabel,
-            OpFpReg,
+            OpConst,
             OpFpImm,
+            OpFpReg,
+            OpReg,
+            OpRegAddr,
         )
 
         test_operands = {
             OpType.REG: OpReg(0),
-            OpType.REG_STACK: OpReg(0),
+            OpType.REG_ARITH: OpReg(0),
             OpType.REG_GPR: OpReg(0),
+            OpType.REG_STACK: OpReg(0),
             OpType.IMM: OpConst(0),
             OpType.MEM: OpAddr(0),
             OpType.REGADDR: OpRegAddr(0, 0),
@@ -843,7 +818,7 @@ class TestPropParser:
     )
     def test_random_label_name(self, name: str) -> None:
         """Random uppercase labels work if not a keyword."""
-        from pysim8.isa import REGISTERS, FP_REGISTERS, MNEMONICS, MNEMONICS_FP
+        from pysim8.isa import FP_REGISTERS, MNEMONICS, MNEMONICS_FP, REGISTERS
 
         assume(name.upper() not in REGISTERS)
         assume(name.upper() not in FP_REGISTERS)
@@ -971,7 +946,7 @@ class TestParserDirect:
 
     def test_try_string_in_operand_chain(self) -> None:
         """_parse_operand with quoted string → OpString (line 282)."""
-        from pysim8.asm.parser import _parse_operand, OpString
+        from pysim8.asm.parser import OpString, _parse_operand
 
         result = _parse_operand('"hello"', 1)
         assert isinstance(result, OpString)
@@ -980,6 +955,7 @@ class TestParserDirect:
     def test_try_fp_imm_malformed_float(self) -> None:
         """_try_fp_imm with unparseable float → ParseError."""
         import unittest.mock as mock
+
         from pysim8.asm.parser import _try_fp_imm
 
         with mock.patch("builtins.float", side_effect=ValueError("bad")):
@@ -989,6 +965,7 @@ class TestParserDirect:
     def test_parse_float_literal_malformed(self) -> None:
         """_parse_float_literal with unparseable float → ParseError."""
         import unittest.mock as mock
+
         from pysim8.asm.parser import _parse_float_literal
 
         with mock.patch("builtins.float", side_effect=ValueError("bad")):
