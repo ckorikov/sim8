@@ -92,7 +92,7 @@ function buildTooltip(absAddr) {
     const sep = `<div class="mtt-sep"></div>`;
 
     return (
-        `<div class="mtt-hdr">[${hex(absAddr, 4)}] = ${hex(val)}</div>` +
+        `<div class="mtt-hdr">[${hex(absAddr, 4)}] = ${hex(val)}${asm.labelNames.has(absAddr) ? `<span class="mtt-label"> ${escapeHtml(asm.labelNames.get(absAddr))}</span>` : ""}</div>` +
         row("u8", val) +
         row("i8", i8) +
         row("bin", bin) +
@@ -145,17 +145,23 @@ function cellClass(addr, val, showInstr) {
     if (absAddr === cpu.ip) return cl + " marker-ip";
     if (absAddr === cpu.sp) return cl + " marker-sp";
 
-    if (page === 0) {
-        if (showInstr && asm.instrStarts.has(addr)) cl += " instr-start";
-        else if (showInstr && addr < asm.codeLen && val) cl += " instr";
-        else if (addr >= STACK_BASE && addr < IO_BASE) cl += " stack";
-        else if (addr >= IO_BASE) cl += " io";
+    if (showInstr && asm.instrStarts.has(absAddr)) {
+        cl += " instr-start";
+    } else if (page === 0 && addr >= IO_BASE) {
+        cl += " io";
+    } else if (page === 0 && addr >= STACK_BASE) {
+        cl += " stack";
+    } else if (showInstr && absAddr < asm.codeLen && val) {
+        cl += " instr";
     }
 
-    if (absAddr === cpu.a && absAddr !== cpu.ip) cl += " marker-a";
-    if (absAddr === cpu.b && absAddr !== cpu.ip) cl += " marker-b";
-    if (absAddr === cpu.c && absAddr !== cpu.ip) cl += " marker-c";
-    if (absAddr === cpu.d && absAddr !== cpu.ip) cl += " marker-d";
+    if (asm.labelAddrs.has(absAddr)) cl += " label";
+
+    const dpBase = cpu.dp * PAGE_SIZE;
+    if (dpBase + cpu.a === absAddr && absAddr !== cpu.ip) cl += " marker-a";
+    if (dpBase + cpu.b === absAddr && absAddr !== cpu.ip) cl += " marker-b";
+    if (dpBase + cpu.c === absAddr && absAddr !== cpu.ip) cl += " marker-c";
+    if (dpBase + cpu.d === absAddr && absAddr !== cpu.ip) cl += " marker-d";
     return cl;
 }
 
@@ -179,7 +185,9 @@ export function renderMemory() {
             const addr = r * 16 + c;
             const absAddr = pageBase + addr;
             const val = cpu.mem.get(absAddr);
-            return `<div class="${cellClass(addr, val, showInstr)}" style="width:${cellW}px;font-size:${cellFont}px" data-addr="${absAddr}">${fmtByte(val)}</div>`;
+            const lname = asm.labelNames.get(absAddr);
+            const title = lname ? ` title="${escapeHtml(lname)}"` : "";
+            return `<div class="${cellClass(addr, val, showInstr)}" style="width:${cellW}px;font-size:${cellFont}px" data-addr="${absAddr}"${title}>${fmtByte(val)}</div>`;
         }).join("");
         rows.push(
             `<div style="display:flex;"><div class="mr" style="width:${rowW}px">${hex(pageBase + r * 16, 4)}</div>${cells}</div>`,
@@ -192,6 +200,7 @@ export function renderMemory() {
         [colors.gr, "i/o"],
         [colors.or, "ip"],
         [colors.yl, "sp"],
+        [colors.bl, "label"],
     ]
         .map(([c, l]) => `<span><b style="color:${c};">&#9632;</b> ${l}</span>`)
         .join("");

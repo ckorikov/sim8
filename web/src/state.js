@@ -22,6 +22,8 @@ export const asm = {
     mapping: {}, // address → source line (1-based, flat)
     lineMap: null, // Map<flatLine, {file: string|null, line: number}>
     instrStarts: new Set(),
+    labelAddrs: new Set(), // absolute addresses that are label entry points (globals only)
+    labelNames: new Map(), // absolute address → label name (globals only)
     codeLen: 0,
 };
 

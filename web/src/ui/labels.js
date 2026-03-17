@@ -12,12 +12,14 @@ export function renderLabels() {
         body.innerHTML = '<tr><td colspan="4" class="py-1" style="color:var(--t-dim);">no labels</td></tr>';
         return;
     }
+    const multiPage = entries.some(([, addr]) => addr >= 256);
     body.innerHTML = entries
         .map(([name, addr]) => {
             const val = cpu.mem.get(addr);
             const raw = printableChar(val);
             const ch = raw ? `'${escapeHtml(raw)}'` : "";
-            return `<tr style="cursor:pointer;" data-addr="${addr}"><td class="py-1">${name}</td><td class="py-1" style="color:var(--a-orange);">${hex(addr, 4)}</td><td class="py-1">${hex(val)}</td><td class="py-1" style="color:var(--a-green);">${ch}</td></tr>`;
+            const addrStr = multiPage ? `${hex(addr >>> 8)}:${hex(addr & 0xff)}` : hex(addr);
+            return `<tr style="cursor:pointer;" data-addr="${addr}"><td class="py-1">${name}</td><td class="py-1" style="color:var(--a-orange);">${addrStr}</td><td class="py-1">${hex(val)}</td><td class="py-1" style="color:var(--a-green);">${ch}</td></tr>`;
         })
         .join("");
 }

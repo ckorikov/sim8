@@ -222,6 +222,10 @@ body {
     font-weight: 700;
 }
 
+.mem-cell.label {
+    border-left: 2px solid var(--a-blue);
+}
+
 .mem-cell.marker-a {
     border-color: var(--a-green);
 }
@@ -614,6 +618,12 @@ body {
     margin-bottom: 4px;
     padding-bottom: 3px;
     border-bottom: 1px solid var(--t-border);
+}
+
+.mtt-label {
+    color: var(--a-blue);
+    margin-left: 6px;
+    font-weight: normal;
 }
 
 .mtt-sep {

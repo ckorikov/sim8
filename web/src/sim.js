@@ -60,6 +60,8 @@ async function doAssemble() {
     asm.mapping = {};
     asm.lineMap = null;
     asm.instrStarts = new Set();
+    asm.labelAddrs = new Set();
+    asm.labelNames = new Map();
 
     try {
         const result = await assembleAsync(getMainSource(), 2, getVirtualFiles());
@@ -68,6 +70,9 @@ async function doAssemble() {
         asm.mapping = result.mapping;
         asm.lineMap = result.lineMap;
         asm.instrStarts = new Set(Object.keys(result.mapping).map(Number));
+        const allLabels = Object.entries(result.labels);
+        asm.labelAddrs = new Set(allLabels.map(([, v]) => v));
+        asm.labelNames = new Map(allLabels.map(([n, v]) => [v, n]));
         cpu.load(result.code);
         renderLabels();
         renderAll();
