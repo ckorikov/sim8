@@ -2,23 +2,8 @@
  * CodeMirror editor: initialization, syntax highlighting, execution line marking.
  */
 
-import {
-    MNEMONICS,
-    MNEMONICS_FP,
-    REGISTERS,
-    FP_REGISTERS,
-    ISA,
-    ISA_FP,
-    OpType,
-    MNEMONIC_ALIASES,
-    FP_FMT_F,
-    FP_FMT_H,
-    FP_FMT_BF,
-    FP_FMT_O3,
-    FP_FMT_O2,
-    FP_FMT_N1,
-    FP_FMT_N2,
-} from "../lib/isa.js";
+import { MNEMONICS, MNEMONICS_FP, REGISTERS, FP_REGISTERS, ISA, ISA_FP, MNEMONIC_ALIASES } from "../lib/isa.js";
+import { MNEMONIC_INFO, SIG_LABELS, FP_FMT_NAMES } from "../lib/isa-docs.js";
 
 const ALL_MNEMONICS_RE = new RegExp(
     "\\b(" + [...MNEMONICS, ...MNEMONICS_FP, ...Object.keys(MNEMONIC_ALIASES)].join("|") + ")\\b",
@@ -286,76 +271,6 @@ export async function initEditor(container, defaultCode) {
                 },
             },
         });
-
-        const MNEMONIC_INFO = {
-            HLT: "Halt CPU execution",
-            MOV: "Copy value: reg, mem, or immediate",
-            ADD: "dest = dest + src; sets C, Z",
-            SUB: "dest = dest - src; sets C, Z",
-            INC: "dest = dest + 1; sets C, Z",
-            DEC: "dest = dest - 1; sets C, Z",
-            CMP: "dest - src (no store); Z=1 if equal, C=1 if src > dest",
-            MUL: "A = A * src; sets C, Z",
-            DIV: "A = A / src (integer); FAULT if src=0",
-            AND: "dest = dest & src; C=0, sets Z",
-            OR: "dest = dest | src; C=0, sets Z",
-            XOR: "dest = dest ^ src; C=0, sets Z",
-            NOT: "dest = ~dest; C=0, sets Z",
-            SHL: "dest = dest << n; sets C if overflow",
-            SHR: "dest = dest >>> n; sets C if bits lost",
-            JMP: "Unconditional jump",
-            JC: "Jump if C=1 (carry); after CMP: <",
-            JNC: "Jump if C=0 (no carry); after CMP: >=",
-            JZ: "Jump if Z=1 (zero); after CMP: ==",
-            JNZ: "Jump if Z=0 (not zero); after CMP: !=",
-            JA: "Jump if C=0 and Z=0 (above); after CMP: >",
-            JNA: "Jump if C=1 or Z=1 (not above); after CMP: <=",
-            PUSH: "Push to stack; SP--; FAULT if SP=0",
-            POP: "Pop from stack; SP++; FAULT if SP>=231",
-            CALL: "Push return addr, jump to target",
-            RET: "Pop addr from stack, jump to it",
-            DB: "Define raw byte(s) or ASCII string",
-            FMOV: "FP load/store or register copy",
-            FADD: "FP dst = dst + src",
-            FSUB: "FP dst = dst - src",
-            FMUL: "FP dst = dst * src",
-            FDIV: "FP dst = dst / src",
-            FCMP: "FP compare; sets Z, C (Z=C=1 if NaN)",
-            FABS: "Clear sign bit of FP register",
-            FNEG: "Toggle sign bit of FP register",
-            FSQRT: "FP square root",
-            FCVT: "Convert between FP formats",
-            FITOF: "uint8 GPR to FP register",
-            FFTOI: "FP to uint8 GPR (saturating)",
-            FSTAT: "Read FPSR (exception flags) to GPR",
-            FCFG: "Read FPCR (rounding mode) to GPR",
-            FSCFG: "Write GPR to FPCR (bits [1:0] only)",
-            FCLR: "Clear all FPSR sticky flags",
-            FCLASS: "Classify FP value to 8-bit bitmask",
-            FMADD: "FP dst = src * mem + dst (fused)",
-        };
-        const SIG_LABELS = {
-            [OpType.REG]: "reg",
-            [OpType.REG_ARITH]: "reg|SP",
-            [OpType.REG_STACK]: "gpr|DP",
-            [OpType.REG_GPR]: "gpr",
-            [OpType.IMM]: "imm",
-            [OpType.MEM]: "[addr]",
-            [OpType.REGADDR]: "[reg±off]",
-            [OpType.FP_REG]: "fp",
-            [OpType.FP_IMM8]: "imm8",
-            [OpType.FP_IMM16]: "imm16",
-        };
-
-        const FP_FMT_NAMES = {
-            [FP_FMT_F]: "float32",
-            [FP_FMT_H]: "float16",
-            [FP_FMT_BF]: "bfloat16",
-            [FP_FMT_O3]: "ofp8-e4m3",
-            [FP_FMT_O2]: "ofp8-e5m2",
-            [FP_FMT_N1]: "nf4-e2m1",
-            [FP_FMT_N2]: "nf4-e1m2",
-        };
 
         function buildMnemonicVariants() {
             const variants = {};
