@@ -209,14 +209,16 @@ export const Reg = Object.freeze({
 export const REGISTERS = Reg;
 
 export const GPR_CODES = new Set([0, 1, 2, 3]);
-export const STACK_CODES = new Set([0, 1, 2, 3, 4]);
+export const ARITH_CODES = new Set([0, 1, 2, 3, 4]);
+export const STACK_CODES = new Set([0, 1, 2, 3, 5]);
 
 // ── Operand types ────────────────────────────────────────────────
 
 export const OpType = Object.freeze({
     REG: "reg",
-    REG_STACK: "reg_stack",
+    REG_ARITH: "reg_arith",
     REG_GPR: "reg_gpr",
+    REG_STACK: "reg_stack",
     IMM: "imm",
     MEM: "mem",
     REGADDR: "regaddr",
@@ -236,8 +238,9 @@ function instr(op, mnemonic, sig, cost = 1, formatDep = false) {
 
 // Shorthands
 const _REG = OpType.REG,
-    _STK = OpType.REG_STACK,
-    _GPR = OpType.REG_GPR;
+    _ARI = OpType.REG_ARITH,
+    _GPR = OpType.REG_GPR,
+    _STK = OpType.REG_STACK;
 const _IMM = OpType.IMM,
     _MEM = OpType.MEM,
     _IADDR = OpType.REGADDR;
@@ -258,23 +261,23 @@ export const ISA = Object.freeze([
     instr(Op.MOV_ADDR_CONST, "MOV", [_MEM, _IMM], 2),
     instr(Op.MOV_REGADDR_CONST, "MOV", [_IADDR, _IMM], 2),
     // ADD (10-13)
-    instr(Op.ADD_REG_REG, "ADD", [_STK, _STK]),
-    instr(Op.ADD_REG_REGADDR, "ADD", [_STK, _IADDR], 3),
-    instr(Op.ADD_REG_ADDR, "ADD", [_STK, _MEM], 3),
-    instr(Op.ADD_REG_CONST, "ADD", [_STK, _IMM]),
+    instr(Op.ADD_REG_REG, "ADD", [_ARI, _ARI]),
+    instr(Op.ADD_REG_REGADDR, "ADD", [_ARI, _IADDR], 3),
+    instr(Op.ADD_REG_ADDR, "ADD", [_ARI, _MEM], 3),
+    instr(Op.ADD_REG_CONST, "ADD", [_ARI, _IMM]),
     // SUB (14-17)
-    instr(Op.SUB_REG_REG, "SUB", [_STK, _STK]),
-    instr(Op.SUB_REG_REGADDR, "SUB", [_STK, _IADDR], 3),
-    instr(Op.SUB_REG_ADDR, "SUB", [_STK, _MEM], 3),
-    instr(Op.SUB_REG_CONST, "SUB", [_STK, _IMM]),
+    instr(Op.SUB_REG_REG, "SUB", [_ARI, _ARI]),
+    instr(Op.SUB_REG_REGADDR, "SUB", [_ARI, _IADDR], 3),
+    instr(Op.SUB_REG_ADDR, "SUB", [_ARI, _MEM], 3),
+    instr(Op.SUB_REG_CONST, "SUB", [_ARI, _IMM]),
     // INC / DEC (18-19)
-    instr(Op.INC_REG, "INC", [_STK]),
-    instr(Op.DEC_REG, "DEC", [_STK]),
+    instr(Op.INC_REG, "INC", [_ARI]),
+    instr(Op.DEC_REG, "DEC", [_ARI]),
     // CMP (20-23)
-    instr(Op.CMP_REG_REG, "CMP", [_STK, _STK]),
-    instr(Op.CMP_REG_REGADDR, "CMP", [_STK, _IADDR], 3),
-    instr(Op.CMP_REG_ADDR, "CMP", [_STK, _MEM], 3),
-    instr(Op.CMP_REG_CONST, "CMP", [_STK, _IMM]),
+    instr(Op.CMP_REG_REG, "CMP", [_ARI, _ARI]),
+    instr(Op.CMP_REG_REGADDR, "CMP", [_ARI, _IADDR], 3),
+    instr(Op.CMP_REG_ADDR, "CMP", [_ARI, _MEM], 3),
+    instr(Op.CMP_REG_CONST, "CMP", [_ARI, _IMM]),
     // JMP (30-31)
     instr(Op.JMP_REG, "JMP", [_GPR]),
     instr(Op.JMP_ADDR, "JMP", [_IMM]),
@@ -297,12 +300,12 @@ export const ISA = Object.freeze([
     instr(Op.JNA_REG, "JNA", [_GPR]),
     instr(Op.JNA_ADDR, "JNA", [_IMM]),
     // PUSH (50-53)
-    instr(Op.PUSH_REG, "PUSH", [_GPR], 2),
+    instr(Op.PUSH_REG, "PUSH", [_STK], 2),
     instr(Op.PUSH_REGADDR, "PUSH", [_IADDR], 4),
     instr(Op.PUSH_ADDR, "PUSH", [_MEM], 4),
     instr(Op.PUSH_CONST, "PUSH", [_IMM], 2),
     // POP (54)
-    instr(Op.POP_REG, "POP", [_GPR], 2),
+    instr(Op.POP_REG, "POP", [_STK], 2),
     // CALL (55-56)
     instr(Op.CALL_REG, "CALL", [_GPR], 2),
     instr(Op.CALL_ADDR, "CALL", [_IMM], 2),

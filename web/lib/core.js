@@ -583,7 +583,7 @@ export class CPU {
     // ── Register validation ────────────────────────────────────────
 
     _decodeGpr(code) {
-        if (code > 3) {
+        if (code > Reg.D) {
             throw new CpuFault(ErrorCode.INVALID_REG, this.regs.ip);
         }
         return code;
@@ -591,6 +591,13 @@ export class CPU {
 
     _decodeGprOrSp(code) {
         if (code > Reg.SP) {
+            throw new CpuFault(ErrorCode.INVALID_REG, this.regs.ip);
+        }
+        return code;
+    }
+
+    _decodeGprOrDp(code) {
+        if (code > Reg.D && code !== Reg.DP) {
             throw new CpuFault(ErrorCode.INVALID_REG, this.regs.ip);
         }
         return code;
@@ -866,7 +873,7 @@ export class CPU {
 
         // -- PUSH (4 variants) --
         d[Op.PUSH_REG] = (instr) => {
-            const code = this._decodeGpr(instr.operands[0]);
+            const code = this._decodeGprOrDp(instr.operands[0]);
             this._doPush(this.regs.read(code));
             this.regs.ip += instr.size;
         };
@@ -887,7 +894,7 @@ export class CPU {
 
         // -- POP --
         d[Op.POP_REG] = (instr) => {
-            const code = this._decodeGpr(instr.operands[0]);
+            const code = this._decodeGprOrDp(instr.operands[0]);
             this.regs.write(code, this._doPop());
             this.regs.ip += instr.size;
         };
