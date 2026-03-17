@@ -31,7 +31,7 @@ from pysim8.isa import (
     validate_fpm,
 )
 
-from .decoder import DecodedInsn
+from .decoder import DecodedInstr
 from .errors import CpuFault, ErrorCode
 from .memory import Memory
 
@@ -237,10 +237,10 @@ class HandlersFpMixin:
         self,
         arith_fn: Callable[..., tuple[float, FpExceptions]],
         resolve_addr: Callable[[int], int],
-    ) -> Callable[[DecodedInsn], None]:
+    ) -> Callable[[DecodedInstr], None]:
         """Factory for FP arith with memory operand."""
 
-        def handler(instr: DecodedInsn) -> None:
+        def handler(instr: DecodedInstr) -> None:
             fpm = instr.operands[0]
             phys, pos, fmt = self._validate_fpm(fpm)
             addr = resolve_addr(instr.operands[1])
@@ -263,10 +263,10 @@ class HandlersFpMixin:
     def _make_fp_cmp_mem(
         self,
         resolve_addr: Callable[[int], int],
-    ) -> Callable[[DecodedInsn], None]:
+    ) -> Callable[[DecodedInstr], None]:
         """Factory for FCMP with memory operand."""
 
-        def handler(instr: DecodedInsn) -> None:
+        def handler(instr: DecodedInstr) -> None:
             fpm = instr.operands[0]
             phys, pos, fmt = self._validate_fpm(fpm)
             addr = resolve_addr(instr.operands[1])
@@ -285,10 +285,10 @@ class HandlersFpMixin:
     def _make_fp_arith_rr(
         self,
         arith_fn: Callable[..., tuple[float, FpExceptions]],
-    ) -> Callable[[DecodedInsn], None]:
+    ) -> Callable[[DecodedInstr], None]:
         """Factory for reg-reg FP arithmetic."""
 
-        def handler(instr: DecodedInsn) -> None:
+        def handler(instr: DecodedInstr) -> None:
             dst_fpm = instr.operands[0]
             src_fpm = instr.operands[1]
             dst_phys, dst_pos, dst_fmt = self._validate_fpm(dst_fpm)
@@ -316,7 +316,7 @@ class HandlersFpMixin:
 
     # -- FMOV (128-131): raw data transfer, no rounding --
 
-    def _fmov_load(self, instr: DecodedInsn, addr: int) -> None:
+    def _fmov_load(self, instr: DecodedInstr, addr: int) -> None:
         fpm = instr.operands[0]
         phys, pos, fmt = self._validate_fpm(fpm)
         data = self._fp_read_mem_raw(addr, fmt)
@@ -324,13 +324,13 @@ class HandlersFpMixin:
         self._fpu.write_bits(pos, fmt, raw, phys)
         self.regs.ip += instr.size
 
-    def _h_fmov_load_addr(self, instr: DecodedInsn) -> None:
+    def _h_fmov_load_addr(self, instr: DecodedInstr) -> None:
         self._fmov_load(instr, self._direct_addr(instr.operands[1]))
 
-    def _h_fmov_load_regaddr(self, instr: DecodedInsn) -> None:
+    def _h_fmov_load_regaddr(self, instr: DecodedInstr) -> None:
         self._fmov_load(instr, self._indirect_addr(instr.operands[1]))
 
-    def _fmov_store(self, instr: DecodedInsn, addr: int) -> None:
+    def _fmov_store(self, instr: DecodedInstr, addr: int) -> None:
         fpm = instr.operands[0]
         phys, pos, fmt = self._validate_fpm(fpm)
         raw = self._fpu.read_bits(pos, fmt, phys)
@@ -338,15 +338,15 @@ class HandlersFpMixin:
         self._fp_write_mem_raw(addr, fmt, data)
         self.regs.ip += instr.size
 
-    def _h_fmov_store_addr(self, instr: DecodedInsn) -> None:
+    def _h_fmov_store_addr(self, instr: DecodedInstr) -> None:
         self._fmov_store(instr, self._direct_addr(instr.operands[1]))
 
-    def _h_fmov_store_regaddr(self, instr: DecodedInsn) -> None:
+    def _h_fmov_store_regaddr(self, instr: DecodedInstr) -> None:
         self._fmov_store(instr, self._indirect_addr(instr.operands[1]))
 
     # -- FMOV immediate (161-162): raw bit write, no rounding --
 
-    def _h_fmov_imm8(self, instr: DecodedInsn) -> None:
+    def _h_fmov_imm8(self, instr: DecodedInstr) -> None:
         fpm = instr.operands[0]
         phys, pos, fmt = self._validate_fpm(fpm)
         if fmt not in (FP_FMT_O3, FP_FMT_O2):
@@ -355,7 +355,7 @@ class HandlersFpMixin:
         self._fpu.write_bits(pos, fmt, imm8, phys)
         self.regs.ip += instr.size
 
-    def _h_fmov_imm16(self, instr: DecodedInsn) -> None:
+    def _h_fmov_imm16(self, instr: DecodedInstr) -> None:
         fpm = instr.operands[0]
         phys, pos, fmt = self._validate_fpm(fpm)
         if fmt not in (FP_FMT_H, FP_FMT_BF):
@@ -366,7 +366,7 @@ class HandlersFpMixin:
 
     # -- FMOV reg-reg (145): [145, dst_fpm, src_fpm] --
 
-    def _h_fmov_rr(self, instr: DecodedInsn) -> None:
+    def _h_fmov_rr(self, instr: DecodedInstr) -> None:
         dst_fpm = instr.operands[0]
         src_fpm = instr.operands[1]
         dst_phys, dst_pos, dst_fmt = self._validate_fpm(dst_fpm)
@@ -381,7 +381,7 @@ class HandlersFpMixin:
 
     def _fp_unary_bitwise(
         self,
-        instr: DecodedInsn,
+        instr: DecodedInstr,
         fn: Callable[[int, int], int],
     ) -> None:
         fpm = instr.operands[0]
@@ -391,15 +391,15 @@ class HandlersFpMixin:
         self._fpu.write_bits(pos, fmt, result, phys)
         self.regs.ip += instr.size
 
-    def _h_fabs(self, instr: DecodedInsn) -> None:
+    def _h_fabs(self, instr: DecodedInstr) -> None:
         self._fp_unary_bitwise(instr, fp_abs)
 
-    def _h_fneg(self, instr: DecodedInsn) -> None:
+    def _h_fneg(self, instr: DecodedInstr) -> None:
         self._fp_unary_bitwise(instr, fp_neg)
 
     # -- FSQRT (144) --
 
-    def _h_fsqrt(self, instr: DecodedInsn) -> None:
+    def _h_fsqrt(self, instr: DecodedInstr) -> None:
         fpm = instr.operands[0]
         phys, pos, fmt = self._validate_fpm(fpm)
         val = self._fp_read_reg(pos, fmt, phys)
@@ -410,7 +410,7 @@ class HandlersFpMixin:
 
     # -- FCVT (146): [146, dst_fpm, src_fpm] --
 
-    def _h_fcvt(self, instr: DecodedInsn) -> None:
+    def _h_fcvt(self, instr: DecodedInstr) -> None:
         dst_fpm = instr.operands[0]
         src_fpm = instr.operands[1]
         dst_phys, dst_pos, dst_fmt = self._validate_fpm(dst_fpm)
@@ -421,7 +421,7 @@ class HandlersFpMixin:
 
     # -- FITOF (147): [147, fpm, gpr] --
 
-    def _h_fitof(self, instr: DecodedInsn) -> None:
+    def _h_fitof(self, instr: DecodedInstr) -> None:
         fpm = instr.operands[0]
         gpr_code = instr.operands[1]
         phys, pos, fmt = self._validate_fpm(fpm)
@@ -432,7 +432,7 @@ class HandlersFpMixin:
 
     # -- FFTOI (148): [148, fpm, gpr] --
 
-    def _h_fftoi(self, instr: DecodedInsn) -> None:
+    def _h_fftoi(self, instr: DecodedInstr) -> None:
         fpm = instr.operands[0]
         gpr_code = instr.operands[1]
         phys, pos, fmt = self._validate_fpm(fpm)
@@ -478,21 +478,21 @@ class HandlersFpMixin:
 
     # -- FSTAT (149): [149, gpr] --
 
-    def _h_fstat(self, instr: DecodedInsn) -> None:
+    def _h_fstat(self, instr: DecodedInstr) -> None:
         gpr = self._decode_gpr(instr.operands[0])
         self.regs.write(gpr, self._fpu.fpsr)
         self.regs.ip += instr.size
 
     # -- FCFG (150): [150, gpr] --
 
-    def _h_fcfg(self, instr: DecodedInsn) -> None:
+    def _h_fcfg(self, instr: DecodedInstr) -> None:
         gpr = self._decode_gpr(instr.operands[0])
         self.regs.write(gpr, self._fpu.fpcr)
         self.regs.ip += instr.size
 
     # -- FSCFG (151): [151, gpr] --
 
-    def _h_fscfg(self, instr: DecodedInsn) -> None:
+    def _h_fscfg(self, instr: DecodedInstr) -> None:
         gpr = self._decode_gpr(instr.operands[0])
         val = self.regs.read(gpr)
         self._fpu.fpcr = val & 0x03  # mask reserved bits
@@ -500,13 +500,13 @@ class HandlersFpMixin:
 
     # -- FCLR (152): [152] --
 
-    def _h_fclr(self, instr: DecodedInsn) -> None:
+    def _h_fclr(self, instr: DecodedInstr) -> None:
         self._fpu.fpsr = 0
         self.regs.ip += instr.size
 
     # -- FCMP_RR (157): [157, dst_fpm, src_fpm] --
 
-    def _h_fcmp_rr(self, instr: DecodedInsn) -> None:
+    def _h_fcmp_rr(self, instr: DecodedInstr) -> None:
         dst_fpm = instr.operands[0]
         src_fpm = instr.operands[1]
         dst_phys, dst_pos, dst_fmt = self._validate_fpm(dst_fpm)
@@ -525,7 +525,7 @@ class HandlersFpMixin:
 
     # -- FCLASS (158): [158, fpm, gpr] --
 
-    def _h_fclass(self, instr: DecodedInsn) -> None:
+    def _h_fclass(self, instr: DecodedInstr) -> None:
         fpm = instr.operands[0]
         gpr_code = instr.operands[1]
         phys, pos, fmt = self._validate_fpm(fpm)
@@ -542,13 +542,13 @@ class HandlersFpMixin:
 
     # -- FMADD (159-160): dst = src * mem + dst (unfused: two roundings) --
 
-    def _h_fmadd_addr(self, instr: DecodedInsn) -> None:
+    def _h_fmadd_addr(self, instr: DecodedInstr) -> None:
         self._do_fmadd(instr, self._direct_addr(instr.operands[2]))
 
-    def _h_fmadd_regaddr(self, instr: DecodedInsn) -> None:
+    def _h_fmadd_regaddr(self, instr: DecodedInstr) -> None:
         self._do_fmadd(instr, self._indirect_addr(instr.operands[2]))
 
-    def _do_fmadd(self, instr: DecodedInsn, addr: int) -> None:
+    def _do_fmadd(self, instr: DecodedInstr, addr: int) -> None:
         """FMADD: dst = src * mem + dst."""
         dst_fpm = instr.operands[0]
         src_fpm = instr.operands[1]

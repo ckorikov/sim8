@@ -78,7 +78,7 @@ def _fmt_regaddr(val: int) -> str:
 
 def _fmt_operand(ot: OpType, val: int) -> str:
     match ot:
-        case OpType.REG | OpType.REG_STACK | OpType.REG_GPR:
+        case OpType.REG | OpType.REG_ARITH | OpType.REG_GPR | OpType.REG_STACK:
             return _REG_NAMES.get(val, f"?{val}")
         case OpType.IMM:
             return str(val)

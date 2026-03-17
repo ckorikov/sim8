@@ -7,6 +7,7 @@ __all__ = [
     "Op",
     "Reg",
     "REGISTERS",
+    "ARITH_CODES",
     "GPR_CODES",
     "STACK_CODES",
     "MNEMONIC_ALIASES",
@@ -237,10 +238,12 @@ REGISTERS: dict[str, Reg] = {r.name: r for r in Reg}
 
 # Register hierarchy (more special → fewer allowed operations):
 #   REG       = A B C D SP DP  — MOV only
-#   REG_STACK = A B C D SP     — MOV + arithmetic (ADD, SUB, CMP, INC, DEC)
+#   REG_ARITH = A B C D SP     — MOV + arithmetic (ADD, SUB, CMP, INC, DEC)
 #   REG_GPR   = A B C D        — MOV + arithmetic + logic/shift/stack/jump
+#   REG_STACK  = A B C D DP     — PUSH/POP (GPR + DP)
 GPR_CODES: frozenset[int] = frozenset({Reg.A, Reg.B, Reg.C, Reg.D})
-STACK_CODES: frozenset[int] = GPR_CODES | {Reg.SP}
+ARITH_CODES: frozenset[int] = GPR_CODES | {Reg.SP}
+STACK_CODES: frozenset[int] = GPR_CODES | {Reg.DP}
 
 # ── REGADDR encoding ──────────────────────────────────────────────────
 #
@@ -428,8 +431,9 @@ class OpType(Enum):
     """Operand type for instruction matching."""
 
     REG = "reg"  # any register (0-5)
-    REG_STACK = "reg_stack"  # GPR + SP (0-4)
+    REG_ARITH = "reg_arith"  # GPR + SP (0-4)
     REG_GPR = "reg_gpr"  # GPR only (0-3)
+    REG_STACK = "reg_stack"  # GPR + DP (0-3, 5) — PUSH/POP
     IMM = "imm"  # number or label (no brackets)
     MEM = "mem"  # [addr] — direct address in brackets
     REGADDR = "regaddr"  # [reg±offset] — register indirect
@@ -463,7 +467,7 @@ class InstrDef:
         return 1 + sum(_OPTYPE_BYTES.get(ot.value, 1) for ot in self.sig)
 
 
-_REG, _STK, _GPR = OpType.REG, OpType.REG_STACK, OpType.REG_GPR
+_REG, _ARI, _GPR, _STK = OpType.REG, OpType.REG_ARITH, OpType.REG_GPR, OpType.REG_STACK
 _IMM, _MEM, _IADDR = OpType.IMM, OpType.MEM, OpType.REGADDR
 
 ISA: tuple[InstrDef, ...] = (
@@ -479,23 +483,23 @@ ISA: tuple[InstrDef, ...] = (
     InstrDef(Op.MOV_ADDR_CONST, "MOV", (_MEM, _IMM), cost=2),
     InstrDef(Op.MOV_REGADDR_CONST, "MOV", (_IADDR, _IMM), cost=2),
     # ADD (10-13)
-    InstrDef(Op.ADD_REG_REG, "ADD", (_STK, _STK)),
-    InstrDef(Op.ADD_REG_REGADDR, "ADD", (_STK, _IADDR), cost=3),
-    InstrDef(Op.ADD_REG_ADDR, "ADD", (_STK, _MEM), cost=3),
-    InstrDef(Op.ADD_REG_CONST, "ADD", (_STK, _IMM)),
+    InstrDef(Op.ADD_REG_REG, "ADD", (_ARI, _ARI)),
+    InstrDef(Op.ADD_REG_REGADDR, "ADD", (_ARI, _IADDR), cost=3),
+    InstrDef(Op.ADD_REG_ADDR, "ADD", (_ARI, _MEM), cost=3),
+    InstrDef(Op.ADD_REG_CONST, "ADD", (_ARI, _IMM)),
     # SUB (14-17)
-    InstrDef(Op.SUB_REG_REG, "SUB", (_STK, _STK)),
-    InstrDef(Op.SUB_REG_REGADDR, "SUB", (_STK, _IADDR), cost=3),
-    InstrDef(Op.SUB_REG_ADDR, "SUB", (_STK, _MEM), cost=3),
-    InstrDef(Op.SUB_REG_CONST, "SUB", (_STK, _IMM)),
+    InstrDef(Op.SUB_REG_REG, "SUB", (_ARI, _ARI)),
+    InstrDef(Op.SUB_REG_REGADDR, "SUB", (_ARI, _IADDR), cost=3),
+    InstrDef(Op.SUB_REG_ADDR, "SUB", (_ARI, _MEM), cost=3),
+    InstrDef(Op.SUB_REG_CONST, "SUB", (_ARI, _IMM)),
     # INC / DEC (18-19)
-    InstrDef(Op.INC_REG, "INC", (_STK,)),
-    InstrDef(Op.DEC_REG, "DEC", (_STK,)),
+    InstrDef(Op.INC_REG, "INC", (_ARI,)),
+    InstrDef(Op.DEC_REG, "DEC", (_ARI,)),
     # CMP (20-23)
-    InstrDef(Op.CMP_REG_REG, "CMP", (_STK, _STK)),
-    InstrDef(Op.CMP_REG_REGADDR, "CMP", (_STK, _IADDR), cost=3),
-    InstrDef(Op.CMP_REG_ADDR, "CMP", (_STK, _MEM), cost=3),
-    InstrDef(Op.CMP_REG_CONST, "CMP", (_STK, _IMM)),
+    InstrDef(Op.CMP_REG_REG, "CMP", (_ARI, _ARI)),
+    InstrDef(Op.CMP_REG_REGADDR, "CMP", (_ARI, _IADDR), cost=3),
+    InstrDef(Op.CMP_REG_ADDR, "CMP", (_ARI, _MEM), cost=3),
+    InstrDef(Op.CMP_REG_CONST, "CMP", (_ARI, _IMM)),
     # JMP (30-31)
     InstrDef(Op.JMP_REG, "JMP", (_GPR,)),
     InstrDef(Op.JMP_ADDR, "JMP", (_IMM,)),
@@ -518,12 +522,12 @@ ISA: tuple[InstrDef, ...] = (
     InstrDef(Op.JNA_REG, "JNA", (_GPR,)),
     InstrDef(Op.JNA_ADDR, "JNA", (_IMM,)),
     # PUSH (50-53)
-    InstrDef(Op.PUSH_REG, "PUSH", (_GPR,), cost=2),
+    InstrDef(Op.PUSH_REG, "PUSH", (_STK,), cost=2),
     InstrDef(Op.PUSH_REGADDR, "PUSH", (_IADDR,), cost=4),
     InstrDef(Op.PUSH_ADDR, "PUSH", (_MEM,), cost=4),
     InstrDef(Op.PUSH_CONST, "PUSH", (_IMM,), cost=2),
     # POP (54)
-    InstrDef(Op.POP_REG, "POP", (_GPR,), cost=2),
+    InstrDef(Op.POP_REG, "POP", (_STK,), cost=2),
     # CALL (55-56)
     InstrDef(Op.CALL_REG, "CALL", (_GPR,), cost=2),
     InstrDef(Op.CALL_ADDR, "CALL", (_IMM,), cost=2),
@@ -573,10 +577,10 @@ ISA: tuple[InstrDef, ...] = (
 BY_CODE: dict[int, InstrDef] = {int(instr.op): instr for instr in ISA}
 
 _by_mn: dict[str, list[InstrDef]] = {}
-for _insn in ISA:
-    _by_mn.setdefault(_insn.mnemonic, []).append(_insn)
+for _instr in ISA:
+    _by_mn.setdefault(_instr.mnemonic, []).append(_instr)
 BY_MNEMONIC: dict[str, tuple[InstrDef, ...]] = {k: tuple(v) for k, v in _by_mn.items()}
-del _by_mn, _insn
+del _by_mn, _instr
 
 MNEMONICS: frozenset[str] = frozenset(BY_MNEMONIC) | {"DB"}
 
@@ -641,8 +645,8 @@ ISA_FP: tuple[InstrDef, ...] = (
 BY_CODE_FP: dict[int, InstrDef] = {int(instr.op): instr for instr in ISA_FP}
 
 _by_mn_fp: dict[str, list[InstrDef]] = {}
-for _insn_fp in ISA_FP:
-    _by_mn_fp.setdefault(_insn_fp.mnemonic, []).append(_insn_fp)
+for _instr_fp in ISA_FP:
+    _by_mn_fp.setdefault(_instr_fp.mnemonic, []).append(_instr_fp)
 BY_MNEMONIC_FP: dict[str, tuple[InstrDef, ...]] = {k: tuple(v) for k, v in _by_mn_fp.items()}
 
 MNEMONICS_FP: frozenset[str] = frozenset(BY_MNEMONIC_FP)
@@ -652,9 +656,10 @@ FP_CONTROL_MNEMONICS: frozenset[str] = frozenset({"FSTAT", "FCFG", "FSCFG", "FCL
 
 del (
     _by_mn_fp,
-    _insn_fp,
+    _instr_fp,
     _FP,
     _REG,
+    _ARI,
     _STK,
     _GPR,
     _IMM,
