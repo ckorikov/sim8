@@ -267,7 +267,7 @@ Sets flags without storing result.
 - Stack underflow: attempting POP/RET when SP ≥ 231 → CPU enters **FAULT (A=3)** (see [Error Codes](errors.md))
 - Bounds checking applies only to stack operations (PUSH, POP, CALL, RET). Arithmetic on SP via MOV, ADD, SUB, INC, DEC does **not** check bounds — the programmer is responsible for keeping SP within valid stack range.
 
-**Note:** PUSH and POP direct register operands accept only GPR (A, B, C, D), not SP. However, SP may appear as a base in register indirect addressing: `PUSH [SP-2]` is valid.
+**Note:** PUSH/POP direct register operands use `reg_stack` (see [Operand Byte Types](#operand-byte-types)). SP may appear as a base in register indirect addressing: `PUSH [SP-2]` is valid.
 
 ### Subroutine Operations (Opcodes 55-57)
 
@@ -423,7 +423,9 @@ For the complete opcode mapping, see [Opcode Table](opcodes.md).
 | Type | Size | Range | Description |
 |------|------|-------|-------------|
 | reg | 1 byte | 0-5 | Register code (0=A, 1=B, 2=C, 3=D, 4=SP, 5=DP) |
-| reg_gpr | 1 byte | 0-3 | GPR-only register code (SP not allowed) |
+| reg_arith | 1 byte | 0-4 | GPR + SP (for ADD/SUB/CMP/INC/DEC) |
+| reg_gpr | 1 byte | 0-3 | GPR-only register code (A, B, C, D) |
+| reg_stack | 1 byte | 0-3, 5 | GPR + DP (for PUSH/POP) |
 | const | 1 byte | 0-255 | Immediate value |
 | addr | 1 byte | 0-255 | Memory address |
 | regaddr | 1 byte | 0-255 | Register indirect with offset (see [section 1.4](#14-addressing-modes)) |
@@ -447,11 +449,11 @@ The tables below cover integer instructions (opcodes 0-97). For FP instruction e
 | INC/DEC | 18-19 | reg (0-4, SP allowed) |
 | JMP/Jcc register | 30,32,34,36,38,40,42 | reg_gpr (0-3 only) |
 | JMP/Jcc address | 31,33,35,37,39,41,43 | addr |
-| PUSH reg | 50 | reg_gpr (0-3 only) |
+| PUSH reg | 50 | reg_stack (0-3, 5) |
 | PUSH [reg] | 51 | regaddr |
 | PUSH [addr] | 52 | addr |
 | PUSH const | 53 | const |
-| POP | 54 | reg_gpr (0-3 only) |
+| POP | 54 | reg_stack (0-3, 5) |
 | CALL register | 55 | reg_gpr (0-3 only) |
 | CALL address | 56 | addr |
 | MUL/DIV reg | 60,64 | reg_gpr (0-3 only) |

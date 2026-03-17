@@ -12,29 +12,42 @@ Recursively resolve all `@include` directives (see §5.8), producing an ordered 
 
 **Pass 1 — Code Generation:**
 
+The assembler maintains a *current page* (initially page 0) and per-page byte arrays.
+
 For each source line:
 
+1. If the line is an `@page` directive (see §5.9), switch the current page and continue.
 1. Parse an optional label, mnemonic, and operands.
-1. If a label is present, record its address as the current output position.
-1. If a mnemonic is present, determine the opcode from the mnemonic + operand types and emit opcode + operand bytes.
+1. If a label is present, record it as `(current_page, offset)` where offset is the current output position within the page.
+1. If a mnemonic is present, determine the opcode from the mnemonic + operand types and emit opcode + operand bytes to the current page's byte array.
 1. Record a source mapping (output position → `(filename, line_no)`) for diagnostics.
-1. If the line is neither a label, instruction, blank, nor comment → syntax error.
+1. If the line is neither a label, instruction, directive, blank, nor comment → syntax error.
 
-Forward label references may be left unresolved during pass 1.
+Forward label references (including `{label}`) may be left unresolved during pass 1.
 
 **Pass 2 — Label Resolution:**
 
-Resolve all label references in operands to their numeric addresses. If a label is not found, report an "Undefined label" error.
+Resolve all label references in operands:
+- `label` and `[label]` → page-local offset (0–255)
+- `{label}` → page number (0–255); see §5.11
+
+Cross-page jump validation: JMP/CALL to a label on a different page is an error (see §5.9).
+
+If a label is not found, report an "Undefined label" error.
 
 ## 5.2 Assembler Output
 
 The assembler produces:
 
-- Machine code as a sequence of bytes (each 0–255)
-- A label table (label name → address)
+- Machine code as a flat byte sequence
+- A label table (label name → memory address)
 - A source mapping (output position → source location, 1-based) for diagnostics. A source location is `(filename, line_no)` where `filename` is normalized relative to the root file's directory (see §5.8 Error reporting for normalization rules)
 
-**Note:** DB pseudo-instructions and `@include` directive lines are not CPU instructions and are excluded from source-to-instruction mapping. DB entries are excluded because they are data, not instructions. `@include` lines are excluded because they are consumed in Phase 0 and never reach Pass 1.
+**Single-page (no `@page` directives):** output is a byte sequence of length ≤ 256 — identical to the pre-`@page` format.
+
+**Multi-page (with `@page` directives):** output is a flat binary where page N occupies bytes `[N×256 .. N×256+255]`. Total size = `(max_page + 1) × 256`. Intermediate pages with no data are zero-filled. This format is loaded by the existing loader without changes (`memory.load(data, offset=0)`).
+
+**Note:** DB pseudo-instructions, `@include`, and `@page` directive lines are not CPU instructions and are excluded from source-to-instruction mapping.
 
 ## 5.3 Labels
 
@@ -43,7 +56,10 @@ The assembler produces:
 - Case-insensitive duplicate detection (`Start` and `start` are the same label)
 - Forbidden names: `A`, `B`, `C`, `D`, `SP`, `DP`, `FA`, `FB`, `FC`, `FD`, `FHA`, `FHB`, `FHC`, `FHD`, `FHE`, `FHF`, `FHG`, `FHH`, `FQA`, `FQB`, `FQC`, `FQD`, `FQE`, `FQF`, `FQG`, `FQH`, `FQI`, `FQJ`, `FQK`, `FQL`, `FQM`, `FQN`, `FQO`, `FQP`, `FOA`, `FOB`, `FOC`, `FOD`, `FOE`, `FOF`, `FOG`, `FOH`, `FOI`, `FOJ`, `FOK`, `FOL`, `FOM`, `FON`, `FOO`, `FOP` (conflict with register names; `FC`/`FD` and phys 2-3 sub-register names are reserved for future expansion)
 - Forward references allowed — a label can be used before its definition
-- Labels can be used inside brackets: `[label]` is equivalent to `[addr]` where addr is the label's resolved address. Uses the same direct addressing opcode as `[number]`
+- Labels can be used inside brackets: `[label]` is equivalent to `[addr]` where addr is the label's resolved page-local offset. Uses the same direct addressing opcode as `[number]`
+- Labels can be used inside curly braces: `{label}` resolves to the page number where the label is defined (see §5.11)
+- Each label stores `(page, offset)` internally: page = current page at definition point, offset = position within that page
+- In operand position, `label` and `[label]` resolve to the page-local **offset** (0–255); `{label}` resolves to the **page number** (0–255)
 - Dot-prefix labels supported for local scope convention: `.loop`, `.end`
 
 ## 5.4 Comments
@@ -237,8 +253,10 @@ Suffixes are case-insensitive: `_F` = `_f`, `_BF` = `_bf`.
 
 ## 5.7 Constraints
 
-- Maximum program size: 232 bytes (code + data + stack share 0x00-0xE7); addresses 232-255 are I/O and will be overwritten if program exceeds 232 bytes
+- Maximum page 0 size: 232 bytes (code + data + stack share 0x00-0xE7); addresses 232-255 are I/O and will be overwritten if page 0 output exceeds 232 bytes (warning)
+- Maximum page size: 256 bytes per page; exceeding this is an assembler error
 - Data storage: 64 KB via DP register (256 pages × 256 bytes); see [memory model](isa.md#13-memory-model)
+- Total output: at most 64 KB (256 pages × 256 bytes)
 - All immediate values must fit in one byte (0-255)
 - Mnemonics are case-insensitive (`mov` = `MOV` = `Mov`)
 - DB with comma-separated operands generates one byte per value (`DB 1, 2, 3` → `[1, 2, 3]`)
@@ -291,7 +309,64 @@ Escape sequences in the path are not supported.
 
 **No include guards:** The assembler does not prevent multiple inclusion of the same file. Repeated inclusion duplicates its contents, which will typically cause `Duplicate label` errors. This is by design — include guards are the responsibility of the author.
 
-## 5.9 Error Handling
+## 5.9 Page Directive
+
+The `@page` directive switches the assembler's output cursor to page N, optionally at a specific offset.
+
+**Syntax:**
+
+```
+@page N            ; switch to page N (decimal, hex, octal, or binary)
+@page N, M         ; switch to page N at offset M
+@page 0xFF         ; hex
+@page 1, 0x10      ; page 1, offset 16
+```
+
+**Rules:**
+
+- N = 0–255. `@page N` resumes output from the page's current position (initially 0).
+- M (offset) is optional, 0–255. When specified, the page cursor advances to offset M; the gap is zero-filled. M must be ≥ the page's current position.
+- The directive must occupy its own line (like `@include`). A label on the same line is an error.
+- Trailing comments are allowed: `@page 1 ; matrix data`.
+- Page order is arbitrary: `@page 3` then `@page 1` is valid.
+- The keyword `@page` is case-insensitive.
+
+**Semantics:** `@page` is a pure output cursor switch. Both instructions and `DB` data are allowed on any page. Instructions on pages > 0 are assembled into byte sequences on that page — they are not executed directly (IP always runs on page 0). To execute overlay code, the programmer copies it from page N to page 0 at runtime.
+
+**Cross-page jump validation:** JMP/CALL/conditional jump instructions must target a label on the same page; cross-page jumps are an error. Non-jump instructions with cross-page label references are allowed — the label resolves to its page-local offset.
+
+**Binary output:** See §5.2.
+
+**@page with @include:** `@page` affects output for all subsequent lines until the next `@page`. An `@include` after `@page 1` emits included content to page 1.
+
+## 5.10 Page Label Expression
+
+The `{label}` expression resolves to the page number (0–255) of the page where the label is defined.
+
+**Syntax:**
+
+```asm
+MOV DP, {matrix}     ; → page number of 'matrix'
+```
+
+**Rules:**
+
+- Allowed in any operand position that accepts an immediate value: `MOV reg, {x}`, `PUSH {x}`, `CMP reg, {x}`.
+- `{label}` for a label on page 0 → value 0 (valid, not an error).
+- `{undefined}` → error: `Undefined label: undefined`.
+- `{}` → error: invalid operand.
+- `{123}` → error: syntax error (only labels, not numbers).
+- `[{x}]` or `{[x]}` → error: syntax error (cannot combine with brackets).
+
+**Bracket family summary:**
+
+| Syntax | Meaning | Resolution |
+|--------|---------|------------|
+| `label` | immediate = page-local offset | label's offset (0–255) |
+| `[label]` | memory at page-local offset | label's offset (0–255) |
+| `{label}` | page number | label's page (0–255) |
+
+## 5.11 Error Handling
 
 All errors include a source location in `filename:line` format (1-based line number). See §5.8 for details on filename resolution.
 
@@ -332,3 +407,13 @@ All errors include a source location in `filename:line` format (1-based line num
 | `@include: circular include: X` | File X is already in the include chain |
 | `@include: max include depth exceeded` | Include nesting exceeds 16 levels |
 | `@include: fetch failed: X` | URL fetch failed (network error, non-2xx response, etc.) |
+| `@page value must be 0-255` | `@page` page number out of range |
+| `@page offset must be 0-255` | `@page` offset out of range |
+| `@page N: offset M is before current position K` | Offset would move cursor backward |
+| `@page: missing page number` | `@page` without an argument |
+| `@page: invalid syntax` | Malformed `@page` directive (non-numeric, extra tokens) |
+| `@page: invalid offset` | Offset is not a valid number |
+
+| `Page N overflow: X bytes exceeds 256` | Page content exceeds 256 bytes |
+| `jump target 'X' is on page N, but IP executes only on page 0` | JMP/CALL from page 0 to a label on page > 0 |
+| `cross-page jump from page N to page M` | JMP/CALL from page N to a label on a different page (N > 0) |
