@@ -32,6 +32,9 @@ mcp/            MCP server (LLM tool access to assembler, simulator, disassemble
 
 vscode-sim8/    VS Code extension (syntax highlighting for .asm files)
 
+libs/           Reusable assembly libraries
+  std/              Standard I/O routines (print int, string, hex, floats)
+
 examples/       Sample assembly programs
   hello.asm             Hello World (single page)
   hello-mp-code.asm     Hello World, multi-page (code segment)
