@@ -1,26 +1,34 @@
-; io_q44_print — Q4.4 fixed-point as "I.H"
-; Format: bits [7:4] = integer (0-15), bits [3:0] = fraction (x/16)
-; Displayed as decimal integer + '.' + hex nibble (exact x/16 representation)
-; Examples: 0x5A → "5.A" (5 + 10/16 = 5.625), 0x0F → "0.F" (15/16)
-; In:  A = Q4.4 value, D = output cursor
-; Out: D = next output position
-; Saves: A, B
+; io.q44.asm
+; API: print_q44
+; In: A=Q4.4 byte, D=cursor | Out: D=next
+; Prints as I.H (example: 0x48 -> "4.8")
+;
+; Example (DB -> print):
+;   @include "std/io.q44.asm"
+;   JMP start
+; value: DB 0x48
+;
+; start: MOV A, [value]
+;        MOV D, 232
+;        CALL print_q44
+;        HLT
 
-io_q44_print:
+print_q44:
         PUSH A
         PUSH B
         MOV B, A
 
         SHR A, 4
         CMP A, 10
-        JC iq44_s
+        JC q44_integer_single_digit
         PUSH A
         MOV A, 49
         MOV [D], A
         INC D
         POP A
         SUB A, 10
-iq44_s: ADD A, 48
+q44_integer_single_digit:
+        ADD A, 48
         MOV [D], A
         INC D
 
@@ -31,11 +39,13 @@ iq44_s: ADD A, 48
         MOV A, B
         AND A, 0x0F
         CMP A, 10
-        JC iq44_d
+        JC q44_fraction_decimal_digit
         ADD A, 55
-        JMP iq44_w
-iq44_d: ADD A, 48
-iq44_w: MOV [D], A
+        JMP q44_fraction_write
+q44_fraction_decimal_digit:
+        ADD A, 48
+q44_fraction_write:
+        MOV [D], A
         INC D
 
         POP B

@@ -1,15 +1,25 @@
-; io_int_print — uint8 decimal, no leading zeros
-; In:  A = uint8 (0-255), D = output cursor
-; Out: D = next output position
-; Saves: A, B, C
+; io.int.asm
+; API: print_int
+; In: A=uint8, D=cursor (232..255) | Out: D=next
+;
+; Example (DB -> print):
+;   @include "std/io.int.asm"
+;   JMP start
+; value: DB 42
+;
+; start: MOV A, [value]
+;        MOV D, 232
+;        CALL print_int
+;        HLT
 
-io_int_print:
+print_int:
         PUSH A
         PUSH B
         PUSH C
         MOV B, A
         MOV C, 0
-iip_lp: MOV A, B
+int_decimal_encode_loop:
+        MOV A, B
         DIV 10
         PUSH A
         MUL 10
@@ -20,12 +30,13 @@ iip_lp: MOV A, B
         MOV B, A
         INC C
         CMP B, 0
-        JNZ iip_lp
-iip_pr: POP A
+        JNZ int_decimal_encode_loop
+int_decimal_print_loop:
+        POP A
         MOV [D], A
         INC D
         DEC C
-        JNZ iip_pr
+        JNZ int_decimal_print_loop
         POP C
         POP B
         POP A

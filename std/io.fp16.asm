@@ -1,54 +1,122 @@
-; io_fp16_print — float16 (FHA) as "-NNN.DD"
-; In:  FHA = float16, D = output cursor
-; Out: D = next output position
-; Trashes: A, B, C, FHA, FHB, FHD, FPCR (restored to RNE on exit)
-; Req: DP = 0, @include "io.common.asm" before this file
+; io.fp16.asm
+; API: print_fp16
+; In: FHA=value, A=fraction digits (0..6), D=cursor | Out: D=next
+; Req: DP=0
+;
+; Example (DB -> print):
+;   @include "std/io.fp16.asm"
+;   JMP start
+; value: DB 1.5_h
+;
+; start: FMOV.H FHA, [value]
+;        MOV D, 232
+;        CALL print_fp16
+;        HLT
 
-io_fp16_print:
+fp16_text_nan: DB "NaN"
+               DB 0
+fp16_text_inf: DB "Inf"
+               DB 0
+fp16_tmp_digits: DB 0
+
+print_fp16:
+        CMP A, 6
+        JBE fp16_digits_ok
+        MOV A, 6
+fp16_digits_ok:
+        MOV [fp16_tmp_digits], A
+
         FCLASS.H A, FHA
         MOV B, A
 
         AND A, 0x30
-        JZ fp16_ci
-        MOV C, io_s_nan
-        JMP io_puts
+        JZ fp16_not_nan
+        MOV C, fp16_text_nan
+        JMP fp16_print_string
 
-fp16_ci:
-        MOV A, B
-        AND A, 0x08
-        JZ fp16_cs
+fp16_not_nan:
         MOV A, B
         AND A, 0x40
-        JZ fp16_pi
-        MOV [D], 45
-        INC D
-fp16_pi:
-        MOV C, io_s_inf
-        JMP io_puts
-
-fp16_cs:
-        MOV A, B
-        AND A, 0x40
-        JZ fp16_abs
+        JZ fp16_not_negative
         MOV [D], 45
         INC D
         FNEG.H FHA
 
-fp16_abs:
+fp16_not_negative:
+        MOV A, B
+        AND A, 0x08
+        JZ fp16_print_absolute
+        MOV C, fp16_text_inf
+        JMP fp16_print_string
+
+fp16_print_absolute:
+        MOV C, [fp16_tmp_digits]
         MOV A, 1
         FSCFG A
         FFTOI.H B, FHA
         FITOF.H FHB, B
         FSUB.H FHA, FHB
         MOV A, B
-        CALL io_itoa
+        PUSH C
+        CALL fp16_print_uint8_decimal
+        POP C
+        CMP C, 0
+        JZ fp16_done
+
+        MOV [D], 46
+        INC D
+
         FMOV.H FHD, 10.0
+fp16_frac_loop:
         FMUL.H FHA, FHD
-        FFTOI.H C, FHA
-        FITOF.H FHB, C
+        MOV A, 1
+        FSCFG A
+        FFTOI.H B, FHA
+        FITOF.H FHB, B
         FSUB.H FHA, FHB
-        FMUL.H FHA, FHD
-        FFTOI.H A, FHA
+        MOV A, B
+        ADD A, 48
+        MOV [D], A
+        INC D
+        DEC C
+        JNZ fp16_frac_loop
+
+fp16_done:
         MOV B, 0
         FSCFG B
-        JMP io_dot2d
+        RET
+
+fp16_print_string:
+        MOV A, [C]
+        CMP A, 0
+        JZ fp16_print_string_done
+        MOV [D], A
+        INC C
+        INC D
+        JMP fp16_print_string
+fp16_print_string_done:
+        RET
+
+fp16_print_uint8_decimal:
+        MOV B, A
+        MOV C, 0
+fp16_decimal_encode_loop:
+        MOV A, B
+        DIV 10
+        PUSH A
+        MUL 10
+        SUB B, A
+        ADD B, 48
+        POP A
+        PUSH B
+        MOV B, A
+        INC C
+        CMP B, 0
+        JNZ fp16_decimal_encode_loop
+fp16_decimal_print_loop:
+        POP A
+        MOV [D], A
+        INC D
+        DEC C
+        JNZ fp16_decimal_print_loop
+        RET

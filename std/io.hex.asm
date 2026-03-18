@@ -1,27 +1,38 @@
-; io_hex_print — uint8 as two hex digits "XX"
-; In:  A = uint8, D = output cursor
-; Out: D = next output position
-; Saves: A, B
+; io.hex.asm
+; API: print_hex
+; In: A=uint8, D=cursor (232..255) | Out: D=next
+;
+; Example (DB -> print):
+;   @include "std/io.hex.asm"
+;   JMP start
+; value: DB 0xAB
+;
+; start: MOV A, [value]
+;        MOV D, 232
+;        CALL print_hex
+;        HLT
 
-io_hex_print:
+print_hex:
         PUSH A
         PUSH B
         MOV B, A
         SHR A, 4
-        CALL ihn_nb
+        CALL hex_write_nibble
         MOV A, B
         AND A, 0x0F
-        CALL ihn_nb
+        CALL hex_write_nibble
         POP B
         POP A
         RET
 
-ihn_nb:
+hex_write_nibble:
         CMP A, 10
-        JC ihn_d
+        JC hex_write_decimal_digit
         ADD A, 55
-        JMP ihn_w
-ihn_d:  ADD A, 48
-ihn_w:  MOV [D], A
+        JMP hex_write_store
+hex_write_decimal_digit:
+        ADD A, 48
+hex_write_store:
+        MOV [D], A
         INC D
         RET
