@@ -850,9 +850,10 @@ function _collectLines(source, files, filename, visited, depth, outLines, lineMa
                 // Binary file: embed raw bytes as a DB directive.
                 const bytes = included instanceof ArrayBuffer ? new Uint8Array(included) : included;
                 if (bytes.length > 256) {
+                    const nParts = Math.ceil(bytes.length / 256);
                     throw new AsmError(
-                        `@include "${path}": binary file is ${bytes.length} bytes (page limit is 256). ` +
-                            "Place it on a dedicated page with @page N before the @include.",
+                        `@include "${path}": binary file is ${bytes.length} bytes — exceeds page size (256). ` +
+                            `Split the file into ${nParts} parts (≤256 bytes each) and @include them on separate pages.`,
                         lineNo,
                         filename,
                     );
