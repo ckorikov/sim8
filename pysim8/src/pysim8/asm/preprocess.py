@@ -140,7 +140,7 @@ def _handle_url_include(
         raise PreprocessError(f"@include: circular include: {url}", lineno, filename=filename)
 
     try:
-        with urllib.request.urlopen(url, timeout=10) as resp:  # noqa: S310
+        with urllib.request.urlopen(url, timeout=10) as resp:
             data: bytes = resp.read()
     except (URLError, OSError) as exc:
         raise PreprocessError(f"@include: fetch failed: {url}: {exc}", lineno, filename=filename) from exc

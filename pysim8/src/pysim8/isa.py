@@ -26,7 +26,6 @@ __all__ = [
     "FP_CONTROL_MNEMONICS",
     "FP_REGISTERS",
     "FP_SUFFIX_TO_FMT",
-    "FP_DB_SUFFIX_TO_FMT",
     "FP_FMT_F",
     "FP_FMT_H",
     "FP_FMT_BF",
@@ -345,9 +344,6 @@ FP_SUFFIX_TO_FMT: dict[str, int] = {
     "N2": FP_FMT_N2,
     "E1M2": FP_FMT_N2,
 }
-
-# DB literal suffix -> fmt code (same mapping, kept as alias for clarity)
-FP_DB_SUFFIX_TO_FMT = FP_SUFFIX_TO_FMT
 
 # FP register table: name -> (phys, pos, canonical_fmt, width_bits)
 FP_REGISTERS: dict[str, tuple[int, int, int, int]] = {

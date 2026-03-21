@@ -99,18 +99,25 @@ class FpuRegisters:
         mask = (1 << width) - 1
         self._fp32[phys] = (self._fp32[phys] & ~(mask << bit_offset)) | ((value & mask) << bit_offset)
 
+    # FPSR bit positions (spec §cpu.md FPSR)
+    FPSR_NV: int = 0x01  # invalid operation
+    FPSR_DZ: int = 0x02  # division by zero
+    FPSR_OF: int = 0x04  # overflow
+    FPSR_UF: int = 0x08  # underflow
+    FPSR_NX: int = 0x10  # inexact
+
     def accumulate_exceptions(self, exc: FpExceptions) -> None:
         """OR exception flags into FPSR (sticky)."""
         if exc.invalid:
-            self.fpsr |= 0x01
+            self.fpsr |= self.FPSR_NV
         if exc.div_zero:
-            self.fpsr |= 0x02
+            self.fpsr |= self.FPSR_DZ
         if exc.overflow:
-            self.fpsr |= 0x04
+            self.fpsr |= self.FPSR_OF
         if exc.underflow:
-            self.fpsr |= 0x08
+            self.fpsr |= self.FPSR_UF
         if exc.inexact:
-            self.fpsr |= 0x10
+            self.fpsr |= self.FPSR_NX
 
     def reset(self) -> None:
         """Reset all FPU state to zero."""

@@ -527,7 +527,6 @@ def _encode_mini_float(
             if candidate == (nan_pattern & ((1 << (exp_bits + mant_bits)) - 1)):
                 mant_int -= 1
         underflow = False
-        inexact = False
 
     byte_val = (sign << (exp_bits + mant_bits)) | (biased_exp << mant_bits) | mant_int
 

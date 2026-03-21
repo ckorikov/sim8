@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from pysim8.fp_formats import (
     FpExceptions,
+    RoundingMode,
     bytes_to_float,
     float_to_bytes,
     fp_abs,
@@ -450,13 +451,13 @@ class HandlersFpMixin:
             exc_invalid = True
         else:
             rm = self._fpu.rounding_mode
-            if rm == 0:  # RNE
+            if rm == RoundingMode.RNE:
                 rounded = round(fp_val)
-            elif rm == 1:  # RTZ
+            elif rm == RoundingMode.RTZ:
                 rounded = int(fp_val)
-            elif rm == 2:  # RDN
+            elif rm == RoundingMode.RDN:
                 rounded = math.floor(fp_val)
-            else:  # RUP
+            else:
                 rounded = math.ceil(fp_val)
 
             if rounded != fp_val:

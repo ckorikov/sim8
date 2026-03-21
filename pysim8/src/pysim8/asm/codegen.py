@@ -213,19 +213,22 @@ def _encode_fp_instruction(
 
     # FCVT special case: dual suffix
     if instr.op == Op.FCVT_FP_FP:
-        assert dst_fmt is not None and src_fmt is not None
+        if dst_fmt is None or src_fmt is None:
+            raise AssemblerError("FCVT requires two format suffixes", line)
         if dst_fmt == src_fmt:
             raise AssemblerError("FCVT with identical formats (use FMOV)", line)
         dst_reg = operands[0]
         src_reg = operands[1]
-        assert isinstance(dst_reg, OpFpReg) and isinstance(src_reg, OpFpReg)
+        if not isinstance(dst_reg, OpFpReg) or not isinstance(src_reg, OpFpReg):
+            raise AssemblerError("FCVT requires two FP register operands", line)
         _validate_fp_reg_width(dst_reg, dst_fmt, line)
         _validate_fp_reg_width(src_reg, src_fmt, line)
         dst_fpm = encode_fpm(dst_reg.phys, dst_reg.pos, dst_fmt)
         src_fpm = encode_fpm(src_reg.phys, src_reg.pos, src_fmt)
         return [int(instr.op), dst_fpm, src_fpm]
 
-    assert dst_fmt is not None
+    if dst_fmt is None:
+        raise AssemblerError("FP instruction requires a format suffix", line)
 
     # Separate FP reg operands from non-FP operands
     fp_ops: list[OpFpReg] = []
@@ -257,11 +260,13 @@ def _encode_fmov_imm(
     """Encode FMOV with FP immediate operand."""
     if not isinstance(operands[0], OpFpReg):
         raise AssemblerError("FMOV does not support this operand(s)", line)
-    assert dst_suffix is not None
+    if dst_suffix is None:
+        raise AssemblerError("FMOV immediate requires a format suffix", line)
 
     dst_reg = operands[0]
     fp_imm = operands[1]
-    assert isinstance(fp_imm, OpFpImm)
+    if not isinstance(fp_imm, OpFpImm):
+        raise AssemblerError("FMOV second operand must be a float literal", line)
 
     dst_fmt = _validate_fp_suffix(dst_suffix, line)
     fmt_width = FP_FMT_WIDTH[dst_fmt]

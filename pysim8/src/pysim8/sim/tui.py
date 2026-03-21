@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import select
 import sys
@@ -409,7 +410,6 @@ def run_headless(
     json_out: bool = False,
 ) -> None:
     """Run program without TUI, print final state and I/O output."""
-    import json as _json
 
     cpu = CPU(arch=arch)
     cpu.load(code)
@@ -446,7 +446,7 @@ def run_headless(
                 "fpcr": fpu.fpcr,
                 "fpsr": fpu.fpsr,
             }
-        click.echo(_json.dumps(state))
+        click.echo(json.dumps(state))
         return
 
     io_text = cpu.display()

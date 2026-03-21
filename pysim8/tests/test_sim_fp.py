@@ -2,8 +2,10 @@
 
 import math
 import struct
+from functools import partial
 
 import pytest
+from conftest import run as _run
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
@@ -45,17 +47,7 @@ from pysim8.isa import (
 from pysim8.sim import CPU, CpuState
 from pysim8.sim.errors import ErrorCode
 
-# ── helpers ──────────────────────────────────────────────────────────
-
-
-def run(source: str, arch: int = 2) -> CPU:
-    """Assemble source, load into CPU, run until halt/fault."""
-    result = assemble(source, arch=arch)
-    cpu = CPU(arch=arch)
-    cpu.load(result.code)
-    state = cpu.run()
-    assert state != CpuState.RUNNING, "Step limit reached"
-    return cpu
+run = partial(_run, arch=2)
 
 
 def run_binary(code: list[int], arch: int = 2) -> CPU:

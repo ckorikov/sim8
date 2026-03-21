@@ -8,23 +8,11 @@ Covers:
 """
 
 import pytest
+from conftest import run
 
 from pysim8.asm import assemble
-from pysim8.sim import CPU, CpuState
+from pysim8.sim import CPU
 from pysim8.sim.memory import IO_START, PAGE_SIZE, Memory
-
-# ── helpers ──────────────────────────────────────────────────────────
-
-
-def run(source: str) -> CPU:
-    """Assemble source, load into CPU, run until halt/fault."""
-    result = assemble(source)
-    cpu = CPU()
-    cpu.load(result.code)
-    state = cpu.run()
-    assert state != CpuState.RUNNING, "Step limit reached — infinite loop?"
-    return cpu
-
 
 # ── Memory.used_bytes() ───────────────────────────────────────────────
 

@@ -5,6 +5,7 @@ executes it on the CPU, and verifies the resulting state.
 """
 
 import pytest
+from conftest import run
 
 from pysim8.asm import AssemblerError, assemble
 from pysim8.isa import Op
@@ -12,18 +13,6 @@ from pysim8.sim import CPU, CpuState, ErrorCode, list_tracer
 from pysim8.sim.memory import MEMORY_SIZE, Memory
 from pysim8.sim.registers import Flags, FpuRegisters, RegisterFile
 from pysim8.sim.tracing import TraceEvent, print_tracer
-
-# ── helpers ──────────────────────────────────────────────────────────
-
-
-def run(source: str) -> CPU:
-    """Assemble source, load into CPU, run until halt/fault."""
-    result = assemble(source)
-    cpu = CPU()
-    cpu.load(result.code)
-    state = cpu.run()
-    assert state != CpuState.RUNNING, "Step limit reached — infinite loop?"
-    return cpu
 
 
 def run_fault(source: str, code: int) -> CPU:

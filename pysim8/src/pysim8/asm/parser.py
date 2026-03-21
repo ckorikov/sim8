@@ -14,11 +14,11 @@ from dataclasses import dataclass
 from pysim8.isa import (
     FORBIDDEN_FP_LABEL_NAMES,
     FP_CONTROL_MNEMONICS,
-    FP_DB_SUFFIX_TO_FMT,
     FP_FMT_F,
     FP_FMT_N1,
     FP_FMT_N2,
     FP_REGISTERS,
+    FP_SUFFIX_TO_FMT,
     MNEMONIC_ALIASES,
     MNEMONICS,
     MNEMONICS_FP,
@@ -338,9 +338,9 @@ def _resolve_fp_imm_suffix(suffix_str: str | None, line: int) -> int | None:
     if suffix_str is None:
         return None
     suffix = suffix_str[1:].upper()
-    if suffix not in FP_DB_SUFFIX_TO_FMT:
+    if suffix not in FP_SUFFIX_TO_FMT:
         raise ParseError("Invalid float literal", line)
-    return FP_DB_SUFFIX_TO_FMT[suffix]
+    return FP_SUFFIX_TO_FMT[suffix]
 
 
 def _try_fp_imm(token: str, line: int) -> Operand | None:
@@ -407,9 +407,9 @@ def _resolve_db_float_suffix(suffix_str: str | None, line: int) -> int:
     if suffix_str is None:
         return FP_FMT_F
     suffix = suffix_str[1:].upper()
-    if suffix not in FP_DB_SUFFIX_TO_FMT:
+    if suffix not in FP_SUFFIX_TO_FMT:
         raise ParseError("Invalid float literal", line)
-    fmt = FP_DB_SUFFIX_TO_FMT[suffix]
+    fmt = FP_SUFFIX_TO_FMT[suffix]
     if fmt in (FP_FMT_N1, FP_FMT_N2):
         raise ParseError(f"Unsupported float format for DB: {suffix_str[1:]}", line)
     return fmt

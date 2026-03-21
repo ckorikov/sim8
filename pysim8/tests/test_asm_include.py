@@ -527,7 +527,7 @@ class TestUrlInclude:
         # Simulate a.asm that includes itself via URL
         call_count = 0
 
-        def urlopen_side_effect(url, timeout=None):  # noqa: ARG001
+        def urlopen_side_effect(url, timeout=None):
             nonlocal call_count
             call_count += 1
             if call_count > 1:
