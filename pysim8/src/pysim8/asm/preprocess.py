@@ -113,9 +113,10 @@ def _embed_binary(
     if not data:
         return
     if len(data) > 256:
+        n_parts = (len(data) + 255) // 256
         raise PreprocessError(
-            f"@include: binary file is {len(data)} bytes (page limit is 256). "
-            "Place it on a dedicated page with @page N before the @include.",
+            f"@include: binary file is {len(data)} bytes — exceeds page size (256). "
+            f"Split the file into {n_parts} parts (≤256 bytes each) and @include them on separate pages.",
             lineno,
             filename=filename,
         )
