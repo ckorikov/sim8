@@ -442,3 +442,107 @@ describe("cross-validate: FPU", () => {
     `);
     });
 });
+
+// ── Edge-case cross-validation ──────────────────────────────────
+
+import { generateProgram } from "./_gen.js";
+
+describe("cross-validate: ALU edge cases", () => {
+    // SHL/SHR with boundary shift counts
+    for (const count of [0, 1, 7, 8, 15, 31, 32, 255]) {
+        it(`SHL A, ${count}`, () => assertEquivalent(`MOV A, 170\nSHL A, ${count}\nHLT`));
+        it(`SHR A, ${count}`, () => assertEquivalent(`MOV A, 170\nSHR A, ${count}\nHLT`));
+    }
+
+    // ADD/SUB overflow boundaries
+    for (const [a, b] of [
+        [255, 1],
+        [0, 1],
+        [128, 128],
+        [1, 255],
+        [0, 0],
+        [255, 255],
+    ]) {
+        it(`ADD ${a}+${b}`, () => assertEquivalent(`MOV A, ${a}\nADD A, ${b}\nHLT`));
+        it(`SUB ${a}-${b}`, () => assertEquivalent(`MOV A, ${a}\nSUB A, ${b}\nHLT`));
+    }
+
+    // MUL overflow
+    for (const [a, b] of [
+        [128, 2],
+        [255, 255],
+        [0, 100],
+        [1, 1],
+    ]) {
+        it(`MUL ${a}*${b}`, () => assertEquivalent(`MOV A, ${a}\nMUL ${b}\nHLT`));
+    }
+
+    // DIV edge cases
+    for (const [a, b] of [
+        [255, 1],
+        [0, 1],
+        [100, 7],
+        [1, 255],
+    ]) {
+        it(`DIV ${a}/${b}`, () => assertEquivalent(`MOV A, ${a}\nDIV ${b}\nHLT`));
+    }
+
+    // INC/DEC wrap
+    it("INC 255 → 0", () => assertEquivalent("MOV A, 255\nINC A\nHLT"));
+    it("DEC 0 → 255", () => assertEquivalent("MOV A, 0\nDEC A\nHLT"));
+
+    // NOT all bits
+    it("NOT 0 → 255", () => assertEquivalent("MOV A, 0\nNOT A\nHLT"));
+    it("NOT 255 → 0", () => assertEquivalent("MOV A, 255\nNOT A\nHLT"));
+});
+
+describe("cross-validate: FP edge cases", () => {
+    // FFTOI RNE tie-to-even
+    for (const v of ["0.5", "1.5", "2.5", "3.5", "4.5", "127.5"]) {
+        it(`FFTOI RNE ${v}`, () => assertEquivalent(`FMOV.H FHA, ${v}\nFFTOI.H A, FHA\nHLT`));
+    }
+
+    // FFTOI saturation
+    it("FFTOI 300 → 255", () => assertEquivalent("FMOV.H FHA, 300.0\nFFTOI.H A, FHA\nHLT"));
+    it("FFTOI -1 → 0", () => assertEquivalent("FMOV.H FHA, -1.0\nFFTOI.H A, FHA\nHLT"));
+
+    // FP overflow: large + large → saturated
+    it("FADD large values", () =>
+        assertEquivalent("MOV A, 200\nFITOF.H FHA, A\nFITOF.H FHB, A\nFADD.H FHA, FHB\nFFTOI.H B, FHA\nHLT"));
+
+    // FCVT between formats
+    it("FCVT F→H roundtrip", () => assertEquivalent("MOV A, 42\nFITOF.F FA, A\nFCVT.H.F FHA, FA\nFFTOI.H B, FHA\nHLT"));
+});
+
+describe("cross-validate: addressing modes", () => {
+    // REGADDR with offsets
+    it("MOV A, [B]", () => assertEquivalent("MOV B, 100\nMOV A, 42\nMOV [100], A\nMOV C, [B]\nHLT"));
+    it("MOV A, [B+1]", () => assertEquivalent("MOV B, 100\nMOV A, 42\nMOV [101], A\nMOV C, [B+1]\nHLT"));
+    it("MOV A, [B+15]", () => assertEquivalent("MOV B, 100\nMOV A, 42\nMOV [115], A\nMOV C, [B+15]\nHLT"));
+    it("MOV A, [B-1]", () => assertEquivalent("MOV B, 100\nMOV A, 42\nMOV [99], A\nMOV C, [B-1]\nHLT"));
+    it("MOV A, [B-16]", () => assertEquivalent("MOV B, 100\nMOV A, 42\nMOV [84], A\nMOV C, [B-16]\nHLT"));
+
+    // Memory addressing for ALU
+    it("ADD from memory", () => assertEquivalent("MOV A, 10\nMOV [100], A\nMOV A, 5\nADD A, [100]\nHLT"));
+    it("SUB from memory", () => assertEquivalent("MOV A, 10\nMOV [100], A\nMOV A, 20\nSUB A, [100]\nHLT"));
+});
+
+// ── Generated program cross-validation ──────────────────────────
+
+describe("cross-validate: generated (integer)", () => {
+    for (let seed = 0; seed < 100; seed++) {
+        it(`seed=${seed}`, () => {
+            const source = generateProgram(seed, { maxInstrs: 12, useFP: false });
+            assertEquivalent(source);
+        });
+    }
+});
+
+describe("cross-validate: generated (FP)", () => {
+    for (let seed = 0; seed < 50; seed++) {
+        it(`seed=${seed}`, () => {
+            const source = generateProgram(seed + 1000, { maxInstrs: 10, useFP: true });
+            assertEquivalent(source);
+        });
+    }
+});
