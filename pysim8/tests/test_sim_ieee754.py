@@ -30,10 +30,22 @@ MAX_CASES = int(os.environ.get("IEEE754_MAX", "0"))
 
 ROUNDING_MAP: dict[str, int] = {"=0": 0, ">": 3, "<": 2, "0": 1}
 
-SUPPORTED_OPS: frozenset[str] = frozenset({
-    "+", "-", "*", "/", "V", "~", "A", "qC",
-    "*+", "cff", "cif", "cfi",
-})
+SUPPORTED_OPS: frozenset[str] = frozenset(
+    {
+        "+",
+        "-",
+        "*",
+        "/",
+        "V",
+        "~",
+        "A",
+        "qC",
+        "*+",
+        "cff",
+        "cif",
+        "cfi",
+    }
+)
 UNARY_OPS: frozenset[str] = frozenset({"V", "~", "A"})
 BINARY_OPS: frozenset[str] = frozenset({"+", "-", "*", "/", "qC"})
 TERNARY_OPS: frozenset[str] = frozenset({"*+"})
@@ -73,7 +85,7 @@ FLAG_CHAR_TO_MASK: dict[str, int] = {
 }
 
 # FPM bytes
-_FPM_FA  = encode_fpm(0, 0, FP_FMT_F)
+_FPM_FA = encode_fpm(0, 0, FP_FMT_F)
 _FPM_FHA = encode_fpm(0, 0, FP_FMT_H)
 _FPM_FHB = encode_fpm(0, 1, FP_FMT_H)
 
@@ -81,6 +93,7 @@ _KNOWN_PREFIXES = frozenset({"b32", "b16"})
 
 
 # ── Data model ────────────────────────────────────────────────────────────
+
 
 class FpTestCase(NamedTuple):
     op: str
@@ -93,6 +106,7 @@ class FpTestCase(NamedTuple):
 
 
 # ── Parser ────────────────────────────────────────────────────────────────
+
 
 def _is_exception_str(tok: str) -> bool:
     """Return True if tok is composed entirely of exception flag chars."""
@@ -126,13 +140,13 @@ def parse_fp_token(tok: str) -> float | None:
         if p_idx == -1:
             return None  # integer or unrecognised
         man = rest[:p_idx]
-        exp = int(rest[p_idx + 1:])
+        exp = int(rest[p_idx + 1 :])
         if "." not in man:
             return None
         dot = man.index(".")
-        int_part = int(man[:dot], 16)   # 0 (subnormal) or 1 (normal)
-        frac_hex = man[dot + 1:]
-        frac = int(frac_hex, 16)        # raw fraction bits
+        int_part = int(man[:dot], 16)  # 0 (subnormal) or 1 (normal)
+        frac_hex = man[dot + 1 :]
+        frac = int(frac_hex, 16)  # raw fraction bits
         n = len(frac_hex)
         # Infer mantissa width from digit count:
         #   6 hex digits → 23-bit fraction (binary32)
@@ -166,7 +180,7 @@ def parse_fptest_line(line: str) -> FpTestCase | None:
     op: str | None = None
     for p in _KNOWN_PREFIXES:
         if tok0.startswith(p):
-            candidate = tok0[len(p):]
+            candidate = tok0[len(p) :]
             if candidate in SUPPORTED_OPS:
                 prefix = p
                 op = candidate
@@ -256,6 +270,7 @@ def load_cases(filename: str) -> list[FpTestCase]:
 #              operand C for FMA b16 @ 0x84
 #   0x90       result     (4 or 2 bytes)
 
+
 def _store_f32(mem: list[int], addr: int, value: float) -> None:
     for i, b in enumerate(struct.pack("<f", value)):
         mem[addr + i] = b
@@ -277,13 +292,23 @@ def _read_f16(mem: list[int], addr: int) -> float:
 def _binary_prog(opcode: int, fpm: int, rounding: int, b_addr: int) -> list[int]:
     """Program: set rounding, load A, compute A op mem[b_addr], store to 0x90."""
     return [
-        int(Op.MOV_REG_CONST), 0, rounding,
-        int(Op.FSCFG_GPR), 0,
+        int(Op.MOV_REG_CONST),
+        0,
+        rounding,
+        int(Op.FSCFG_GPR),
+        0,
         int(Op.FCLR),
-        int(Op.FMOV_FP_ADDR), fpm, 0x80,
-        opcode, fpm, b_addr,
-        int(Op.FMOV_ADDR_FP), fpm, 0x90,
-        int(Op.FSTAT_GPR), 0,
+        int(Op.FMOV_FP_ADDR),
+        fpm,
+        0x80,
+        opcode,
+        fpm,
+        b_addr,
+        int(Op.FMOV_ADDR_FP),
+        fpm,
+        0x90,
+        int(Op.FSTAT_GPR),
+        0,
         int(Op.HLT),
     ]
 
@@ -291,13 +316,22 @@ def _binary_prog(opcode: int, fpm: int, rounding: int, b_addr: int) -> list[int]
 def _unary_prog(opcode: int, fpm: int, rounding: int) -> list[int]:
     """Program: set rounding, load A, apply unary op, store to 0x90."""
     return [
-        int(Op.MOV_REG_CONST), 0, rounding,
-        int(Op.FSCFG_GPR), 0,
+        int(Op.MOV_REG_CONST),
+        0,
+        rounding,
+        int(Op.FSCFG_GPR),
+        0,
         int(Op.FCLR),
-        int(Op.FMOV_FP_ADDR), fpm, 0x80,
-        opcode, fpm,
-        int(Op.FMOV_ADDR_FP), fpm, 0x90,
-        int(Op.FSTAT_GPR), 0,
+        int(Op.FMOV_FP_ADDR),
+        fpm,
+        0x80,
+        opcode,
+        fpm,
+        int(Op.FMOV_ADDR_FP),
+        fpm,
+        0x90,
+        int(Op.FSTAT_GPR),
+        0,
         int(Op.HLT),
     ]
 
@@ -305,12 +339,20 @@ def _unary_prog(opcode: int, fpm: int, rounding: int) -> list[int]:
 def _cmp_prog(fpm: int, rounding: int) -> list[int]:
     """Program: load A, compare A vs mem[0x84], read FPSR."""
     return [
-        int(Op.MOV_REG_CONST), 0, rounding,
-        int(Op.FSCFG_GPR), 0,
+        int(Op.MOV_REG_CONST),
+        0,
+        rounding,
+        int(Op.FSCFG_GPR),
+        0,
         int(Op.FCLR),
-        int(Op.FMOV_FP_ADDR), fpm, 0x80,
-        int(Op.FCMP_FP_ADDR), fpm, 0x84,
-        int(Op.FSTAT_GPR), 0,
+        int(Op.FMOV_FP_ADDR),
+        fpm,
+        0x80,
+        int(Op.FCMP_FP_ADDR),
+        fpm,
+        0x84,
+        int(Op.FSTAT_GPR),
+        0,
         int(Op.HLT),
     ]
 
@@ -322,19 +364,33 @@ def _fma_b16_prog(rounding: int) -> list[int]:
     Memory layout:  FHA=c @0x80, FHB=a @0x82, b @0x84
     """
     return [
-        int(Op.MOV_REG_CONST), 0, rounding,
-        int(Op.FSCFG_GPR), 0,
+        int(Op.MOV_REG_CONST),
+        0,
+        rounding,
+        int(Op.FSCFG_GPR),
+        0,
         int(Op.FCLR),
-        int(Op.FMOV_FP_ADDR), _FPM_FHA, 0x80,
-        int(Op.FMOV_FP_ADDR), _FPM_FHB, 0x82,
-        int(Op.FMADD_FP_FP_ADDR), _FPM_FHA, _FPM_FHB, 0x84,
-        int(Op.FMOV_ADDR_FP), _FPM_FHA, 0x90,
-        int(Op.FSTAT_GPR), 0,
+        int(Op.FMOV_FP_ADDR),
+        _FPM_FHA,
+        0x80,
+        int(Op.FMOV_FP_ADDR),
+        _FPM_FHB,
+        0x82,
+        int(Op.FMADD_FP_FP_ADDR),
+        _FPM_FHA,
+        _FPM_FHB,
+        0x84,
+        int(Op.FMOV_ADDR_FP),
+        _FPM_FHA,
+        0x90,
+        int(Op.FSTAT_GPR),
+        0,
         int(Op.HLT),
     ]
 
 
 # ── CPU runner ────────────────────────────────────────────────────────────
+
 
 def run_fp_case(tc: FpTestCase) -> tuple[float, int]:
     """Run one FP test case through the CPU.
@@ -398,6 +454,7 @@ def run_fp_case(tc: FpTestCase) -> tuple[float, int]:
 
 # ── Assertion helpers ─────────────────────────────────────────────────────
 
+
 def assert_fp_result(
     actual: float,
     expected: float,
@@ -429,8 +486,7 @@ def assert_fp_result(
         act_bits = struct.unpack("<H", struct.pack("<e", actual))[0]
 
     assert exp_bits == act_bits, (
-        f"Expected {expected!r} (bits={exp_bits:#010x}), "
-        f"got {actual!r} (bits={act_bits:#010x}){ctx}"
+        f"Expected {expected!r} (bits={exp_bits:#010x}), got {actual!r} (bits={act_bits:#010x}){ctx}"
     )
 
 
@@ -449,8 +505,7 @@ def assert_fp_flags(fpsr: int, expected_flags: str, context: str = "") -> None:
         mask |= FLAG_CHAR_TO_MASK[ch]
     ctx = f" [{context}]" if context else ""
     assert (fpsr & FPSR_KNOWN_MASK) == mask, (
-        f"Expected flags {expected_flags!r} (mask={mask:#04x}), "
-        f"fpsr={fpsr:#04x}{ctx}"
+        f"Expected flags {expected_flags!r} (mask={mask:#04x}), fpsr={fpsr:#04x}{ctx}"
     )
 
 
@@ -458,12 +513,12 @@ def assert_fp_flags(fpsr: int, expected_flags: str, context: str = "") -> None:
 
 pytestmark = pytest.mark.skipif(
     not SUITE_DIR.exists(),
-    reason="ieee754-test-suite submodule not initialized "
-           "(run: git submodule update --init ieee754-test-suite)",
+    reason="ieee754-test-suite submodule not initialized (run: git submodule update --init ieee754-test-suite)",
 )
 
 
 # ── Test group loader ─────────────────────────────────────────────────────
+
 
 def _load_group(
     files: list[str],
@@ -489,53 +544,73 @@ def _run_and_assert(tc: FpTestCase) -> None:
 
 # ── Collected test cases (module level, loaded once) ─────────────────────
 
-_ADD_CASES = _load_group([
-    "Add-Shift.fptest",
-    "Add-Cancellation.fptest",
-    "Add-Shift-And-Special-Significands.fptest",
-    "Add-Cancellation-And-Subnorm-Result.fptest",
-])
+_ADD_CASES = _load_group(
+    [
+        "Add-Shift.fptest",
+        "Add-Cancellation.fptest",
+        "Add-Shift-And-Special-Significands.fptest",
+        "Add-Cancellation-And-Subnorm-Result.fptest",
+    ]
+)
 
-_ROUND_CASES = _load_group([
-    "Rounding.fptest",
-    "Corner-Rounding.fptest",
-    "Vicinity-Of-Rounding-Boundaries.fptest",
-], op_filter={"+", "-", "*", "/", "V"})  # exclude b32*+ FMA
+_ROUND_CASES = _load_group(
+    [
+        "Rounding.fptest",
+        "Corner-Rounding.fptest",
+        "Vicinity-Of-Rounding-Boundaries.fptest",
+    ],
+    op_filter={"+", "-", "*", "/", "V"},
+)  # exclude b32*+ FMA
 
-_OVF_UF_CASES = _load_group([
-    "Overflow.fptest",
-    "Underflow.fptest",
-], op_filter={"+", "-", "*", "/", "V"})  # exclude b32*+ FMA
+_OVF_UF_CASES = _load_group(
+    [
+        "Overflow.fptest",
+        "Underflow.fptest",
+    ],
+    op_filter={"+", "-", "*", "/", "V"},
+)  # exclude b32*+ FMA
 
-_DIV_CASES = _load_group([
-    "Divide-Divide-By-Zero-Exception.fptest",
-    "Divide-Trailing-Zeros.fptest",
-])
+_DIV_CASES = _load_group(
+    [
+        "Divide-Divide-By-Zero-Exception.fptest",
+        "Divide-Trailing-Zeros.fptest",
+    ]
+)
 
-_STICKY_CASES = _load_group([
-    "Sticky-Bit-Calculation.fptest",
-], op_filter={"+", "-", "*", "/"})  # exclude FMA
+_STICKY_CASES = _load_group(
+    [
+        "Sticky-Bit-Calculation.fptest",
+    ],
+    op_filter={"+", "-", "*", "/"},
+)  # exclude FMA
 
-_SPECIAL_CASES = _load_group([
-    "Input-Special-Significand.fptest",
-])
+_SPECIAL_CASES = _load_group(
+    [
+        "Input-Special-Significand.fptest",
+    ]
+)
 
 # b16*+ FMA — suite only has b32*+ which the parser filters out; empty list OK
-_FMA_CASES = _load_group([
-    "MultiplyAdd-Shift.fptest",
-    "MultiplyAdd-Cancellation.fptest",
-    "MultiplyAdd-Shift-And-Special-Significands.fptest",
-    "MultiplyAdd-Cancellation-And-Subnorm-Result.fptest",
-    "MultiplyAdd-Special-Events-Inexact.fptest",
-    "MultiplyAdd-Special-Events-Overflow.fptest",
-    "MultiplyAdd-Special-Events-Underflow.fptest",
-])
+_FMA_CASES = _load_group(
+    [
+        "MultiplyAdd-Shift.fptest",
+        "MultiplyAdd-Cancellation.fptest",
+        "MultiplyAdd-Shift-And-Special-Significands.fptest",
+        "MultiplyAdd-Cancellation-And-Subnorm-Result.fptest",
+        "MultiplyAdd-Special-Events-Inexact.fptest",
+        "MultiplyAdd-Special-Events-Overflow.fptest",
+        "MultiplyAdd-Special-Events-Underflow.fptest",
+    ]
+)
 
 # Conversions: cff/cif/cfi — suite only has b32→b128/b64; empty list OK
-_CONV_CASES = _load_group([
-    "Basic-Types-Inputs.fptest",
-    "Basic-Types-Intermediate.fptest",
-], op_filter={"cff", "cif", "cfi"})
+_CONV_CASES = _load_group(
+    [
+        "Basic-Types-Inputs.fptest",
+        "Basic-Types-Intermediate.fptest",
+    ],
+    op_filter={"cff", "cif", "cfi"},
+)
 
 
 # ── Parametrized test ─────────────────────────────────────────────────────

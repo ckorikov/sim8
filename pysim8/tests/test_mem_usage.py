@@ -13,7 +13,6 @@ from pysim8.asm import assemble
 from pysim8.sim import CPU, CpuState
 from pysim8.sim.memory import IO_START, PAGE_SIZE, Memory
 
-
 # ── helpers ──────────────────────────────────────────────────────────
 
 

@@ -5,17 +5,15 @@ import pytest
 from pysim8.asm import assemble
 from pysim8.disasm import disasm, disasm_insn
 from pysim8.isa import (
-    ISA,
-    ISA_FP,
-    InstrDef,
-    OpType,
-    Op,
+    FP_FMT_BF,
     FP_FMT_F,
     FP_FMT_H,
-    FP_FMT_BF,
-    FP_FMT_O3,
     FP_FMT_O2,
-    FP_CONTROL_MNEMONICS,
+    FP_FMT_O3,
+    ISA,
+    InstrDef,
+    Op,
+    OpType,
     encode_fpm,
 )
 
@@ -133,6 +131,7 @@ def test_regaddr_roundtrip(offset: int) -> None:
 def test_disasm_cli(tmp_path: pytest.TempPathFactory) -> None:
     """Full CLI path for disassembler."""
     from click.testing import CliRunner
+
     from pysim8.disasm.cli import main
 
     bin_file = tmp_path / "test.bin"  # type: ignore[operator]
@@ -328,7 +327,7 @@ class TestDisasmFpEdgeCoverage:
     def test_fp_data_no_operands(self) -> None:
         """FP data instr with zero operands → bare label."""
         from pysim8.disasm.core import _disasm_fp_insn
-        from pysim8.isa import BY_CODE_FP, InstrDef, Op, OpType
+        from pysim8.isa import BY_CODE_FP, InstrDef, Op
 
         fake = InstrDef(Op.FCLR, "FBARE", (), cost=1)
         saved = BY_CODE_FP.get(int(Op.FCLR))

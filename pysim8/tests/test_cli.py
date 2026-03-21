@@ -68,9 +68,7 @@ class TestHeadless:
         from pysim8.sim.tui import main as sim_main
 
         bin_path = tmp_path / "hello.bin"
-        code = assemble(
-            'MOV A, 72\nMOV [232], A\nHLT', arch=2
-        ).code
+        code = assemble("MOV A, 72\nMOV [232], A\nHLT", arch=2).code
         bin_path.write_bytes(bytes(code))
         runner = CliRunner()
         result = runner.invoke(sim_main, ["--headless", str(bin_path)])
@@ -119,6 +117,7 @@ class TestHeadless:
 class TestAsmStdin:
     def test_asm_binary_stdout(self, tmp_path: Path) -> None:
         import subprocess
+
         src = tmp_path / "test.asm"
         src.write_text("MOV A, 42\nHLT\n")
         result = subprocess.run(
@@ -130,6 +129,7 @@ class TestAsmStdin:
 
     def test_asm_stdin_binary(self) -> None:
         import subprocess
+
         result = subprocess.run(
             ["uv", "run", "pysim8-asm", "-", "--binary"],
             input=b"MOV A, 42\nHLT\n",

@@ -26,12 +26,8 @@ overflow cases are expected to diverge and are skipped.
 from __future__ import annotations
 
 import math
-import struct
 
 import pytest
-
-np = pytest.importorskip("numpy")
-ml_dtypes = pytest.importorskip("ml_dtypes")
 
 from pysim8.fp_formats import (
     RoundingMode,
@@ -40,11 +36,14 @@ from pysim8.fp_formats import (
     encode_ofp8_e4m3,
     encode_ofp8_e5m2,
     fp_add,
-    fp_sub,
-    fp_mul,
     fp_div,
+    fp_mul,
     fp_sqrt,
+    fp_sub,
 )
+
+np = pytest.importorskip("numpy")
+ml_dtypes = pytest.importorskip("ml_dtypes")
 
 # ml_dtypes scalar types
 E4M3 = ml_dtypes.float8_e4m3fn
@@ -107,10 +106,7 @@ class TestE4M3Decode:
     def test_decode_all(self, byte_val: int) -> None:
         ours = decode_ofp8_e4m3(byte_val)
         ref = _ml_decode_e4m3(byte_val)
-        assert _same_float(ours, ref), (
-            f"E4M3 decode mismatch for 0x{byte_val:02X}: "
-            f"ours={ours!r}, ml_dtypes={ref!r}"
-        )
+        assert _same_float(ours, ref), f"E4M3 decode mismatch for 0x{byte_val:02X}: ours={ours!r}, ml_dtypes={ref!r}"
 
 
 # ── E5M2: exhaustive decode (all 256 byte values) ───────────────────────
@@ -123,10 +119,7 @@ class TestE5M2Decode:
     def test_decode_all(self, byte_val: int) -> None:
         ours = decode_ofp8_e5m2(byte_val)
         ref = _ml_decode_e5m2(byte_val)
-        assert _same_float(ours, ref), (
-            f"E5M2 decode mismatch for 0x{byte_val:02X}: "
-            f"ours={ours!r}, ml_dtypes={ref!r}"
-        )
+        assert _same_float(ours, ref), f"E5M2 decode mismatch for 0x{byte_val:02X}: ours={ours!r}, ml_dtypes={ref!r}"
 
 
 # ── E4M3: exhaustive encode (all representable values) ──────────────────
@@ -146,7 +139,8 @@ class TestE4M3Encode:
     """Verify encode_ofp8_e4m3 matches ml_dtypes for representable values."""
 
     @pytest.mark.parametrize(
-        "value", _all_e4m3_representable(),
+        "value",
+        _all_e4m3_representable(),
         ids=lambda v: f"{v:g}",
     )
     def test_encode_representable_rne(self, value: float) -> None:
@@ -154,10 +148,7 @@ class TestE4M3Encode:
         ours_bytes, _ = encode_ofp8_e4m3(value, RoundingMode.RNE)
         ours = ours_bytes[0]
         ref = _ml_encode_e4m3(value)
-        assert ours == ref, (
-            f"E4M3 encode mismatch for {value!r}: "
-            f"ours=0x{ours:02X}, ml_dtypes=0x{ref:02X}"
-        )
+        assert ours == ref, f"E4M3 encode mismatch for {value!r}: ours=0x{ours:02X}, ml_dtypes=0x{ref:02X}"
 
 
 # ── E5M2: exhaustive encode (all representable values) ──────────────────
@@ -177,7 +168,8 @@ class TestE5M2Encode:
     """Verify encode_ofp8_e5m2 matches ml_dtypes for representable values."""
 
     @pytest.mark.parametrize(
-        "value", _all_e5m2_representable(),
+        "value",
+        _all_e5m2_representable(),
         ids=lambda v: f"{v:g}",
     )
     def test_encode_representable_rne(self, value: float) -> None:
@@ -185,10 +177,7 @@ class TestE5M2Encode:
         ours_bytes, _ = encode_ofp8_e5m2(value, RoundingMode.RNE)
         ours = ours_bytes[0]
         ref = _ml_encode_e5m2(value)
-        assert ours == ref, (
-            f"E5M2 encode mismatch for {value!r}: "
-            f"ours=0x{ours:02X}, ml_dtypes=0x{ref:02X}"
-        )
+        assert ours == ref, f"E5M2 encode mismatch for {value!r}: ours=0x{ours:02X}, ml_dtypes=0x{ref:02X}"
 
 
 # ── E4M3: midpoint rounding (RNE) ──────────────────────────────────────
@@ -215,14 +204,14 @@ class TestE4M3Rounding:
     """Test RNE rounding at midpoints between representable E4M3 values."""
 
     @pytest.mark.parametrize(
-        "mid,expected_byte", _e4m3_midpoints(),
+        "mid,expected_byte",
+        _e4m3_midpoints(),
         ids=lambda x: f"{x:g}" if isinstance(x, float) else f"0x{x:02X}",
     )
     def test_midpoint_rne(self, mid: float, expected_byte: int) -> None:
         ours_bytes, _ = encode_ofp8_e4m3(mid, RoundingMode.RNE)
         assert ours_bytes[0] == expected_byte, (
-            f"E4M3 RNE midpoint mismatch for {mid!r}: "
-            f"ours=0x{ours_bytes[0]:02X}, expected=0x{expected_byte:02X}"
+            f"E4M3 RNE midpoint mismatch for {mid!r}: ours=0x{ours_bytes[0]:02X}, expected=0x{expected_byte:02X}"
         )
 
 
@@ -245,14 +234,14 @@ class TestE5M2Rounding:
     """Test RNE rounding at midpoints between representable E5M2 values."""
 
     @pytest.mark.parametrize(
-        "mid,expected_byte", _e5m2_midpoints(),
+        "mid,expected_byte",
+        _e5m2_midpoints(),
         ids=lambda x: f"{x:g}" if isinstance(x, float) else f"0x{x:02X}",
     )
     def test_midpoint_rne(self, mid: float, expected_byte: int) -> None:
         ours_bytes, _ = encode_ofp8_e5m2(mid, RoundingMode.RNE)
         assert ours_bytes[0] == expected_byte, (
-            f"E5M2 RNE midpoint mismatch for {mid!r}: "
-            f"ours=0x{ours_bytes[0]:02X}, expected=0x{expected_byte:02X}"
+            f"E5M2 RNE midpoint mismatch for {mid!r}: ours=0x{ours_bytes[0]:02X}, expected=0x{expected_byte:02X}"
         )
 
 
@@ -372,30 +361,28 @@ class TestE4M3Roundtrip:
     """encode → decode roundtrip must be identity for representable values."""
 
     @pytest.mark.parametrize(
-        "value", _all_e4m3_representable(),
+        "value",
+        _all_e4m3_representable(),
         ids=lambda v: f"{v:g}",
     )
     def test_roundtrip(self, value: float) -> None:
         data, _ = encode_ofp8_e4m3(value, RoundingMode.RNE)
         decoded = decode_ofp8_e4m3(data[0])
-        assert _same_float_strict(decoded, value), (
-            f"E4M3 roundtrip fail: {value!r} → 0x{data[0]:02X} → {decoded!r}"
-        )
+        assert _same_float_strict(decoded, value), f"E4M3 roundtrip fail: {value!r} → 0x{data[0]:02X} → {decoded!r}"
 
 
 class TestE5M2Roundtrip:
     """encode → decode roundtrip must be identity for representable values."""
 
     @pytest.mark.parametrize(
-        "value", _all_e5m2_representable(),
+        "value",
+        _all_e5m2_representable(),
         ids=lambda v: f"{v:g}",
     )
     def test_roundtrip(self, value: float) -> None:
         data, _ = encode_ofp8_e5m2(value, RoundingMode.RNE)
         decoded = decode_ofp8_e5m2(data[0])
-        assert _same_float_strict(decoded, value), (
-            f"E5M2 roundtrip fail: {value!r} → 0x{data[0]:02X} → {decoded!r}"
-        )
+        assert _same_float_strict(decoded, value), f"E5M2 roundtrip fail: {value!r} → 0x{data[0]:02X} → {decoded!r}"
 
 
 # ── Cross-format encode: random f32 values through both libraries ───────
@@ -435,7 +422,8 @@ class TestE4M3CrossEncode:
     """
 
     @pytest.mark.parametrize(
-        "value", _sample_f32_values(),
+        "value",
+        _sample_f32_values(),
         ids=lambda v: f"{v:g}",
     )
     def test_encode_matches(self, value: float) -> None:
@@ -461,7 +449,8 @@ class TestE5M2CrossEncode:
     """
 
     @pytest.mark.parametrize(
-        "value", _sample_f32_values(),
+        "value",
+        _sample_f32_values(),
         ids=lambda v: f"{v:g}",
     )
     def test_encode_matches(self, value: float) -> None:
@@ -747,7 +736,10 @@ def _byte_ids(byte_list: list[int]) -> list[str]:
 
 
 def _ml_binary(
-    op: str, a_byte: int, b_byte: int, ml_dtype: type,
+    op: str,
+    a_byte: int,
+    b_byte: int,
+    ml_dtype: type,
 ) -> int:
     """Compute a binary op via ml_dtypes, return result byte."""
     a = np.float64(np.frombuffer(bytes([a_byte]), dtype=ml_dtype)[0])
@@ -776,8 +768,12 @@ def _ml_sqrt_byte(v_byte: int, ml_dtype: type) -> int:
 
 
 def _our_binary(
-    op: str, a_byte: int, b_byte: int,
-    fmt: int, decode_fn: object, encode_fn: object,
+    op: str,
+    a_byte: int,
+    b_byte: int,
+    fmt: int,
+    decode_fn: object,
+    encode_fn: object,
 ) -> int:
     """Compute a binary op via our fp_formats, return result byte."""
     a_val = decode_fn(a_byte)
@@ -787,7 +783,10 @@ def _our_binary(
 
 
 def _our_sqrt_byte(
-    v_byte: int, fmt: int, decode_fn: object, encode_fn: object,
+    v_byte: int,
+    fmt: int,
+    decode_fn: object,
+    encode_fn: object,
 ) -> int:
     """Compute sqrt via our fp_formats, return result byte."""
     v_val = decode_fn(v_byte)
@@ -804,9 +803,15 @@ def _both_nan(byte_a: int, byte_b: int, decode_fn: object) -> bool:
 
 
 def _check_binary(
-    op: str, a_byte: int, b_byte: int,
-    fmt: int, decode_fn: object, encode_fn: object,
-    ml_dtype: type, *, has_inf: bool,
+    op: str,
+    a_byte: int,
+    b_byte: int,
+    fmt: int,
+    decode_fn: object,
+    encode_fn: object,
+    ml_dtype: type,
+    *,
+    has_inf: bool,
 ) -> None:
     ours = _our_binary(op, a_byte, b_byte, fmt, decode_fn, encode_fn)
     ref = _ml_binary(op, a_byte, b_byte, ml_dtype)
@@ -834,8 +839,12 @@ def _check_binary(
 
 def _check_sqrt(
     v_byte: int,
-    fmt: int, decode_fn: object, encode_fn: object,
-    ml_dtype: type, *, has_inf: bool,
+    fmt: int,
+    decode_fn: object,
+    encode_fn: object,
+    ml_dtype: type,
+    *,
+    has_inf: bool,
 ) -> None:
     ours = _our_sqrt_byte(v_byte, fmt, decode_fn, encode_fn)
     ref = _ml_sqrt_byte(v_byte, ml_dtype)
@@ -853,10 +862,7 @@ def _check_sqrt(
         pytest.skip("E4M3 SAT/NONSAT divergence (OFP8 Table 3)")
 
     v_val = decode_fn(v_byte)
-    pytest.fail(
-        f"sqrt({v_val!r}) (0x{v_byte:02X}): "
-        f"ours=0x{ours:02X}({ours_val!r}), ref=0x{ref:02X}({ref_val!r})"
-    )
+    pytest.fail(f"sqrt({v_val!r}) (0x{v_byte:02X}): ours=0x{ours:02X}({ours_val!r}), ref=0x{ref:02X}({ref_val!r})")
 
 
 # ── precomputed pairs ──────────────────────────────────────────────
@@ -876,36 +882,64 @@ class TestE4M3Arith:
     @pytest.mark.parametrize("a,b", _e4m3_pairs, ids=_e4m3_pids)
     def test_add(self, a: int, b: int) -> None:
         _check_binary(
-            "+", a, b, _FMT_O3,
-            decode_ofp8_e4m3, encode_ofp8_e4m3, E4M3, has_inf=False,
+            "+",
+            a,
+            b,
+            _FMT_O3,
+            decode_ofp8_e4m3,
+            encode_ofp8_e4m3,
+            E4M3,
+            has_inf=False,
         )
 
     @pytest.mark.parametrize("a,b", _e4m3_pairs, ids=_e4m3_pids)
     def test_sub(self, a: int, b: int) -> None:
         _check_binary(
-            "-", a, b, _FMT_O3,
-            decode_ofp8_e4m3, encode_ofp8_e4m3, E4M3, has_inf=False,
+            "-",
+            a,
+            b,
+            _FMT_O3,
+            decode_ofp8_e4m3,
+            encode_ofp8_e4m3,
+            E4M3,
+            has_inf=False,
         )
 
     @pytest.mark.parametrize("a,b", _e4m3_pairs, ids=_e4m3_pids)
     def test_mul(self, a: int, b: int) -> None:
         _check_binary(
-            "*", a, b, _FMT_O3,
-            decode_ofp8_e4m3, encode_ofp8_e4m3, E4M3, has_inf=False,
+            "*",
+            a,
+            b,
+            _FMT_O3,
+            decode_ofp8_e4m3,
+            encode_ofp8_e4m3,
+            E4M3,
+            has_inf=False,
         )
 
     @pytest.mark.parametrize("a,b", _e4m3_pairs, ids=_e4m3_pids)
     def test_div(self, a: int, b: int) -> None:
         _check_binary(
-            "/", a, b, _FMT_O3,
-            decode_ofp8_e4m3, encode_ofp8_e4m3, E4M3, has_inf=False,
+            "/",
+            a,
+            b,
+            _FMT_O3,
+            decode_ofp8_e4m3,
+            encode_ofp8_e4m3,
+            E4M3,
+            has_inf=False,
         )
 
     @pytest.mark.parametrize("v", _E4M3_ARITH, ids=_byte_ids(_E4M3_ARITH))
     def test_sqrt(self, v: int) -> None:
         _check_sqrt(
-            v, _FMT_O3,
-            decode_ofp8_e4m3, encode_ofp8_e4m3, E4M3, has_inf=False,
+            v,
+            _FMT_O3,
+            decode_ofp8_e4m3,
+            encode_ofp8_e4m3,
+            E4M3,
+            has_inf=False,
         )
 
 
@@ -918,34 +952,62 @@ class TestE5M2Arith:
     @pytest.mark.parametrize("a,b", _e5m2_pairs, ids=_e5m2_pids)
     def test_add(self, a: int, b: int) -> None:
         _check_binary(
-            "+", a, b, _FMT_O2,
-            decode_ofp8_e5m2, encode_ofp8_e5m2, E5M2, has_inf=True,
+            "+",
+            a,
+            b,
+            _FMT_O2,
+            decode_ofp8_e5m2,
+            encode_ofp8_e5m2,
+            E5M2,
+            has_inf=True,
         )
 
     @pytest.mark.parametrize("a,b", _e5m2_pairs, ids=_e5m2_pids)
     def test_sub(self, a: int, b: int) -> None:
         _check_binary(
-            "-", a, b, _FMT_O2,
-            decode_ofp8_e5m2, encode_ofp8_e5m2, E5M2, has_inf=True,
+            "-",
+            a,
+            b,
+            _FMT_O2,
+            decode_ofp8_e5m2,
+            encode_ofp8_e5m2,
+            E5M2,
+            has_inf=True,
         )
 
     @pytest.mark.parametrize("a,b", _e5m2_pairs, ids=_e5m2_pids)
     def test_mul(self, a: int, b: int) -> None:
         _check_binary(
-            "*", a, b, _FMT_O2,
-            decode_ofp8_e5m2, encode_ofp8_e5m2, E5M2, has_inf=True,
+            "*",
+            a,
+            b,
+            _FMT_O2,
+            decode_ofp8_e5m2,
+            encode_ofp8_e5m2,
+            E5M2,
+            has_inf=True,
         )
 
     @pytest.mark.parametrize("a,b", _e5m2_pairs, ids=_e5m2_pids)
     def test_div(self, a: int, b: int) -> None:
         _check_binary(
-            "/", a, b, _FMT_O2,
-            decode_ofp8_e5m2, encode_ofp8_e5m2, E5M2, has_inf=True,
+            "/",
+            a,
+            b,
+            _FMT_O2,
+            decode_ofp8_e5m2,
+            encode_ofp8_e5m2,
+            E5M2,
+            has_inf=True,
         )
 
     @pytest.mark.parametrize("v", _E5M2_ARITH, ids=_byte_ids(_E5M2_ARITH))
     def test_sqrt(self, v: int) -> None:
         _check_sqrt(
-            v, _FMT_O2,
-            decode_ofp8_e5m2, encode_ofp8_e5m2, E5M2, has_inf=True,
+            v,
+            _FMT_O2,
+            decode_ofp8_e5m2,
+            encode_ofp8_e5m2,
+            E5M2,
+            has_inf=True,
         )

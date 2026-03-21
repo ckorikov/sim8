@@ -9,10 +9,9 @@ import pytest
 from pysim8.asm import AssemblerError, assemble
 from pysim8.isa import Op
 from pysim8.sim import CPU, CpuState, ErrorCode, list_tracer
-from pysim8.sim.tracing import TraceEvent, print_tracer
+from pysim8.sim.memory import MEMORY_SIZE, Memory
 from pysim8.sim.registers import Flags, FpuRegisters, RegisterFile
-from pysim8.sim.memory import Memory, MEMORY_SIZE
-
+from pysim8.sim.tracing import TraceEvent, print_tracer
 
 # ── helpers ──────────────────────────────────────────────────────────
 
@@ -478,13 +477,7 @@ class TestAddressing:
     """Spec §5.12 — cross-instruction addressing mode tests."""
 
     def test_81_regaddr_offsets(self) -> None:
-        cpu = run(
-            "MOV B, 0x50\n"
-            "MOV [B+0], 10\n"
-            "MOV [B+5], 20\n"
-            "MOV [B-3], 30\n"
-            "HLT"
-        )
+        cpu = run("MOV B, 0x50\nMOV [B+0], 10\nMOV [B+5], 20\nMOV [B-3], 30\nHLT")
         assert cpu.mem[0x50] == 10
         assert cpu.mem[0x55] == 20
         assert cpu.mem[0x4D] == 30
@@ -650,27 +643,11 @@ class TestIntegration:
         assert cpu.a == 5
 
     def test_153_sum_1_to_10(self) -> None:
-        cpu = run(
-            "MOV A, 0\n"
-            "MOV B, 1\n"
-            "loop: ADD A, B\n"
-            "INC B\n"
-            "CMP B, 11\n"
-            "JNZ loop\n"
-            "HLT"
-        )
+        cpu = run("MOV A, 0\nMOV B, 1\nloop: ADD A, B\nINC B\nCMP B, 11\nJNZ loop\nHLT")
         assert cpu.a == 55
 
     def test_154_factorial_5(self) -> None:
-        cpu = run(
-            "MOV A, 1\n"
-            "MOV B, 5\n"
-            "loop: MUL B\n"
-            "DEC B\n"
-            "CMP B, 1\n"
-            "JA loop\n"
-            "HLT"
-        )
+        cpu = run("MOV A, 1\nMOV B, 5\nloop: MUL B\nDEC B\nCMP B, 1\nJA loop\nHLT")
         assert cpu.a == 120
 
     def test_155_hello(self) -> None:
@@ -685,23 +662,14 @@ class TestIntegration:
             "INC B\n"
             "INC C\n"
             "JMP .loop\n"
-            '.end: HLT\n'
+            ".end: HLT\n"
             'hello: DB "Hello"\n'
             "DB 0"
         )
         assert cpu.display() == "Hello"
 
     def test_156_stack_frame(self) -> None:
-        cpu = run(
-            "PUSH 10\n"
-            "PUSH 20\n"
-            "CALL add_two\n"
-            "HLT\n"
-            "add_two:\n"
-            "MOV A, [SP+2]\n"
-            "ADD A, [SP+3]\n"
-            "RET"
-        )
+        cpu = run("PUSH 10\nPUSH 20\nCALL add_two\nHLT\nadd_two:\nMOV A, [SP+2]\nADD A, [SP+3]\nRET")
         assert cpu.a == 30
 
 
@@ -738,15 +706,7 @@ class TestDP:
         assert cpu.mem[0x20A] == 77
 
     def test_167_direct_uses_dp(self) -> None:
-        cpu = run(
-            "MOV [0x50], 11\n"
-            "MOV DP, 1\n"
-            "MOV [0x50], 22\n"
-            "MOV A, [0x50]\n"
-            "MOV DP, 0\n"
-            "MOV B, [0x50]\n"
-            "HLT"
-        )
+        cpu = run("MOV [0x50], 11\nMOV DP, 1\nMOV [0x50], 22\nMOV A, [0x50]\nMOV DP, 0\nMOV B, [0x50]\nHLT")
         assert cpu.mem[0x50] == 11
         assert cpu.mem[0x150] == 22
         assert cpu.a == 22
@@ -761,15 +721,7 @@ class TestDP:
         run_fault("MOV DP, 1\nMOV B, 250\nMOV [B+10], 33", ErrorCode.PAGE_BOUNDARY)
 
     def test_170_cross_page_copy(self) -> None:
-        cpu = run(
-            "MOV DP, 1\n"
-            "MOV B, 0\n"
-            "MOV [B], 0xAA\n"
-            "MOV A, [B]\n"
-            "MOV DP, 2\n"
-            "MOV [B], A\n"
-            "HLT"
-        )
+        cpu = run("MOV DP, 1\nMOV B, 0\nMOV [B], 0xAA\nMOV A, [B]\nMOV DP, 2\nMOV [B], A\nHLT")
         assert cpu.mem[0x200] == 0xAA
 
 
@@ -810,23 +762,11 @@ class TestRobustness:
         run_fault("DB 82, 5", ErrorCode.INVALID_REG)
 
     def test_180_code_overwrite_via_stack(self) -> None:
-        cpu = run(
-            "MOV SP, 10\n"
-            "PUSH 0\n"
-            "MOV A, 42\n"
-            "JMP 10\n"
-            "MOV A, 99\n"
-        )
+        cpu = run("MOV SP, 10\nPUSH 0\nMOV A, 42\nJMP 10\nMOV A, 99\n")
         assert cpu.a == 42
 
     def test_181_exec_from_high_memory(self) -> None:
-        cpu = run(
-            "MOV [200], 6\n"
-            "MOV [201], 0\n"
-            "MOV [202], 77\n"
-            "MOV [203], 0\n"
-            "JMP 200"
-        )
+        cpu = run("MOV [200], 6\nMOV [201], 0\nMOV [202], 77\nMOV [203], 0\nJMP 200")
         assert cpu.a == 77
         assert cpu.ip == 203
 
@@ -988,10 +928,7 @@ class TestCostModel:
     def test_custom_override_all_variants(self) -> None:
         """Override replaces ALL variants of a mnemonic."""
         cpu = CPU(costs={"MUL": 8})
-        cpu.load(assemble(
-            "MOV A, 2\nMOV B, 3\nMUL B\n"
-            "MOV A, 2\nMUL [0x50]\nHLT"
-        ).code)
+        cpu.load(assemble("MOV A, 2\nMOV B, 3\nMUL B\nMOV A, 2\nMUL [0x50]\nHLT").code)
         cpu.mem[0x50] = 1
         cpu.run()
         assert cpu.cycles == 19
@@ -1077,11 +1014,7 @@ class TestCoverageCompleteness:
 
     def test_185_fetch_boundary(self) -> None:
         """3-byte opcode at IP=254 crosses page boundary."""
-        cpu = run(
-            "MOV [254], 13\n"
-            "MOV [255], 0\n"
-            "JMP 254"
-        )
+        cpu = run("MOV [254], 13\nMOV [255], 0\nJMP 254")
         assert cpu.state == CpuState.FAULT
         assert cpu.a == ErrorCode.PAGE_BOUNDARY
 
@@ -1118,14 +1051,7 @@ class TestCoverageCompleteness:
 
     def test_194_call_return_addr_wrapping(self) -> None:
         """CALL at IP=254: return_addr = 256 mod 256 = 0."""
-        cpu = run(
-            "MOV [254], 56\n"
-            "MOV [255], 20\n"
-            "MOV [20], 54\n"
-            "MOV [21], 1\n"
-            "MOV [22], 0\n"
-            "JMP 254"
-        )
+        cpu = run("MOV [254], 56\nMOV [255], 20\nMOV [20], 54\nMOV [21], 1\nMOV [22], 0\nJMP 254")
         assert cpu.b == 0
 
     def test_195_mul_carry_and_zero(self) -> None:
@@ -1137,26 +1063,12 @@ class TestCoverageCompleteness:
 
     def test_196_push_source_uses_dp(self) -> None:
         """PUSH [reg] reads from DP page."""
-        cpu = run(
-            "MOV DP, 1\n"
-            "MOV B, 0x50\n"
-            "MOV [B], 42\n"
-            "PUSH [B]\n"
-            "MOV DP, 0\n"
-            "POP A\n"
-            "HLT"
-        )
+        cpu = run("MOV DP, 1\nMOV B, 0x50\nMOV [B], 42\nPUSH [B]\nMOV DP, 0\nPOP A\nHLT")
         assert cpu.a == 42
 
     def test_197_exec_from_io_region(self) -> None:
         """Code in I/O region (232-255) is executable."""
-        cpu = run(
-            "MOV [232], 6\n"
-            "MOV [233], 0\n"
-            "MOV [234], 99\n"
-            "MOV [235], 0\n"
-            "JMP 232"
-        )
+        cpu = run("MOV [232], 6\nMOV [233], 0\nMOV [234], 99\nMOV [235], 0\nJMP 232")
         assert cpu.a == 99
         assert cpu.ip == 235
 
@@ -1170,39 +1082,27 @@ class TestOpcodeCoverage:
     # 6.24.2 Conditional jumps via register (200-205)
 
     def test_200_jz_reg(self) -> None:
-        cpu = run(
-            "MOV A, 5\nCMP A, 5\nMOV B, equal\nJZ B\nMOV C, 1\nequal: HLT"
-        )
+        cpu = run("MOV A, 5\nCMP A, 5\nMOV B, equal\nJZ B\nMOV C, 1\nequal: HLT")
         assert cpu.c == 0
 
     def test_201_jnz_reg(self) -> None:
-        cpu = run(
-            "MOV A, 5\nCMP A, 3\nMOV B, nz\nJNZ B\nMOV C, 1\nnz: HLT"
-        )
+        cpu = run("MOV A, 5\nCMP A, 3\nMOV B, nz\nJNZ B\nMOV C, 1\nnz: HLT")
         assert cpu.c == 0
 
     def test_202_jc_reg(self) -> None:
-        cpu = run(
-            "MOV A, 200\nADD A, 100\nMOV B, carry\nJC B\nMOV C, 1\ncarry: HLT"
-        )
+        cpu = run("MOV A, 200\nADD A, 100\nMOV B, carry\nJC B\nMOV C, 1\ncarry: HLT")
         assert cpu.c == 0
 
     def test_203_jnc_reg(self) -> None:
-        cpu = run(
-            "MOV A, 5\nADD A, 3\nMOV B, nc\nJNC B\nMOV C, 1\nnc: HLT"
-        )
+        cpu = run("MOV A, 5\nADD A, 3\nMOV B, nc\nJNC B\nMOV C, 1\nnc: HLT")
         assert cpu.c == 0
 
     def test_204_ja_reg(self) -> None:
-        cpu = run(
-            "MOV A, 10\nCMP A, 3\nMOV B, above\nJA B\nMOV C, 1\nabove: HLT"
-        )
+        cpu = run("MOV A, 10\nCMP A, 3\nMOV B, above\nJA B\nMOV C, 1\nabove: HLT")
         assert cpu.c == 0
 
     def test_205_jna_reg(self) -> None:
-        cpu = run(
-            "MOV A, 3\nCMP A, 10\nMOV B, na\nJNA B\nMOV C, 1\nna: HLT"
-        )
+        cpu = run("MOV A, 3\nCMP A, 10\nMOV B, na\nJNA B\nMOV C, 1\nna: HLT")
         assert cpu.c == 0
 
     # 6.24.3 Bitwise — all addressing modes (206-214)
@@ -1324,8 +1224,13 @@ class TestPrintTracer:
 
     def test_basic(self, capsys: pytest.CaptureFixture[str]) -> None:
         ev = TraceEvent(
-            ip=10, opcode=6, operands=(0, 42), size=3,
-            changes={"A": 42}, is_fault=False, cost=2,
+            ip=10,
+            opcode=6,
+            operands=(0, 42),
+            size=3,
+            changes={"A": 42},
+            is_fault=False,
+            cost=2,
         )
         print_tracer(ev)
         out = capsys.readouterr().out
@@ -1336,8 +1241,13 @@ class TestPrintTracer:
 
     def test_fault(self, capsys: pytest.CaptureFixture[str]) -> None:
         ev = TraceEvent(
-            ip=0, opcode=255, operands=(), size=1,
-            changes={}, is_fault=True, cost=0,
+            ip=0,
+            opcode=255,
+            operands=(),
+            size=1,
+            changes={},
+            is_fault=True,
+            cost=0,
         )
         print_tracer(ev)
         out = capsys.readouterr().out
@@ -1347,11 +1257,17 @@ class TestPrintTracer:
         assert "operands=" not in out
 
     def test_no_operands_no_changes(
-        self, capsys: pytest.CaptureFixture[str],
+        self,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         ev = TraceEvent(
-            ip=5, opcode=0, operands=(), size=1,
-            changes={}, is_fault=False, cost=0,
+            ip=5,
+            opcode=0,
+            operands=(),
+            size=1,
+            changes={},
+            is_fault=False,
+            cost=0,
         )
         print_tracer(ev)
         out = capsys.readouterr().out
@@ -1362,8 +1278,12 @@ class TestPrintTracer:
         events, cb = list_tracer()
         assert events == []
         ev = TraceEvent(
-            ip=0, opcode=0, operands=(), size=1,
-            changes={}, is_fault=False,
+            ip=0,
+            opcode=0,
+            operands=(),
+            size=1,
+            changes={},
+            is_fault=False,
         )
         cb(ev)
         assert len(events) == 1
@@ -1526,9 +1446,7 @@ class TestHandlerEdges:
     def test_indirect_addr_invalid_reg(self) -> None:
         encoded_regaddr = (0 << 3) | 6
         cpu = CPU(arch=2)
-        cpu.load([
-            int(Op.MOV_REGADDR_REG), encoded_regaddr, 0, int(Op.HLT)
-        ])
+        cpu.load([int(Op.MOV_REGADDR_REG), encoded_regaddr, 0, int(Op.HLT)])
         cpu.run()
         assert cpu.state == CpuState.FAULT
         assert cpu.a == ErrorCode.INVALID_REG
@@ -1565,6 +1483,7 @@ class TestHandlerEdges:
     def test_dispatch_missing_handler_raises(self) -> None:
         """Missing handler in dispatch table triggers completeness error."""
         from pysim8.sim.handlers import HandlersMixin
+
         cpu = CPU()
         incomplete = dict(cpu._dispatch)
         del incomplete[Op.INC_REG]
