@@ -11,6 +11,7 @@ import {
     setOnBpToggle,
 } from "./editor.js";
 import { breakpoints, MAIN_FILE } from "./breakpoints.js";
+import { mountHexView } from "./hexview.js";
 
 // Track mouse position so renderTabBar can detect hover on freshly inserted elements.
 // (matches(':hover') returns false on newly inserted DOM nodes until the mouse moves.)
@@ -50,11 +51,64 @@ print:                       ; print(C:*from, D:*to)
 
 `;
 
-/** @type {Map<string, string>} */
+/**
+ * @typedef {{ type: 'text', content: string } | { type: 'binary', content: Uint8Array }} FileEntry
+ */
+
+/** @type {Map<string, FileEntry>} */
 let files = new Map();
 
 /** @type {string} */
 let activeFile = MAIN_FILE;
+
+/** @type {HTMLElement|null} */
+let _editorCont = null;
+/** @type {HTMLElement|null} */
+let _hexCont = null;
+
+// ── Binary detection ─────────────────────────────────────────────
+
+const BINARY_EXTS = /\.(bin|rom|img|o|out|elf|exe|dat)$/i;
+
+/**
+ * @param {string} name
+ * @param {ArrayBuffer} buffer
+ * @returns {boolean}
+ */
+export function _isBinary(name, buffer) {
+    if (BINARY_EXTS.test(name)) return true;
+    const view = new Uint8Array(buffer, 0, Math.min(buffer.byteLength, 1024));
+    for (const b of view) {
+        if (b === 0) return true;
+    }
+    return false;
+}
+
+// ── View toggling ────────────────────────────────────────────────
+
+function _showEditorView(text) {
+    if (_editorCont) _editorCont.style.display = "";
+    if (_hexCont) _hexCont.style.display = "none";
+    setEditorSource(text);
+}
+
+function _showHexView(bytes) {
+    if (_editorCont) _editorCont.style.display = "none";
+    if (_hexCont) {
+        _hexCont.style.display = "flex";
+        mountHexView(_hexCont, bytes);
+    }
+}
+
+function _activateEntry(name, entry) {
+    if (entry?.type === "binary") {
+        _showHexView(entry.content);
+    } else {
+        _showEditorView(entry?.content ?? "");
+        syncBpFromStore(breakpoints.getForFile(name));
+        focusEditor();
+    }
+}
 
 // ── Name generation ──────────────────────────────────────────────
 
@@ -70,7 +124,8 @@ function _discardNewTab(name) {
     files.delete(name);
     if (activeFile === name) {
         activeFile = MAIN_FILE;
-        setEditorSource(files.get(MAIN_FILE) ?? "");
+        const entry = files.get(MAIN_FILE);
+        setEditorSource(entry?.type === "text" ? entry.content : "");
     }
 }
 
@@ -198,7 +253,9 @@ function renderTabBar() {
 // ── Public API ───────────────────────────────────────────────────
 
 export function saveCurrentTab() {
-    files.set(activeFile, getEditorSource());
+    const entry = files.get(activeFile);
+    if (!entry || entry.type !== "text") return;
+    files.set(activeFile, { type: "text", content: getEditorSource() });
 }
 
 function switchTab(name) {
@@ -206,15 +263,13 @@ function switchTab(name) {
     saveCurrentTab();
     activeFile = name;
     clearExecLine();
-    setEditorSource(files.get(name) ?? "");
-    syncBpFromStore(breakpoints.getForFile(name));
+    _activateEntry(name, files.get(name));
     renderTabBar();
-    focusEditor();
 }
 
 function addTab() {
     const name = generateDefaultName();
-    files.set(name, "");
+    files.set(name, { type: "text", content: "" });
     switchTab(name);
     _startRename(name, true);
 }
@@ -229,9 +284,7 @@ function closeTab(name) {
         const adjacent = keys[idx - 1] ?? keys[idx + 1] ?? MAIN_FILE;
         activeFile = adjacent;
         clearExecLine();
-        setEditorSource(files.get(activeFile) ?? "");
-        syncBpFromStore(breakpoints.getForFile(activeFile));
-        focusEditor();
+        _activateEntry(activeFile, files.get(activeFile));
     }
     renderTabBar();
 }
@@ -240,9 +293,11 @@ function closeTab(name) {
 export function switchTabForExec(filename) {
     const target = filename ?? MAIN_FILE;
     if (!files.has(target) || activeFile === target) return;
+    const entry = files.get(target);
+    if (entry?.type !== "text") return; // binary tabs can't be exec targets
     saveCurrentTab();
     activeFile = target;
-    setEditorSource(files.get(target) ?? "");
+    setEditorSource(entry.content);
     syncBpFromStore(breakpoints.getForFile(target));
     renderTabBar();
 }
@@ -250,14 +305,66 @@ export function switchTabForExec(filename) {
 export function getVirtualFiles() {
     /** @type {Record<string, string>} */
     const out = {};
-    for (const [name, src] of files.entries()) {
-        if (name !== MAIN_FILE) out[name] = src;
+    for (const [name, entry] of files.entries()) {
+        if (name !== MAIN_FILE && entry.type === "text") out[name] = entry.content;
     }
     return out;
 }
 
 export function getMainSource() {
-    return files.get(MAIN_FILE) ?? "";
+    const entry = files.get(MAIN_FILE);
+    return entry?.type === "text" ? entry.content : "";
+}
+
+function _addFileTab(name, entry) {
+    let tabName = name;
+    if (files.has(tabName)) {
+        const dot = tabName.lastIndexOf(".");
+        const base = dot > 0 ? tabName.slice(0, dot) : tabName;
+        const ext = dot > 0 ? tabName.slice(dot) : "";
+        let n = 2;
+        while (files.has(`${base} (${n})${ext}`)) n++;
+        tabName = `${base} (${n})${ext}`;
+    }
+    files.set(tabName, entry);
+    switchTab(tabName);
+}
+
+function _initDragDrop() {
+    const bar = document.getElementById("tab-bar");
+    const edCont = document.getElementById("editor-container");
+
+    async function handleDrop(e) {
+        e.preventDefault();
+        bar?.classList.remove("drag-over");
+        edCont?.classList.remove("drag-over");
+        const droppedFiles = e.dataTransfer.files;
+        if (!droppedFiles.length) return;
+        saveCurrentTab();
+        for (const file of droppedFiles) {
+            const buffer = await file.arrayBuffer();
+            if (_isBinary(file.name, buffer)) {
+                _addFileTab(file.name, { type: "binary", content: new Uint8Array(buffer) });
+            } else {
+                const text = new TextDecoder().decode(buffer);
+                _addFileTab(file.name, { type: "text", content: text });
+            }
+        }
+    }
+
+    for (const el of [bar, edCont].filter(Boolean)) {
+        el.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+            el.classList.add("drag-over");
+        });
+        el.addEventListener("dragleave", (e) => {
+            if (!el.contains(e.relatedTarget)) {
+                el.classList.remove("drag-over");
+            }
+        });
+        el.addEventListener("drop", handleDrop);
+    }
 }
 
 export function initTabs() {
@@ -269,7 +376,7 @@ export function initTabs() {
         },
         { passive: true },
     );
-    files = new Map([[MAIN_FILE, DEFAULT_MAIN]]);
+    files = new Map([[MAIN_FILE, { type: "text", content: DEFAULT_MAIN }]]);
     activeFile = MAIN_FILE;
     breakpoints.clearAll();
     setEditorSource(DEFAULT_MAIN);
@@ -277,5 +384,8 @@ export function initTabs() {
         breakpoints.toggle(activeFile, line);
         syncBpFromStore(breakpoints.getForFile(activeFile));
     });
+    _editorCont = document.getElementById("editor-container");
+    _hexCont = document.getElementById("hex-container");
     renderTabBar();
+    _initDragDrop();
 }
