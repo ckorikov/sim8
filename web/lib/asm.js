@@ -9,7 +9,7 @@ import {
     OpType,
     BY_MNEMONIC,
     BY_MNEMONIC_FP,
-    REGISTERS,
+    Reg,
     MNEMONICS,
     MNEMONICS_FP,
     FP_CONTROL_MNEMONICS,
@@ -26,7 +26,6 @@ import {
     FP_FMT_O3,
     FP_FMT_N1,
     FP_FMT_N2,
-    FP_DB_SUFFIX_TO_FMT,
     encodeRegaddr,
     encodeFpm,
 } from "./isa.js";
@@ -158,21 +157,21 @@ function _parseBracketOperand(inner, line) {
         const sign = m[2];
         let offsetVal = parseInt(m[3], 10);
         if (sign === "-") offsetVal = -offsetVal;
-        if (!(regName in REGISTERS)) {
+        if (!(regName in Reg)) {
             throw new AsmError(`Invalid register in address: ${m[1]}`, line);
         }
         if (offsetVal < -16 || offsetVal > 15) {
             throw new AsmError("offset must be a value between -16...+15", line);
         }
-        return { tag: TAG_REGADDR, regCode: REGISTERS[regName], offset: offsetVal };
+        return { tag: TAG_REGADDR, regCode: Reg[regName], offset: offsetVal };
     }
 
     // [reg]
     m = _RE_REG_ONLY.exec(inner);
     if (m) {
         const regName = m[1].toUpperCase();
-        if (regName in REGISTERS) {
-            return { tag: TAG_REGADDR, regCode: REGISTERS[regName], offset: 0 };
+        if (regName in Reg) {
+            return { tag: TAG_REGADDR, regCode: Reg[regName], offset: 0 };
         }
     }
 
@@ -201,8 +200,8 @@ function _tryBracket(token, line) {
 
 function _tryRegister(token, _line) {
     const up = token.toUpperCase();
-    if (up in REGISTERS) {
-        return { tag: TAG_REG, code: REGISTERS[up] };
+    if (up in Reg) {
+        return { tag: TAG_REG, code: Reg[up] };
     }
     if (up in FP_REGISTERS) {
         const r = FP_REGISTERS[up];
@@ -235,10 +234,10 @@ function _tryConst(token, line) {
 function _resolveFloatSuffix(suffixStr, line, defaultFmt, rejectNarrow) {
     if (suffixStr == null) return defaultFmt;
     const suffix = suffixStr.slice(1).toUpperCase();
-    if (!(suffix in FP_DB_SUFFIX_TO_FMT)) {
+    if (!(suffix in FP_SUFFIX_TO_FMT)) {
         throw new AsmError("Invalid float literal", line);
     }
-    const fmt = FP_DB_SUFFIX_TO_FMT[suffix];
+    const fmt = FP_SUFFIX_TO_FMT[suffix];
     if (rejectNarrow && (fmt === FP_FMT_N1 || fmt === FP_FMT_N2)) {
         throw new AsmError(`Unsupported float format for DB: ${suffixStr.slice(1)}`, line);
     }
@@ -333,7 +332,7 @@ function _parseDbOperands(raw, line, arch) {
             throw new AsmError("DB does not support this operand", line);
         }
         const up = part.toUpperCase();
-        if (up in REGISTERS) {
+        if (up in Reg) {
             throw new AsmError("DB does not support this operand", line);
         }
 
@@ -482,7 +481,7 @@ function _parseLine(raw, lineNo, arch) {
     if (labelMatch) {
         const labelName = labelMatch[1];
         const up = labelName.toUpperCase();
-        if (up in REGISTERS || (arch >= 2 && FORBIDDEN_FP_LABEL_NAMES.has(up))) {
+        if (up in Reg || (arch >= 2 && FORBIDDEN_FP_LABEL_NAMES.has(up))) {
             throw new AsmError(`Label contains keyword: ${up}`, lineNo);
         }
         result.label = labelName.toLowerCase();
@@ -644,8 +643,7 @@ function _encodeOperand(op) {
 
 // ── Instruction matching ─────────────────────────────────────────
 
-function _findInstr(mnemonic, operands, line, table) {
-    if (table == null) table = BY_MNEMONIC;
+function _findInstr(mnemonic, operands, line, table = BY_MNEMONIC) {
     const candidates = table[mnemonic];
     if (!candidates) {
         throw new AsmError(`Invalid instruction: ${mnemonic}`, line);

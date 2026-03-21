@@ -206,8 +206,6 @@ export const Reg = Object.freeze({
     DP: 5,
 });
 
-export const REGISTERS = Reg;
-
 export const GPR_CODES = new Set([0, 1, 2, 3]);
 export const ARITH_CODES = new Set([0, 1, 2, 3, 4]);
 export const STACK_CODES = new Set([0, 1, 2, 3, 5]);
@@ -492,8 +490,6 @@ export const FP_SUFFIX_TO_FMT = Object.freeze({
     N2: FP_FMT_N2,
     E1M2: FP_FMT_N2,
 });
-
-export const FP_DB_SUFFIX_TO_FMT = FP_SUFFIX_TO_FMT;
 
 // ── FP registers ─────────────────────────────────────────────────
 
