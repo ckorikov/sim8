@@ -182,15 +182,17 @@ const ALU = {
     },
 
     shl(value, count) {
-        const raw = value * (1 << count);
+        if (count >= 8) return [0, value !== 0, true];
+        const raw = (value << count) & 0xffff;
         const carry = raw > 255;
         const result = raw & 0xff;
         return [result, carry, result === 0];
     },
 
     shr(value, count) {
-        const carry = value % (1 << count) !== 0;
-        const result = value >> count;
+        if (count >= 8) return [0, value !== 0, true];
+        const carry = (value & ((1 << count) - 1)) !== 0;
+        const result = value >>> count;
         return [result, carry, result === 0];
     },
 };
