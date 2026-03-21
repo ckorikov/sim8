@@ -73,14 +73,26 @@ class CpuFault extends Error {
 export class Memory {
     constructor() {
         this._data = new Uint8Array(MEMORY_SIZE);
+        this._nonZero = 0; // tracked incrementally for usedBytes()
     }
 
     get(addr) {
         return this._data[addr];
     }
 
+    /** @returns {boolean} true if addr is in the I/O region (excluded from usedBytes) */
+    _isIO(addr) {
+        return addr < PAGE_SIZE && addr >= IO_START;
+    }
+
     set(addr, val) {
-        this._data[addr] = val & 0xff;
+        const byte = val & 0xff;
+        const old = this._data[addr];
+        this._data[addr] = byte;
+        if (!this._isIO(addr)) {
+            if (old === 0 && byte !== 0) this._nonZero++;
+            else if (old !== 0 && byte === 0) this._nonZero--;
+        }
     }
 
     load(data, offset = 0) {
@@ -90,20 +102,17 @@ export class Memory {
             );
         }
         for (let i = 0; i < data.length; i++) {
-            this._data[offset + i] = data[i] & 0xff;
+            this.set(offset + i, data[i]);
         }
     }
 
     reset() {
         this._data.fill(0);
+        this._nonZero = 0;
     }
 
     usedBytes() {
-        let count = 0;
-        for (let addr = 0; addr < MEMORY_SIZE; addr++) {
-            if (this._data[addr] !== 0 && !(addr < PAGE_SIZE && addr >= IO_START)) count++;
-        }
-        return count;
+        return this._nonZero;
     }
 }
 
@@ -386,10 +395,13 @@ function intToBytesLE(raw, nbytes) {
 
 // Round to Nearest, ties to Even (IEEE 754 default)
 function _roundRNE(x) {
-    const r = Math.round(x);
-    // Math.round rounds .5 away from zero; RNE rounds .5 to even
-    if (Math.abs(x - Math.trunc(x)) === 0.5) return r % 2 === 0 ? r : r - Math.sign(x);
-    return r;
+    if (Math.abs(x - Math.trunc(x)) === 0.5) {
+        // Tie case: pick the even neighbor
+        const lo = Math.trunc(x);
+        const hi = lo + Math.sign(x);
+        return lo % 2 === 0 ? lo : hi;
+    }
+    return Math.round(x);
 }
 
 // Rounding mode index (FPCR bits 1:0) → rounding function (RNE/RTZ/RDN/RUP)

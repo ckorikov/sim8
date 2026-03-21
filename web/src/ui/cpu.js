@@ -10,6 +10,14 @@ function cpuFmtVal(v) {
     return cpuFmt.get() === "dec" ? v.toString().padStart(3, " ") : hex(v);
 }
 
+// ── Cached DOM elements ──────────────────────────────────────────
+const elRegs = document.getElementById("cpu-regs");
+const elPtrs = document.getElementById("cpu-ptrs");
+const elFlags = document.getElementById("cpu-flags");
+const elCycles = document.getElementById("nav-cycles");
+const elPeakMem = document.getElementById("nav-peak-mem");
+const elStateIcon = document.getElementById("cpu-state-icon");
+
 const STATE_INFO = {
     IDLE: {
         icon: '<svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3" fill="currentColor"/></svg>',
@@ -35,16 +43,15 @@ export function renderCPU() {
     const fl = (n, v) =>
         `<span class="fb" style="border-color:${v ? colors.or : "var(--t-border)"};color:${v ? colors.or : colors.dim};min-width:var(--s-flag-min-w);">${n}</span>`;
 
-    document.getElementById("cpu-regs").innerHTML = ri("A", cpu.a) + ri("B", cpu.b) + ri("C", cpu.c) + ri("D", cpu.d);
-    document.getElementById("cpu-ptrs").innerHTML = ri("IP", cpu.ip) + ri("SP", cpu.sp) + ri("DP", cpu.dp);
-    document.getElementById("cpu-flags").innerHTML = fl("Z", cpu.zero) + fl("C", cpu.carry) + fl("F", cpu.fault);
+    elRegs.innerHTML = ri("A", cpu.a) + ri("B", cpu.b) + ri("C", cpu.c) + ri("D", cpu.d);
+    elPtrs.innerHTML = ri("IP", cpu.ip) + ri("SP", cpu.sp) + ri("DP", cpu.dp);
+    elFlags.innerHTML = fl("Z", cpu.zero) + fl("C", cpu.carry) + fl("F", cpu.fault);
 
-    document.getElementById("nav-cycles").textContent = `${cpu.cycles} cycles`;
-    document.getElementById("nav-peak-mem").textContent = `${cpu.peakMem}B`;
+    elCycles.textContent = `${cpu.cycles} cycles`;
+    elPeakMem.textContent = `${cpu.peakMem}B`;
 
     const sc = STATE_INFO[cpu.state] || STATE_INFO.IDLE;
-    const si = document.getElementById("cpu-state-icon");
-    si.innerHTML = sc.icon;
-    si.style.color = colors[sc.colorKey];
-    si.title = cpu.state;
+    elStateIcon.innerHTML = sc.icon;
+    elStateIcon.style.color = colors[sc.colorKey];
+    elStateIcon.title = cpu.state;
 }

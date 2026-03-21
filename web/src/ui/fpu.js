@@ -43,7 +43,21 @@ function decodeBf16Bits(bits) {
 const FMT_16 = { H: decodeFloat16Bits, BF: decodeBf16Bits };
 const FMT_8 = { O3: decodeOfp8E4M3, O2: decodeOfp8E5M2 };
 
-function renderFPUReg(bytesId, infoId, fVal, color, phys) {
+// Cached DOM elements
+const elFaBytes = document.getElementById("fpu-fa-bytes");
+const elFaInfo = document.getElementById("fpu-fa-info");
+const elFbBytes = document.getElementById("fpu-fb-bytes");
+const elFbInfo = document.getElementById("fpu-fb-info");
+const elRm = document.getElementById("fpu-rm");
+const elFpuFlags = document.getElementById("fpu-flags");
+
+const _regEls = [
+    [elFaBytes, elFaInfo],
+    [elFbBytes, elFbInfo],
+];
+
+function renderFPUReg(phys, fVal, color) {
+    const [elBytes, elInfo] = _regEls[phys];
     const raw = fpuRawBits(fVal);
     const bytes = [(raw >>> 24) & 0xff, (raw >>> 16) & 0xff, (raw >>> 8) & 0xff, raw & 0xff];
     const names = REG_NAMES[phys];
@@ -77,19 +91,19 @@ function renderFPUReg(bytesId, infoId, fVal, color, phys) {
         info = bytes.map((b) => hex(b)).join(" ");
     }
 
-    document.getElementById(bytesId).innerHTML = cells;
-    document.getElementById(infoId).textContent = info;
+    elBytes.innerHTML = cells;
+    elInfo.textContent = info;
 }
 
 export function renderFPU() {
     const fpu = cpu.fpu;
     if (!fpu) return;
 
-    renderFPUReg("fpu-fa-bytes", "fpu-fa-info", fpu.fa, colors.gr, 0);
-    renderFPUReg("fpu-fb-bytes", "fpu-fb-info", fpu.fb, colors.bl, 1);
+    renderFPUReg(0, fpu.fa, colors.gr);
+    renderFPUReg(1, fpu.fb, colors.bl);
 
     const rmIdx = fpu.fpcr & 3;
-    document.getElementById("fpu-rm").innerHTML = RM_NAMES.map(
+    elRm.innerHTML = RM_NAMES.map(
         (n, i) =>
             `<span class="fb ${i === rmIdx ? "fb-on" : "fb-off"}" style="font-size:8px;${i === rmIdx ? "border-color:" + colors.or + ";color:" + colors.or : ""}">${n}</span>`,
     ).join("");
@@ -102,7 +116,7 @@ export function renderFPU() {
         { n: "UF", bit: 3 },
         { n: "NX", bit: 4 },
     ];
-    document.getElementById("fpu-flags").innerHTML = fl
+    elFpuFlags.innerHTML = fl
         .map((f) => `<span class="fb ${(fpsr >> f.bit) & 1 ? "fb-on" : "fb-off"}" style="font-size:8px;">${f.n}</span>`)
         .join("");
 }

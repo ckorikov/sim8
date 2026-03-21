@@ -89,8 +89,10 @@ async function doAssemble() {
 
 // ── Step / Reset ───────────────────────────────────────────────
 
-function ioChanged(snapshot) {
-    return snapshot.some((v, i) => cpu.mem.get(IO_BASE + i) !== v);
+const _ioSnap = new Uint8Array(PAGE_SIZE - IO_BASE);
+
+function ioChanged() {
+    return _ioSnap.some((v, i) => cpu.mem.get(IO_BASE + i) !== v);
 }
 
 function stepCPU() {
@@ -99,8 +101,7 @@ function stepCPU() {
     const prevCycles = cpu.cycles;
     const opcode = cpu.mem.get(cpu.ip);
 
-    const ioSnap = new Uint8Array(PAGE_SIZE - IO_BASE);
-    for (let i = 0; i < ioSnap.length; i++) ioSnap[i] = cpu.mem.get(IO_BASE + i);
+    for (let i = 0; i < _ioSnap.length; i++) _ioSnap[i] = cpu.mem.get(IO_BASE + i);
 
     const wasRunning = cpu.step();
 
@@ -109,7 +110,7 @@ function stepCPU() {
     } else {
         flashWire(WIRE_DATA);
     }
-    if (ioChanged(ioSnap)) flashWire(WIRE_IO);
+    if (ioChanged()) flashWire(WIRE_IO);
 
     renderAll();
     return wasRunning ? cpu.cycles - prevCycles : 0;
