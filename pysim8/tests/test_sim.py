@@ -6,6 +6,8 @@ executes it on the CPU, and verifies the resulting state.
 
 import pytest
 from conftest import run
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from pysim8.asm import AssemblerError, assemble
 from pysim8.isa import Op
@@ -1489,3 +1491,126 @@ class TestHandlerEdges:
     def test_fpu_present_on_arch2(self) -> None:
         cpu = CPU(arch=2)
         assert cpu.regs.fpu is not None
+
+
+# ── Hypothesis property-based tests ──────────────────────────────────
+
+_byte = st.integers(min_value=0, max_value=255)
+
+
+class TestAluProperties:
+    """Property-based tests for ALU operations."""
+
+    @given(a=_byte, b=_byte)
+    @settings(max_examples=200)
+    def test_add_flags(self, a: int, b: int) -> None:
+        """ADD: carry iff overflow, zero iff result == 0."""
+        cpu = run(f"MOV A, {a}\nADD A, {b}\nHLT")
+        assert cpu.a == (a + b) & 0xFF
+        assert cpu.carry == (a + b > 255)
+        assert cpu.zero == ((a + b) & 0xFF == 0)
+
+    @given(a=_byte, b=_byte)
+    @settings(max_examples=200)
+    def test_sub_flags(self, a: int, b: int) -> None:
+        """SUB: carry iff borrow (a < b), zero iff equal."""
+        cpu = run(f"MOV A, {a}\nSUB A, {b}\nHLT")
+        assert cpu.a == (a - b) & 0xFF
+        assert cpu.carry == (a < b)
+        assert cpu.zero == (a == b)
+
+    @given(a=_byte, b=_byte)
+    @settings(max_examples=200)
+    def test_mul_product(self, a: int, b: int) -> None:
+        """MUL: A = low byte, carry iff overflow."""
+        cpu = run(f"MOV A, {a}\nMOV B, {b}\nMUL B\nHLT")
+        product = a * b
+        assert cpu.a == product & 0xFF
+        assert cpu.carry == (product > 255)
+        assert cpu.zero == (product & 0xFF == 0)
+
+    @given(a=_byte, b=st.integers(min_value=1, max_value=255))
+    @settings(max_examples=200)
+    def test_div_quotient_remainder(self, a: int, b: int) -> None:
+        """DIV: A = quotient, result consistent with integer division."""
+        cpu = run(f"MOV A, {a}\nMOV B, {b}\nDIV B\nHLT")
+        assert cpu.a == a // b
+        assert cpu.zero == (a // b == 0)
+
+    @given(a=_byte, b=_byte)
+    @settings(max_examples=200)
+    def test_cmp_flags(self, a: int, b: int) -> None:
+        """CMP: zero iff equal, carry iff a < b."""
+        cpu = run(f"MOV A, {a}\nCMP A, {b}\nHLT")
+        assert cpu.zero == (a == b)
+        assert cpu.carry == (a < b)
+        assert cpu.a == a  # CMP does not modify A
+
+    @given(a=_byte, b=_byte)
+    @settings(max_examples=200)
+    def test_and_bitwise(self, a: int, b: int) -> None:
+        """AND: result is bitwise AND, carry cleared."""
+        cpu = run(f"MOV A, {a}\nAND A, {b}\nHLT")
+        assert cpu.a == a & b
+        assert cpu.carry is False
+        assert cpu.zero == ((a & b) == 0)
+
+    @given(a=_byte, b=_byte)
+    @settings(max_examples=200)
+    def test_xor_bitwise(self, a: int, b: int) -> None:
+        """XOR: result is bitwise XOR, carry cleared."""
+        cpu = run(f"MOV A, {a}\nXOR A, {b}\nHLT")
+        assert cpu.a == a ^ b
+        assert cpu.carry is False
+
+    @given(a=_byte)
+    @settings(max_examples=200)
+    def test_not_bitwise(self, a: int) -> None:
+        """NOT: result is bitwise complement, carry cleared."""
+        cpu = run(f"MOV A, {a}\nNOT A\nHLT")
+        assert cpu.a == (~a) & 0xFF
+        assert cpu.carry is False
+
+
+class TestMovProperties:
+    """Property-based tests for MOV roundtrips."""
+
+    @given(value=_byte, addr=st.integers(min_value=50, max_value=200))
+    @settings(max_examples=200)
+    def test_store_load_roundtrip(self, value: int, addr: int) -> None:
+        """MOV to memory then back preserves value (addr 50-200 to avoid code/stack/IO)."""
+        cpu = run(f"MOV A, {value}\nMOV [{addr}], A\nMOV B, [{addr}]\nHLT")
+        assert cpu.b == value
+
+    @given(value=_byte)
+    @settings(max_examples=100)
+    def test_reg_to_reg(self, value: int) -> None:
+        """MOV between registers preserves value."""
+        cpu = run(f"MOV A, {value}\nMOV B, A\nMOV C, B\nMOV D, C\nHLT")
+        assert cpu.a == value
+        assert cpu.b == value
+        assert cpu.c == value
+        assert cpu.d == value
+
+
+class TestStackProperties:
+    """Property-based tests for PUSH/POP symmetry."""
+
+    @given(values=st.lists(_byte, min_size=1, max_size=10))
+    @settings(max_examples=50, deadline=None)
+    def test_push_pop_lifo(self, values: list[int]) -> None:
+        """PUSH then POP in reverse yields original values."""
+        pushes = "\n".join(f"MOV A, {v}\nPUSH A" for v in values)
+        pops = "\n".join("POP A" for _ in values)
+        cpu = run(f"{pushes}\n{pops}\nHLT")
+        # After all pops, last popped = first pushed
+        assert cpu.a == values[0]
+
+    @given(values=st.lists(_byte, min_size=1, max_size=10))
+    @settings(max_examples=50, deadline=None)
+    def test_push_pop_sp_symmetric(self, values: list[int]) -> None:
+        """SP returns to original after matching PUSH/POP pairs."""
+        pushes = "\n".join(f"MOV A, {v}\nPUSH A" for v in values)
+        pops = "\n".join("POP B" for _ in values)
+        cpu = run(f"{pushes}\n{pops}\nHLT")
+        assert cpu.sp == 231  # SP_INIT

@@ -3,6 +3,8 @@
 from pathlib import Path
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from pysim8.asm import assemble
 from pysim8.disasm import disasm, disasm_insn
@@ -342,3 +344,42 @@ class TestDisasmFpEdgeCoverage:
                 BY_CODE_FP[int(Op.FCLR)] = saved
             else:
                 del BY_CODE_FP[int(Op.FCLR)]
+
+
+# ── Hypothesis property-based tests ──────────────────────────────────
+
+
+class TestDisasmProperties:
+    """Property-based tests for disassembler robustness."""
+
+    @given(code=st.lists(st.integers(0, 255), min_size=1, max_size=100))
+    @settings(max_examples=500)
+    def test_never_crashes(self, code: list[int]) -> None:
+        """Disasm must not crash on arbitrary bytecode."""
+        items = disasm(code)
+        assert isinstance(items, list)
+        for addr, text, sz in items:
+            assert isinstance(addr, int)
+            assert isinstance(text, str)
+            assert isinstance(sz, int)
+            assert sz >= 1
+
+    @given(code=st.lists(st.integers(0, 255), min_size=1, max_size=100))
+    @settings(max_examples=300)
+    def test_sizes_cover_input(self, code: list[int]) -> None:
+        """Sum of disassembled instruction sizes == input length."""
+        items = disasm(code)
+        total = sum(sz for _, _, sz in items)
+        assert total == len(code)
+
+    @given(code=st.lists(st.integers(0, 255), min_size=1, max_size=100))
+    @settings(max_examples=300)
+    def test_addresses_sequential(self, code: list[int]) -> None:
+        """Addresses are strictly ascending and contiguous."""
+        items = disasm(code)
+        if not items:
+            return
+        assert items[0][0] == 0
+        for i in range(1, len(items)):
+            prev_addr, _, prev_sz = items[i - 1]
+            assert items[i][0] == prev_addr + prev_sz

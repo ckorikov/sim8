@@ -9,6 +9,8 @@ Covers:
 
 import pytest
 from conftest import run
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from pysim8.asm import assemble
 from pysim8.sim import CPU
@@ -212,3 +214,67 @@ class TestPeakMemIntegration:
         cpu = run("HLT")
         # HLT opcode is 0 so zero bytes; no non-HLT steps → peak never updated.
         assert cpu.peak_mem == 0
+
+
+# ── Hypothesis property-based tests ──────────────────────────────────
+
+_byte = st.integers(min_value=0, max_value=255)
+_addr = st.integers(min_value=0, max_value=231)  # below IO region
+
+
+class TestMemoryProperties:
+    """Property-based tests for Memory operations."""
+
+    @given(addr=_addr, value=st.integers(min_value=1, max_value=255))
+    @settings(max_examples=200)
+    def test_set_get_roundtrip(self, addr: int, value: int) -> None:
+        """Write then read returns same value."""
+        m = Memory()
+        m[addr] = value
+        assert m[addr] == value
+
+    @given(
+        data=st.lists(_byte, min_size=1, max_size=100),
+        offset=st.integers(min_value=0, max_value=100),
+    )
+    @settings(max_examples=200)
+    def test_load_preserves_data(self, data: list[int], offset: int) -> None:
+        """load() then read back returns original data."""
+        if offset + len(data) > 65536:
+            return
+        m = Memory()
+        m.load(data, offset)
+        for i, b in enumerate(data):
+            assert m[offset + i] == b & 0xFF
+
+    @given(
+        addrs=st.lists(_addr, min_size=1, max_size=50, unique=True),
+        value=st.integers(min_value=1, max_value=255),
+    )
+    @settings(max_examples=100)
+    def test_used_bytes_counts_nonzero(self, addrs: list[int], value: int) -> None:
+        """used_bytes counts exactly the non-zero non-IO bytes."""
+        m = Memory()
+        for a in addrs:
+            m[a] = value
+        assert m.used_bytes() == len(addrs)
+
+    @given(value=_byte)
+    @settings(max_examples=50)
+    def test_io_region_excluded(self, value: int) -> None:
+        """Writes to IO region (232-255) are excluded from used_bytes."""
+        m = Memory()
+        for addr in range(IO_START, PAGE_SIZE):
+            m[addr] = value
+        assert m.used_bytes() == 0
+
+
+class TestPeakMemProperties:
+    """Property-based tests for CPU.peak_mem tracking."""
+
+    @given(value=st.integers(min_value=1, max_value=255), addr=_addr)
+    @settings(max_examples=100)
+    def test_peak_mem_ge_used_bytes(self, value: int, addr: int) -> None:
+        """peak_mem is always >= used_bytes after execution."""
+        cpu = run(f"MOV A, {value}\nMOV [{addr}], A\nHLT")
+        assert cpu.peak_mem >= cpu.mem.used_bytes()
