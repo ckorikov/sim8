@@ -39,7 +39,7 @@ function disasmInstr(absAddr) {
     let bi = 1;
     for (const ot of def.sig) {
         let op;
-        if (ot === OpType.REG || ot === OpType.REG_STACK || ot === OpType.REG_GPR) {
+        if (ot === OpType.REG || ot === OpType.REG_ARITH || ot === OpType.REG_STACK || ot === OpType.REG_GPR) {
             op = REG_NAMES[bytes[bi]] ?? `r${bytes[bi]}`;
             bi++;
         } else if (ot === OpType.IMM) {

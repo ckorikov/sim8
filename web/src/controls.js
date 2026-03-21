@@ -89,10 +89,10 @@ export function isRunning() {
     return runTimer !== null;
 }
 
-export function setupControls({ onStep, onReset, renderCPU, checkBp, getExecLine }) {
+export function setupControls({ onStep, onReset, renderAll, checkBp, getExecLine }) {
     _onStep = onStep;
     _onReset = onReset;
-    _renderCPU = renderCPU;
+    _renderCPU = renderAll;
     _checkBp = checkBp;
     _getExecLine = getExecLine;
 

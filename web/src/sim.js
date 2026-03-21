@@ -129,7 +129,7 @@ function getExecLine() {
 setupControls({
     onStep: stepCPU,
     onReset: resetCPU,
-    renderCPU,
+    renderAll,
     checkBp: (flatLine) => breakpoints.checkFlat(flatLine, asm.lineMap),
     getExecLine,
 });

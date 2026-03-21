@@ -11,25 +11,21 @@ function cpuFmtVal(v) {
 }
 
 const STATE_INFO = {
-    idle: {
+    IDLE: {
         icon: '<svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3" fill="currentColor"/></svg>',
         colorKey: "mid",
-        title: "IDLE",
     },
-    running: {
+    RUNNING: {
         icon: '<svg width="8" height="8" viewBox="0 0 8 8"><polygon points="1.5,1 7,4 1.5,7" fill="currentColor"/></svg>',
         colorKey: "gr",
-        title: "RUNNING",
     },
-    halted: {
+    HALTED: {
         icon: '<svg width="8" height="8" viewBox="0 0 8 8"><rect x="1.5" y="1.5" width="5" height="5" rx="0.5" fill="currentColor"/></svg>',
         colorKey: "yl",
-        title: "HALTED",
     },
-    fault: {
+    FAULT: {
         icon: '<svg width="8" height="8" viewBox="0 0 8 8"><line x1="1.5" y1="1.5" x2="6.5" y2="6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="6.5" y1="1.5" x2="1.5" y2="6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
         colorKey: "rd",
-        title: "FAULT",
     },
 };
 
@@ -46,9 +42,9 @@ export function renderCPU() {
     document.getElementById("nav-cycles").textContent = `${cpu.cycles} cycles`;
     document.getElementById("nav-peak-mem").textContent = `${cpu.peakMem}B`;
 
-    const sc = STATE_INFO[cpu.state.toLowerCase()] || STATE_INFO.idle;
+    const sc = STATE_INFO[cpu.state] || STATE_INFO.IDLE;
     const si = document.getElementById("cpu-state-icon");
     si.innerHTML = sc.icon;
     si.style.color = colors[sc.colorKey];
-    si.title = sc.title;
+    si.title = cpu.state;
 }
