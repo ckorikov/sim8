@@ -2,15 +2,34 @@
  * CodeMirror editor: initialization, syntax highlighting, execution line marking.
  */
 
-import { MNEMONICS, MNEMONICS_FP, REGISTERS, FP_REGISTERS, ISA, ISA_FP, MNEMONIC_ALIASES } from "../lib/isa.js";
-import { MNEMONIC_INFO, SIG_LABELS, FP_FMT_NAMES } from "../lib/isa-docs.js";
+import {
+    MNEMONICS,
+    MNEMONICS_FP,
+    Reg,
+    FP_REGISTERS,
+    ISA,
+    ISA_FP,
+    MNEMONIC_ALIASES,
+    FP_CONTROL_MNEMONICS,
+} from "../lib/isa.js";
+import {
+    MNEMONIC_INFO,
+    MNEMONIC_FLAGS,
+    MNEMONIC_FP_EXCEPTIONS,
+    MNEMONIC_NOTES,
+    SIG_LABELS,
+    FP_FMT_NAMES,
+    FP_FORMAT_DOCS,
+    REGISTER_DOCS,
+    DIRECTIVE_DOCS,
+} from "../lib/isa-docs.js";
 
 const ALL_MNEMONICS_RE = new RegExp(
     "\\b(" + [...MNEMONICS, ...MNEMONICS_FP, ...Object.keys(MNEMONIC_ALIASES)].join("|") + ")\\b",
     "i",
 );
 const ALL_REGISTERS_RE = new RegExp(
-    "\\b(" + [...Object.keys(REGISTERS), ...Object.keys(FP_REGISTERS)].join("|") + ")\\b",
+    "\\b(" + [...Object.keys(Reg), ...Object.keys(FP_REGISTERS)].join("|") + ")\\b",
     "i",
 );
 
@@ -284,29 +303,36 @@ export async function initEditor(container, defaultCode) {
         }
         const MNEMONIC_VARIANTS = buildMnemonicVariants();
 
+        function _infoline(parent, cls, text) {
+            const d = document.createElement("div");
+            d.className = cls;
+            d.textContent = text;
+            parent.appendChild(d);
+        }
+
         function mnemonicInfoDom(mnemonic, aliasOf) {
             const el = document.createElement("div");
             el.className = "cm-instr-info";
-            const desc = document.createElement("div");
-            desc.className = "cm-instr-desc";
             const canonical = aliasOf || mnemonic;
-            desc.textContent = MNEMONIC_INFO[canonical] || canonical;
-            el.appendChild(desc);
-            if (aliasOf) {
-                const alias = document.createElement("div");
-                alias.className = "cm-instr-form";
-                alias.textContent = `= ${aliasOf}`;
-                el.appendChild(alias);
-            }
+            _infoline(el, "cm-instr-desc", MNEMONIC_INFO[canonical] || canonical);
+            if (aliasOf) _infoline(el, "cm-instr-form", `= ${aliasOf}`);
             const forms = MNEMONIC_VARIANTS[canonical];
             if (forms) {
-                for (const f of forms) {
-                    const line = document.createElement("div");
-                    line.className = "cm-instr-form";
-                    line.textContent = f;
-                    el.appendChild(line);
-                }
+                for (const f of forms) _infoline(el, "cm-instr-form", f);
             }
+            const flags = MNEMONIC_FLAGS[canonical];
+            if (flags) _infoline(el, "cm-instr-form", `Flags: ${flags}`);
+            const fpex = MNEMONIC_FP_EXCEPTIONS[canonical];
+            if (fpex) _infoline(el, "cm-instr-form", `FP exc: ${fpex}`);
+            if (MNEMONICS_FP.includes(canonical) && !FP_CONTROL_MNEMONICS.has(canonical)) {
+                const suffixes = Object.entries(FP_FORMAT_DOCS)
+                    .filter(([k]) => k.length <= 2)
+                    .map(([k, v]) => `.${k}=${v.name}`)
+                    .join(", ");
+                _infoline(el, "cm-instr-form", `Formats: ${suffixes}`);
+            }
+            const note = MNEMONIC_NOTES[canonical];
+            if (note) _infoline(el, "cm-instr-form", note);
             return el;
         }
 
@@ -324,16 +350,15 @@ export async function initEditor(container, defaultCode) {
             })),
         ];
 
-        const GPR_DESCRIPTIONS = { A: "GPR", B: "GPR", C: "GPR", D: "GPR", SP: "Stack pointer", DP: "Data page" };
         const REGISTER_COMPLETIONS = [
-            ...Object.keys(REGISTERS).map((r) => ({
-                label: r,
-                info: GPR_DESCRIPTIONS[r] || r,
-                type: "variable",
-            })),
+            ...Object.keys(Reg).map((r) => {
+                const doc = REGISTER_DOCS[r];
+                return { label: r, info: doc ? doc.description : r, type: "variable" };
+            }),
             ...Object.keys(FP_REGISTERS).map((r) => {
+                const doc = REGISTER_DOCS[r];
                 const fmt = FP_FMT_NAMES[FP_REGISTERS[r].fmt] || `${FP_REGISTERS[r].width}b`;
-                return { label: r, info: `FP ${fmt}`, type: "variable" };
+                return { label: r, info: doc ? doc.description : `FP ${fmt}`, type: "variable" };
             }),
         ];
 
@@ -343,8 +368,18 @@ export async function initEditor(container, defaultCode) {
                 return {
                     from: atWord.from,
                     options: [
-                        { label: "@include", type: "keyword", detail: '"filename.asm"' },
-                        { label: "@page", type: "keyword", detail: "N[, offset]" },
+                        {
+                            label: "@include",
+                            type: "keyword",
+                            detail: '"filename.asm"',
+                            info: DIRECTIVE_DOCS["@INCLUDE"]?.description,
+                        },
+                        {
+                            label: "@page",
+                            type: "keyword",
+                            detail: "N[, offset]",
+                            info: DIRECTIVE_DOCS["@PAGE"]?.description,
+                        },
                     ],
                 };
             }

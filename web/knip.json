@@ -1,0 +1,4 @@
+{
+    "project": ["lib/**/*.js", "src/**/*.js", "tests/**/*.js"]
+}
+
