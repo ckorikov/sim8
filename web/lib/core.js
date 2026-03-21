@@ -36,7 +36,7 @@ import {
 
 // ── Constants ────────────────────────────────────────────────────
 
-export const MEMORY_SIZE = 65536;
+const MEMORY_SIZE = 65536;
 export const PAGE_SIZE = 256;
 export const IO_START = 232;
 export const SP_INIT = 231;
@@ -60,7 +60,7 @@ export const ErrorCode = Object.freeze({
 
 // ── CpuFault ─────────────────────────────────────────────────────
 
-export class CpuFault extends Error {
+class CpuFault extends Error {
     constructor(code, ip = 0) {
         super(`FAULT(${code}) at IP=${ip}`);
         this.code = code;
@@ -383,6 +383,9 @@ function intToBytesLE(raw, nbytes) {
 }
 
 // ── CPU ──────────────────────────────────────────────────────────
+
+// Rounding mode index (FPCR bits 1:0) → Math rounding function (RNE/RTZ/RDN/RUP)
+const _ROUND_FNS = [Math.round, Math.trunc, Math.floor, Math.ceil];
 
 export class CPU {
     constructor({ arch = 2 } = {}) {
@@ -912,7 +915,7 @@ export class CPU {
             this._doPush(this.regs.ip + instr.size);
             this.regs.ip = target;
         };
-        d[Op.RET] = (_insn) => {
+        d[Op.RET] = (_instr) => {
             this.regs.ip = this._doPop();
         };
 
@@ -1147,21 +1150,7 @@ export class CPU {
                 result = fpVal > 0 ? 255 : 0;
                 excInvalid = true;
             } else {
-                const rm = this._fpu.roundingMode;
-                let rounded;
-                if (rm === 0) {
-                    // RNE
-                    rounded = Math.round(fpVal);
-                } else if (rm === 1) {
-                    // RTZ
-                    rounded = Math.trunc(fpVal);
-                } else if (rm === 2) {
-                    // RDN
-                    rounded = Math.floor(fpVal);
-                } else {
-                    // RUP
-                    rounded = Math.ceil(fpVal);
-                }
+                const rounded = _ROUND_FNS[this._fpu.roundingMode](fpVal);
                 if (rounded !== fpVal) excInexact = true;
                 if (rounded > 255) result = 255;
                 else if (rounded < 0) result = 0;
