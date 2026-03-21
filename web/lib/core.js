@@ -384,8 +384,16 @@ function intToBytesLE(raw, nbytes) {
 
 // ── CPU ──────────────────────────────────────────────────────────
 
-// Rounding mode index (FPCR bits 1:0) → Math rounding function (RNE/RTZ/RDN/RUP)
-const _ROUND_FNS = [Math.round, Math.trunc, Math.floor, Math.ceil];
+// Round to Nearest, ties to Even (IEEE 754 default)
+function _roundRNE(x) {
+    const r = Math.round(x);
+    // Math.round rounds .5 away from zero; RNE rounds .5 to even
+    if (Math.abs(x - Math.trunc(x)) === 0.5) return r % 2 === 0 ? r : r - Math.sign(x);
+    return r;
+}
+
+// Rounding mode index (FPCR bits 1:0) → rounding function (RNE/RTZ/RDN/RUP)
+const _ROUND_FNS = [_roundRNE, Math.trunc, Math.floor, Math.ceil];
 
 export class CPU {
     constructor({ arch = 2 } = {}) {

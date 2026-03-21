@@ -828,7 +828,7 @@ const _FMT_SHAPE = {
     [FP_FMT_O2]: [2, 5],
 };
 
-function _isSubnormal(rawBits, width, fmt) {
+function _isSubnormal(rawBits, _width, fmt) {
     const shape = _FMT_SHAPE[fmt];
     if (!shape) return false;
     const [mantBits, expBits] = shape;
