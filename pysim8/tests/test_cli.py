@@ -3,14 +3,15 @@
 import json
 from pathlib import Path
 
+import pytest
 from click.testing import CliRunner
 
 from pysim8.asm import assemble
 from pysim8.asm.cli import main
 
 
-def test_cli_default_output(tmp_path: Path, monkeypatch: object) -> None:
-    monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+def test_cli_default_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
     src = tmp_path / "test.asm"
     src.write_text("MOV A, 42\nHLT\n")
     runner = CliRunner()

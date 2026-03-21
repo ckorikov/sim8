@@ -1,5 +1,7 @@
 """Tests for the disassembler — roundtrip asm ↔ disasm."""
 
+from pathlib import Path
+
 import pytest
 
 from pysim8.asm import assemble
@@ -128,13 +130,13 @@ def test_regaddr_roundtrip(offset: int) -> None:
 # ── Disasm CLI ────────────────────────────────────────────────────
 
 
-def test_disasm_cli(tmp_path: pytest.TempPathFactory) -> None:
+def test_disasm_cli(tmp_path: Path) -> None:
     """Full CLI path for disassembler."""
     from click.testing import CliRunner
 
     from pysim8.disasm.cli import main
 
-    bin_file = tmp_path / "test.bin"  # type: ignore[operator]
+    bin_file = tmp_path / "test.bin"
     bin_file.write_bytes(bytes([6, 0, 42, 0]))
     runner = CliRunner()
     result = runner.invoke(main, [str(bin_file)])

@@ -944,6 +944,28 @@ class TestFftoiEdges:
         assert cpu.a == 2
         assert cpu.b & 0x10
 
+    def test_rne_ties_to_even_half(self) -> None:
+        """RNE: 0.5 → 0 (even), 1.5 → 2 (even), 2.5 → 2 (even)."""
+        for value, expected in [("0.5", 0), ("1.5", 2), ("2.5", 2)]:
+            cpu = run(f"""
+                FMOV.H FHA, {value}
+                FFTOI.H A, FHA
+                HLT
+            """)
+            _assert_halted_steps(cpu, 2)
+            assert cpu.a == expected, f"RNE({value}) should be {expected}, got {cpu.a}"
+
+    @given(n=st.integers(min_value=0, max_value=127))
+    @settings(max_examples=50)
+    def test_rne_integer_values_roundtrip(self, n: int) -> None:
+        """RNE: integer FP values ≤127 roundtrip through FFTOI exactly."""
+        cpu = run(f"""
+            FMOV.H FHA, {float(n)}
+            FFTOI.H A, FHA
+            HLT
+        """)
+        assert cpu.a == n
+
 
 class TestFclassEdges:
     def test_fclass_inf(self) -> None:
