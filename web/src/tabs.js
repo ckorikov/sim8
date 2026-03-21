@@ -303,10 +303,11 @@ export function switchTabForExec(filename) {
 }
 
 export function getVirtualFiles() {
-    /** @type {Record<string, string>} */
+    /** @type {Record<string, string | Uint8Array>} */
     const out = {};
     for (const [name, entry] of files.entries()) {
-        if (name !== MAIN_FILE && entry.type === "text") out[name] = entry.content;
+        if (name === MAIN_FILE) continue;
+        out[name] = entry.type === "binary" ? entry.content : entry.content;
     }
     return out;
 }
