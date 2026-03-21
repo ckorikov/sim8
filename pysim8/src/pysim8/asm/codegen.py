@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -488,8 +489,6 @@ def _check_page_overflow(st: _Pass1State) -> None:
                 filename=filename,
             )
     if 0 in st.page_codes and len(st.page_codes[0]) > IO_START:
-        import warnings
-
         warnings.warn(
             f"Page 0 output is {len(st.page_codes[0])} bytes; I/O region ({IO_START}-{PAGE_SIZE - 1}) will be overwritten",
             stacklevel=3,

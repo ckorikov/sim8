@@ -135,6 +135,7 @@ def _handle_url_include(
     depth: int,
     out_lines: list[str],
     line_map: dict[int, SourceLoc],
+    include_paths: list[Path] | None = None,
 ) -> None:
     if url in chain:
         raise PreprocessError(f"@include: circular include: {url}", lineno, filename=filename)
@@ -159,6 +160,7 @@ def _handle_url_include(
         depth=depth + 1,
         out_lines=out_lines,
         line_map=line_map,
+        include_paths=include_paths,
     )
 
 
@@ -211,6 +213,7 @@ def _handle_include(
             depth=depth,
             out_lines=out_lines,
             line_map=line_map,
+            include_paths=include_paths,
         )
         return
 

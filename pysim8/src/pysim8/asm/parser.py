@@ -281,8 +281,8 @@ def _try_register(token: str, line: int) -> Operand | None:
     if up in REGISTERS:
         return OpReg(REGISTERS[up])
     if up in FP_REGISTERS:
-        phys, pos, fmt, _width = FP_REGISTERS[up]
-        return OpFpReg(up, pos, fmt, phys)
+        info = FP_REGISTERS[up]
+        return OpFpReg(up, info.pos, info.fmt, info.phys)
     return None
 
 

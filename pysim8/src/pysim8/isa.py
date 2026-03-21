@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from enum import Enum, IntEnum
+from typing import NamedTuple
 
 __all__ = [
     "Op",
@@ -24,6 +25,7 @@ __all__ = [
     "BY_MNEMONIC_FP",
     "MNEMONICS_FP",
     "FP_CONTROL_MNEMONICS",
+    "FpRegInfo",
     "FP_REGISTERS",
     "FP_SUFFIX_TO_FMT",
     "FP_FMT_F",
@@ -345,40 +347,51 @@ FP_SUFFIX_TO_FMT: dict[str, int] = {
     "E1M2": FP_FMT_N2,
 }
 
-# FP register table: name -> (phys, pos, canonical_fmt, width_bits)
-FP_REGISTERS: dict[str, tuple[int, int, int, int]] = {
+
+class FpRegInfo(NamedTuple):
+    phys: int
+    pos: int
+    fmt: int
+    width: int
+
+
+def _fpreg(phys: int, pos: int, fmt: int, width: int) -> FpRegInfo:
+    return FpRegInfo(phys=phys, pos=pos, fmt=fmt, width=width)
+
+
+FP_REGISTERS: dict[str, FpRegInfo] = {
     # Physical register 0 (FA family)
-    "FA": (0, 0, FP_FMT_F, 32),
-    "FHA": (0, 0, FP_FMT_H, 16),
-    "FHB": (0, 1, FP_FMT_H, 16),
-    "FQA": (0, 0, FP_FMT_O3, 8),
-    "FQB": (0, 1, FP_FMT_O3, 8),
-    "FQC": (0, 2, FP_FMT_O3, 8),
-    "FQD": (0, 3, FP_FMT_O3, 8),
-    "FOA": (0, 0, FP_FMT_N1, 4),
-    "FOB": (0, 1, FP_FMT_N1, 4),
-    "FOC": (0, 2, FP_FMT_N1, 4),
-    "FOD": (0, 3, FP_FMT_N1, 4),
-    "FOE": (0, 4, FP_FMT_N1, 4),
-    "FOF": (0, 5, FP_FMT_N1, 4),
-    "FOG": (0, 6, FP_FMT_N1, 4),
-    "FOH": (0, 7, FP_FMT_N1, 4),
+    "FA": _fpreg(0, 0, FP_FMT_F, 32),
+    "FHA": _fpreg(0, 0, FP_FMT_H, 16),
+    "FHB": _fpreg(0, 1, FP_FMT_H, 16),
+    "FQA": _fpreg(0, 0, FP_FMT_O3, 8),
+    "FQB": _fpreg(0, 1, FP_FMT_O3, 8),
+    "FQC": _fpreg(0, 2, FP_FMT_O3, 8),
+    "FQD": _fpreg(0, 3, FP_FMT_O3, 8),
+    "FOA": _fpreg(0, 0, FP_FMT_N1, 4),
+    "FOB": _fpreg(0, 1, FP_FMT_N1, 4),
+    "FOC": _fpreg(0, 2, FP_FMT_N1, 4),
+    "FOD": _fpreg(0, 3, FP_FMT_N1, 4),
+    "FOE": _fpreg(0, 4, FP_FMT_N1, 4),
+    "FOF": _fpreg(0, 5, FP_FMT_N1, 4),
+    "FOG": _fpreg(0, 6, FP_FMT_N1, 4),
+    "FOH": _fpreg(0, 7, FP_FMT_N1, 4),
     # Physical register 1 (FB family)
-    "FB": (1, 0, FP_FMT_F, 32),
-    "FHC": (1, 0, FP_FMT_H, 16),
-    "FHD": (1, 1, FP_FMT_H, 16),
-    "FQE": (1, 0, FP_FMT_O3, 8),
-    "FQF": (1, 1, FP_FMT_O3, 8),
-    "FQG": (1, 2, FP_FMT_O3, 8),
-    "FQH": (1, 3, FP_FMT_O3, 8),
-    "FOI": (1, 0, FP_FMT_N1, 4),
-    "FOJ": (1, 1, FP_FMT_N1, 4),
-    "FOK": (1, 2, FP_FMT_N1, 4),
-    "FOL": (1, 3, FP_FMT_N1, 4),
-    "FOM": (1, 4, FP_FMT_N1, 4),
-    "FON": (1, 5, FP_FMT_N1, 4),
-    "FOO": (1, 6, FP_FMT_N1, 4),
-    "FOP": (1, 7, FP_FMT_N1, 4),
+    "FB": _fpreg(1, 0, FP_FMT_F, 32),
+    "FHC": _fpreg(1, 0, FP_FMT_H, 16),
+    "FHD": _fpreg(1, 1, FP_FMT_H, 16),
+    "FQE": _fpreg(1, 0, FP_FMT_O3, 8),
+    "FQF": _fpreg(1, 1, FP_FMT_O3, 8),
+    "FQG": _fpreg(1, 2, FP_FMT_O3, 8),
+    "FQH": _fpreg(1, 3, FP_FMT_O3, 8),
+    "FOI": _fpreg(1, 0, FP_FMT_N1, 4),
+    "FOJ": _fpreg(1, 1, FP_FMT_N1, 4),
+    "FOK": _fpreg(1, 2, FP_FMT_N1, 4),
+    "FOL": _fpreg(1, 3, FP_FMT_N1, 4),
+    "FOM": _fpreg(1, 4, FP_FMT_N1, 4),
+    "FON": _fpreg(1, 5, FP_FMT_N1, 4),
+    "FOO": _fpreg(1, 6, FP_FMT_N1, 4),
+    "FOP": _fpreg(1, 7, FP_FMT_N1, 4),
 }
 
 # Width class -> allowed FP register names

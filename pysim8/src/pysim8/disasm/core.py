@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from pysim8.fp_formats import (
     decode_bfloat16,
     decode_float16,
@@ -31,7 +33,7 @@ _REG_NAMES: dict[int, str] = {r.value: r.name for r in Reg}
 
 
 def _build_fpm_to_reg(
-    regs: dict[str, tuple[int, int, int, int]],
+    regs: Mapping[str, tuple[int, int, int, int]],
 ) -> dict[tuple[int, int, int], str]:
     """Build reverse lookup: (phys, pos, fmt) → shortest register name."""
     result: dict[tuple[int, int, int], str] = {}
