@@ -10,7 +10,7 @@ from pysim8.isa import BY_CODE_FP, Op, Reg, decode_regaddr
 from .alu import ALU
 from .decoder import DecodedInstr
 from .errors import CpuFault, ErrorCode
-from .memory import Memory
+from .memory import PAGE_SIZE, SP_INIT, Memory
 
 if TYPE_CHECKING:
     from .registers import RegisterFile
@@ -39,7 +39,7 @@ class HandlersMixin:
 
     def _direct_addr(self, offset: int) -> int:
         """Compute absolute address: DP * PAGE_SIZE + offset."""
-        return self.regs.dp * Memory.PAGE_SIZE + offset
+        return self.regs.dp * PAGE_SIZE + offset
 
     def _indirect_addr(self, encoded: int) -> int:
         """Decode register indirect address from encoded byte."""
@@ -53,12 +53,12 @@ class HandlersMixin:
             base = self.regs.read(reg)
 
         page_offset = base + offset
-        if page_offset < 0 or page_offset >= Memory.PAGE_SIZE:
+        if page_offset < 0 or page_offset >= PAGE_SIZE:
             raise CpuFault(ErrorCode.PAGE_BOUNDARY, self.regs.ip)
 
         if reg == _SP:
             return page_offset
-        return self.regs.dp * Memory.PAGE_SIZE + page_offset
+        return self.regs.dp * PAGE_SIZE + page_offset
 
     # ── Register validation ────────────────────────────────────────────
 
@@ -127,7 +127,7 @@ class HandlersMixin:
         self.regs.sp -= 1
 
     def _do_pop(self) -> int:
-        if self.regs.sp >= Memory.SP_INIT:
+        if self.regs.sp >= SP_INIT:
             raise CpuFault(ErrorCode.STACK_UNDERFLOW, self.regs.ip)
         self.regs.sp += 1
         return self.mem[self.regs.sp]

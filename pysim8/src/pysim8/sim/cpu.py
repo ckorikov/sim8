@@ -10,7 +10,7 @@ from .decoder import Decoder
 from .errors import CpuFault, ErrorCode
 from .handlers import HandlersMixin
 from .handlers_fp import HandlersFpMixin
-from .memory import Memory
+from .memory import IO_START, PAGE_SIZE, Memory
 from .registers import CpuState, RegisterFile
 from .tracing import TraceCallback, TraceEvent
 
@@ -232,7 +232,7 @@ class CPU(HandlersMixin, HandlersFpMixin):
         Trailing spaces (from unwritten cells) are stripped.
         """
         chars: list[str] = []
-        for addr in range(Memory.IO_START, Memory.PAGE_SIZE):
+        for addr in range(IO_START, PAGE_SIZE):
             b = self.mem[addr]
             chars.append(chr(b) if 0x21 <= b <= 0x7E else " ")
         return "".join(chars).rstrip()
@@ -271,7 +271,8 @@ class CPU(HandlersMixin, HandlersFpMixin):
         is_fault: bool,
         cost: int = 0,
     ) -> None:
-        assert self._tracer is not None
+        if self._tracer is None:
+            return
         self._tracer(
             TraceEvent(
                 ip=ip,

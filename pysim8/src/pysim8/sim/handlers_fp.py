@@ -34,7 +34,7 @@ from pysim8.isa import (
 
 from .decoder import DecodedInstr
 from .errors import CpuFault, ErrorCode
-from .memory import Memory
+from .memory import PAGE_SIZE, Memory
 
 if TYPE_CHECKING:
     from .handlers import Handler
@@ -87,8 +87,8 @@ class HandlersFpMixin:
         """Read raw bytes from memory for an FP value."""
         width = FP_FMT_WIDTH[fmt]
         nbytes = width // 8
-        page_offset = addr % Memory.PAGE_SIZE
-        if page_offset + nbytes > Memory.PAGE_SIZE:
+        page_offset = addr % PAGE_SIZE
+        if page_offset + nbytes > PAGE_SIZE:
             raise CpuFault(ErrorCode.PAGE_BOUNDARY, self.regs.ip)
         return bytes(self.mem[addr + i] for i in range(nbytes))
 
@@ -106,8 +106,8 @@ class HandlersFpMixin:
         """Write raw bytes to memory."""
         width = FP_FMT_WIDTH[fmt]
         nbytes = width // 8
-        page_offset = addr % Memory.PAGE_SIZE
-        if page_offset + nbytes > Memory.PAGE_SIZE:
+        page_offset = addr % PAGE_SIZE
+        if page_offset + nbytes > PAGE_SIZE:
             raise CpuFault(ErrorCode.PAGE_BOUNDARY, self.regs.ip)
         for i, b in enumerate(data):
             self.mem[addr + i] = b

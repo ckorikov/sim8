@@ -11,11 +11,6 @@ SP_INIT = 231
 class Memory:
     """64KB memory backed by a bytearray."""
 
-    MEMORY_SIZE = MEMORY_SIZE
-    PAGE_SIZE = PAGE_SIZE
-    IO_START = IO_START
-    SP_INIT = SP_INIT
-
     __slots__ = ("_data",)
 
     def __init__(self) -> None:

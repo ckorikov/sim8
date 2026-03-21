@@ -18,6 +18,7 @@ from pysim8.isa import (
     FP_FMT_H,
     FP_FMT_O3,
     FP_REGISTERS,
+    FP_SUFFIX_TO_FMT,
     OpType,
     Reg,
     decode_fpm,
@@ -43,8 +44,11 @@ def _build_fpm_to_reg(
 
 _FPM_TO_REG = _build_fpm_to_reg(FP_REGISTERS)
 
-# fmt code → shortest suffix name
-_FMT_TO_SUFFIX: dict[int, str] = {0: "F", 1: "H", 2: "BF", 3: "O3", 4: "O2"}
+# fmt code → shortest suffix name (derived from ISA's FP_SUFFIX_TO_FMT)
+_FMT_TO_SUFFIX: dict[int, str] = {}
+for _name, _code in FP_SUFFIX_TO_FMT.items():
+    if _code not in _FMT_TO_SUFFIX or len(_name) < len(_FMT_TO_SUFFIX[_code]):
+        _FMT_TO_SUFFIX[_code] = _name
 
 
 def _decode_fp_imm(raw: int, fmt: int, width: int) -> str:

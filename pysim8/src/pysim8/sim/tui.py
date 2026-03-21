@@ -453,6 +453,6 @@ def run_headless(
     if io_text:
         click.echo(io_text)
     click.echo(f"State: {cpu.state.value}  {cpu.peak_mem}B | {cpu.cycles} cycles")
-    if cpu.regs.fpu:
+    if cpu.regs.fpu is not None:
         fpu = cpu.regs.fpu
         click.echo(f"FA=0x{fpu.fa:08X} FB=0x{fpu.fb:08X} FPSR=0x{fpu.fpsr:02X}")
