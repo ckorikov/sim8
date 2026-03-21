@@ -39,6 +39,7 @@ export const colors = {};
 export const regColors = {};
 
 export function refreshColors() {
+    if (typeof getComputedStyle === "undefined") return;
     Object.assign(colors, {
         or: cssVar("--a-orange"),
         bl: cssVar("--a-blue"),
@@ -48,6 +49,7 @@ export function refreshColors() {
         dim: cssVar("--t-dim"),
         mid: cssVar("--t-mid"),
         txt: cssVar("--t-text"),
+        canvas: cssVar("--t-canvas"),
     });
     Object.assign(regColors, {
         A: colors.gr,
@@ -71,6 +73,24 @@ export function printableChar(v) {
     return v >= 32 && v < 127 ? String.fromCharCode(v) : "";
 }
 
+/**
+ * Wire a format-toggle toolbar: click on [data-{attr}] → update state, toggle .act, re-render.
+ * @returns {{ get(): string }} accessor for the current format value
+ */
+export function initFormatToggle(blockId, tabsSelector, attr, renderFn, initial = "hex") {
+    const state = { fmt: initial };
+    document.getElementById(blockId).addEventListener("click", (e) => {
+        const t = e.target.closest(`[data-${attr}]`);
+        if (!t) return;
+        state.fmt = t.dataset[attr];
+        document
+            .querySelectorAll(`${tabsSelector} .ft`)
+            .forEach((b) => b.classList.toggle("act", b.dataset[attr] === state.fmt));
+        renderFn();
+    });
+    return { get: () => state.fmt };
+}
+
 export function escapeHtml(s) {
-    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    return s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 }

@@ -2,7 +2,7 @@
  * Run/Step/Reset button management and execution timer.
  */
 
-import { cpu, cssVar } from "./state.js";
+import { cpu, colors } from "./state.js";
 import { CpuState } from "../lib/core.js";
 
 const btnRun = document.getElementById("btn-run");
@@ -12,11 +12,15 @@ const speedSel = document.getElementById("speed-select");
 let runTimer = null;
 let stepTimer = null;
 
-let _onStep, _onReset, _renderCPU, _checkBp, _getExecLine;
+let _onStep;
+let _onReset;
+let _renderCPU;
+let _checkBp;
+let _getExecLine;
 let _skipBpOnce = false;
 
 export function updateRunBtnColor() {
-    btnRun.style.color = btnRun.dataset.state === "run" ? cssVar("--a-green") : cssVar("--a-red");
+    btnRun.style.color = btnRun.dataset.state === "run" ? colors.gr : colors.rd;
 }
 
 function getSpeedMs() {

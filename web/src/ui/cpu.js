@@ -2,12 +2,12 @@
  * CPU block renderer: registers, pointers, flags, state icon, format toggle.
  */
 
-import { cpu, colors, regColors, hex } from "../state.js";
+import { cpu, colors, regColors, hex, initFormatToggle } from "../state.js";
 
-let cpuFmt = "hex";
+const cpuFmt = initFormatToggle("blk-cpu", "#cpu-fmt-tabs", "cfmt", () => renderCPU());
 
 function cpuFmtVal(v) {
-    return cpuFmt === "dec" ? v.toString().padStart(3, " ") : hex(v);
+    return cpuFmt.get() === "dec" ? v.toString().padStart(3, " ") : hex(v);
 }
 
 const STATE_INFO = {
@@ -52,12 +52,3 @@ export function renderCPU() {
     si.style.color = colors[sc.colorKey];
     si.title = sc.title;
 }
-
-// Format toggle
-document.getElementById("blk-cpu").addEventListener("click", (e) => {
-    const t = e.target.closest("[data-cfmt]");
-    if (!t) return;
-    cpuFmt = t.dataset.cfmt;
-    document.querySelectorAll("#cpu-fmt-tabs .ft").forEach((b) => b.classList.toggle("act", b.dataset.cfmt === cpuFmt));
-    renderCPU();
-});

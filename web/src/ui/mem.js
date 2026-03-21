@@ -2,7 +2,19 @@
  * Memory block renderer: 16x16 grid, page navigation, format toggle, instruction highlighting.
  */
 
-import { cpu, colors, asm, hex, printableChar, escapeHtml, cssVar, STACK_BASE, IO_BASE, PAGE_SIZE } from "../state.js";
+import {
+    cpu,
+    colors,
+    asm,
+    hex,
+    printableChar,
+    escapeHtml,
+    cssVar,
+    initFormatToggle,
+    STACK_BASE,
+    IO_BASE,
+    PAGE_SIZE,
+} from "../state.js";
 import { decodeFloat32, decodeFloat16, decodeBfloat16, decodeOfp8E4M3, decodeOfp8E5M2 } from "../../lib/fp.js";
 import { BY_CODE, BY_CODE_FP, OpType, FP_REGISTERS, decodeRegaddr } from "../../lib/isa.js";
 
@@ -122,19 +134,19 @@ function instrRow(absAddr, row, sep) {
 }
 
 function posTooltip(x, y) {
-    const tw = tooltip.offsetWidth,
-        th = tooltip.offsetHeight;
+    const tw = tooltip.offsetWidth;
+    const th = tooltip.offsetHeight;
     const left = x + 14 + tw > window.innerWidth ? x - tw - 6 : x + 14;
     const top = y + 14 + th > window.innerHeight ? y - th - 6 : y + 14;
     tooltip.style.left = left + "px";
     tooltip.style.top = top + "px";
 }
 
-let memFmt = "hex";
+const memFmt = initFormatToggle("blk-mem", "#fmt-tabs", "fmt", () => renderMemory());
 let page = 0;
 
 function fmtByte(v) {
-    return memFmt === "dec" ? v.toString().padStart(3, " ") : hex(v);
+    return memFmt.get() === "dec" ? v.toString().padStart(3, " ") : hex(v);
 }
 
 function cellClass(addr, val, showInstr) {
@@ -168,7 +180,7 @@ function cellClass(addr, val, showInstr) {
 export function renderMemory() {
     const showInstr = document.getElementById("chk-instr").checked;
     const baseCw = parseInt(cssVar("--s-mem-cell-w")) || 28;
-    const cellW = memFmt === "dec" ? baseCw + 2 : baseCw;
+    const cellW = memFmt.get() === "dec" ? baseCw + 2 : baseCw;
     const rowW = parseInt(cssVar("--s-mem-row-w")) || 24;
     const cellFont = parseInt(cssVar("--s-mem-cell-font")) || 10;
     const pageBase = page * PAGE_SIZE;
@@ -212,40 +224,18 @@ export function renderMemory() {
 
 export function setPage(p) {
     page = p;
-    updatePageLabel();
-    renderMemory();
-}
-
-function updatePageLabel() {
     document.getElementById("page-num").textContent = `${page}/255`;
+    renderMemory();
 }
 
-// Instructions checkbox
 document.getElementById("chk-instr").addEventListener("change", () => renderMemory());
-
-// Format toggle
-document.getElementById("blk-mem").addEventListener("click", (e) => {
-    const t = e.target.closest("[data-fmt]");
-    if (!t) return;
-    memFmt = t.dataset.fmt;
-    document.querySelectorAll("#fmt-tabs .ft").forEach((b) => b.classList.toggle("act", b.dataset.fmt === memFmt));
-    renderMemory();
-});
 
 // Page navigation
 document.getElementById("page-prev").addEventListener("click", () => {
-    if (page > 0) {
-        page--;
-        updatePageLabel();
-        renderMemory();
-    }
+    if (page > 0) setPage(page - 1);
 });
 document.getElementById("page-next").addEventListener("click", () => {
-    if (page < 255) {
-        page++;
-        updatePageLabel();
-        renderMemory();
-    }
+    if (page < 255) setPage(page + 1);
 });
 
 // Data inspector tooltip
