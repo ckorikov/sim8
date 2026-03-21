@@ -48,7 +48,30 @@ def test_assemble_error() -> None:
     assert "error" in result
 
 
+def test_assemble_with_include() -> None:
+    """@include resolves against the repo filesystem and libs/ search path."""
+    result = assemble_source('@include "std/io.str.asm"\nHLT')
+    assert "error" not in result
+    assert "print_str" in result["labels"]
+
+
 # ── run_program ───────────────────────────────────────────────────
+
+
+def test_run_program_with_include() -> None:
+    """@include works end-to-end through run_program."""
+    source = (
+        "JMP start\n"
+        '@include "std/io.str.asm"\n'
+        "msg: DB 72, 105, 0\n"
+        "start: MOV A, msg\n"
+        "  MOV D, 232\n"
+        "  CALL print_str\n"
+        "  HLT"
+    )
+    result = run_program(source)
+    assert result["state"] == "HALTED"
+    assert result["display"].startswith("Hi")
 
 
 def test_run_program_halts() -> None:

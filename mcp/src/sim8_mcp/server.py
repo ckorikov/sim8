@@ -29,16 +29,17 @@ SPEC_SECTIONS = frozenset(
 )
 
 
-def _find_spec_dir() -> Path:
-    """Find spec/ by walking up from this file."""
+def _find_repo_root() -> Path:
+    """Find repo root (parent of spec/) by walking up from this file."""
     for parent in Path(__file__).resolve().parents:
-        candidate = parent / "spec"
-        if (candidate / "isa.md").is_file():
-            return candidate
-    raise FileNotFoundError("spec/ directory not found in any parent")
+        if (parent / "spec" / "isa.md").is_file():
+            return parent
+    raise FileNotFoundError("repo root not found (no spec/isa.md in any parent)")
 
 
-SPEC_DIR = _find_spec_dir()
+REPO_ROOT = _find_repo_root()
+SPEC_DIR = REPO_ROOT / "spec"
+INCLUDE_PATHS = [REPO_ROOT / "libs"]
 
 
 def _parse_hex(code_hex: str) -> list[int]:
@@ -96,7 +97,7 @@ def _run_cpu(code: list[int], max_steps: int, arch: int = 2) -> dict[str, Any]:
 def tool_assemble_source(source: str, arch: int = 2) -> dict[str, Any]:
     """Assemble source code into machine code."""
     try:
-        result = assemble(source, arch=arch)
+        result = assemble(source, arch=arch, base_path=REPO_ROOT, include_paths=INCLUDE_PATHS)
     except AsmError as e:
         return {"error": str(e)}
     return {
@@ -113,7 +114,7 @@ def tool_run_program(
 ) -> dict[str, Any]:
     """Assemble source code and run the program to completion."""
     try:
-        result = assemble(source, arch=arch)
+        result = assemble(source, arch=arch, base_path=REPO_ROOT, include_paths=INCLUDE_PATHS)
     except AsmError as e:
         return {"error": str(e)}
     return _run_cpu(result.code, max_steps, arch=arch)
@@ -212,7 +213,8 @@ def tool_search_spec(
 
 @mcp.tool()
 def assemble_source(source: str, arch: int = 2) -> dict[str, Any]:
-    """Assemble source code into machine code.
+    """Assemble source code into machine code.  Supports @include directives
+    (resolved against the sim8 repository root).
 
     Args:
         source: Assembly source text.
@@ -231,6 +233,7 @@ def run_program(
     arch: int = 2,
 ) -> dict[str, Any]:
     """Assemble source code and run the program to completion.
+    Supports @include directives (resolved against the sim8 repository root).
 
     Args:
         source: Assembly source text.
