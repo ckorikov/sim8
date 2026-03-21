@@ -110,10 +110,18 @@ def _embed_binary(
     lineno: int,
 ) -> None:
     """Emit raw bytes as a DB directive into the flat output (binary include)."""
-    if data:
-        flat_lineno = len(out_lines) + 1
-        out_lines.append("DB " + ", ".join(str(b) for b in data))
-        line_map[flat_lineno] = (filename, lineno)
+    if not data:
+        return
+    if len(data) > 256:
+        raise PreprocessError(
+            f"@include: binary file is {len(data)} bytes (page limit is 256). "
+            "Place it on a dedicated page with @page N before the @include.",
+            lineno,
+            filename=filename,
+        )
+    flat_lineno = len(out_lines) + 1
+    out_lines.append("DB " + ", ".join(str(b) for b in data))
+    line_map[flat_lineno] = (filename, lineno)
 
 
 def _decode_source(data: bytes) -> str | None:
