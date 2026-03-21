@@ -5,6 +5,11 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
+// ── Mock hexview.js ───────────────────────────────────────────────
+vi.mock("../src/hexview.js", () => ({
+    mountHexView: vi.fn(),
+}));
+
 // ── Mock editor.js (DOM-dependent) ───────────────────────────────
 
 let _editorSource = "";
@@ -46,7 +51,7 @@ vi.stubGlobal("document", {
 // ── Import after mocks ────────────────────────────────────────────
 
 import { breakpoints } from "../src/breakpoints.js";
-import { initTabs, saveCurrentTab, getMainSource, getVirtualFiles, switchTabForExec } from "../src/tabs.js";
+import { initTabs, saveCurrentTab, getMainSource, getVirtualFiles, switchTabForExec, _isBinary } from "../src/tabs.js";
 
 // ── Helpers ──────────────────────────────────────────────────────
 
@@ -182,5 +187,63 @@ describe("checkFlat: BP check used by controls (end-to-end logic)", () => {
     it("undefined flatLine never hits", () => {
         _onBpToggle(1);
         expect(breakpoints.checkFlat(undefined, null)).toBe(false);
+    });
+});
+
+// ── _isBinary ─────────────────────────────────────────────────────
+
+describe("_isBinary", () => {
+    function buf(bytes) {
+        return new Uint8Array(bytes).buffer;
+    }
+
+    it("detects .bin extension as binary regardless of content", () => {
+        expect(_isBinary("prog.bin", buf([0x41, 0x42]))).toBe(true);
+    });
+
+    it("detects .rom, .elf, .exe, .o as binary by extension", () => {
+        for (const ext of ["rom", "elf", "exe", "o", "out", "img", "dat"]) {
+            expect(_isBinary(`file.${ext}`, buf([0x41]))).toBe(true);
+        }
+    });
+
+    it("detects null byte as binary signal for unknown extension", () => {
+        expect(_isBinary("data.dump", buf([0x41, 0x00, 0x42]))).toBe(true);
+    });
+
+    it("treats all-printable content with .asm extension as text", () => {
+        const ascii = Array.from("MOV A, 1\nHLT\n").map((c) => c.charCodeAt(0));
+        expect(_isBinary("prog.asm", buf(ascii))).toBe(false);
+    });
+
+    it("treats empty buffer with .asm extension as text", () => {
+        expect(_isBinary("empty.asm", buf([]))).toBe(false);
+    });
+
+    it("only checks first 1024 bytes for null detection", () => {
+        // 1025 bytes: first 1024 are 0x41 (no null), byte 1025 is 0x00
+        const bytes = new Uint8Array(1025).fill(0x41);
+        bytes[1024] = 0x00;
+        expect(_isBinary("file.txt", bytes.buffer)).toBe(false);
+    });
+});
+
+// ── getMainSource / getVirtualFiles with new format ───────────────
+
+describe("getMainSource after format change", () => {
+    it("returns the default source text", () => {
+        expect(getMainSource()).toContain("Hello World");
+    });
+
+    it("reflects saved editor content", () => {
+        _editorSource = "NOP\nHLT";
+        saveCurrentTab();
+        expect(getMainSource()).toBe("NOP\nHLT");
+    });
+});
+
+describe("getVirtualFiles excludes binary entries", () => {
+    it("returns empty object when only main.asm exists", () => {
+        expect(getVirtualFiles()).toEqual({});
     });
 });

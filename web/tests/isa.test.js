@@ -3,7 +3,6 @@ import {
     Op,
     Reg,
     OpType,
-    REGISTERS,
     GPR_CODES,
     ARITH_CODES,
     STACK_CODES,
@@ -87,11 +86,11 @@ describe("Reg", () => {
         expect(Reg.DP).toBe(5);
     });
 
-    it("REGISTERS maps names to codes", () => {
-        expect(REGISTERS["A"]).toBe(0);
-        expect(REGISTERS["SP"]).toBe(4);
-        expect(REGISTERS["DP"]).toBe(5);
-        expect(Object.keys(REGISTERS).length).toBe(6);
+    it("Reg maps names to codes", () => {
+        expect(Reg["A"]).toBe(0);
+        expect(Reg["SP"]).toBe(4);
+        expect(Reg["DP"]).toBe(5);
+        expect(Object.keys(Reg).length).toBe(6);
     });
 
     it("GPR_CODES = {0,1,2,3}", () => {
