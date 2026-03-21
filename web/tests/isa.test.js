@@ -266,9 +266,7 @@ describe("FP_REGISTERS", () => {
         expect(FP_REGISTERS["FQH"]).toEqual({ phys: 1, pos: 3, fmt: FP_FMT_O3, width: 8 });
     });
 
-    it("has 32 + 2 = 34 total FP register names", () => {
-        // 2 (FA, FB) + 4 (FHA..FHD) + 8 (FQA..FQH) + 16 (FOA..FOP) = 30
-        // Nope: 2 full + 4 half + 8 quarter + 16 octet = 30
+    it("has 30 total FP register names (2 full + 4 half + 8 quarter + 16 octet)", () => {
         expect(Object.keys(FP_REGISTERS).length).toBe(30);
     });
 

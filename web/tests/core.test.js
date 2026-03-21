@@ -1205,7 +1205,7 @@ describe("FPU basics", () => {
     });
 
     it("FCLASS: classify a value", () => {
-        cpu.load([Op.FMOV_FP_ADDR, FPM_FA_F32, 0x50, Op.FCLASS_GPR_FP, Reg.A, FPM_FA_F32, Op.HLT]);
+        cpu.load([Op.FMOV_FP_ADDR, FPM_FA_F32, 0x50, Op.FCLASS_GPR_FP, FPM_FA_F32, Reg.A, Op.HLT]);
         storeFloat32(cpu.mem, 0x50, 1.0);
         cpu.run();
         // Classification of 1.0 should be a non-zero category code

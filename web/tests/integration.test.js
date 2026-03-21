@@ -2,18 +2,18 @@ import { describe, it, expect } from "vitest";
 import { assemble } from "../lib/asm.js";
 import { CPU, CpuState, ErrorCode } from "../lib/core.js";
 
-/** Assemble source, load into CPU, run, return CPU. */
+/** Assemble source, load into CPU, run, return { cpu, labels }. */
 function runAsm(source) {
-    const { code } = assemble(source);
+    const { code, labels } = assemble(source);
     const cpu = new CPU();
     cpu.load(code);
     cpu.run();
-    return cpu;
+    return { cpu, labels };
 }
 
 describe("integration: integer programs", () => {
     it("1. Hello World -- write chars to I/O display", () => {
-        const cpu = runAsm(`
+        const { cpu } = runAsm(`
       MOV A, 'H'
       MOV [232], A
       MOV A, 'i'
@@ -25,7 +25,7 @@ describe("integration: integer programs", () => {
     });
 
     it("2. Counter -- count from 0 to 5", () => {
-        const cpu = runAsm(`
+        const { cpu } = runAsm(`
       MOV A, 0
       loop: INC A
       CMP A, 5
@@ -38,7 +38,7 @@ describe("integration: integer programs", () => {
     });
 
     it("3. Fibonacci -- compute fib(5) = 5", () => {
-        const cpu = runAsm(`
+        const { cpu } = runAsm(`
       MOV A, 0
       MOV B, 1
       MOV C, 5
@@ -57,7 +57,7 @@ describe("integration: integer programs", () => {
     });
 
     it("4. Stack operations -- CALL/RET subroutine", () => {
-        const cpu = runAsm(`
+        const { cpu } = runAsm(`
       MOV A, 10
       CALL add_five
       HLT
@@ -69,7 +69,7 @@ describe("integration: integer programs", () => {
     });
 
     it("5. Multiplication via loop", () => {
-        const cpu = runAsm(`
+        const { cpu } = runAsm(`
       MOV B, 3
       MOV C, 4
       MOV A, 0
@@ -84,7 +84,7 @@ describe("integration: integer programs", () => {
     });
 
     it("6. Memory copy -- write digits to display", () => {
-        const cpu = runAsm(`
+        const { cpu } = runAsm(`
       MOV [232], 48
       MOV [233], 49
       MOV [234], 50
@@ -97,7 +97,7 @@ describe("integration: integer programs", () => {
     });
 
     it("7. Bitwise operations", () => {
-        const cpu = runAsm(`
+        const { cpu } = runAsm(`
       MOV A, 0xFF
       AND A, 0x0F
       OR A, 0xF0
@@ -110,7 +110,7 @@ describe("integration: integer programs", () => {
     });
 
     it("8. Shifts", () => {
-        const cpu = runAsm(`
+        const { cpu } = runAsm(`
       MOV A, 1
       SHL A, 4
       SHR A, 2
@@ -121,7 +121,7 @@ describe("integration: integer programs", () => {
     });
 
     it("9. Division with remainder check", () => {
-        const cpu = runAsm(`
+        const { cpu } = runAsm(`
       MOV A, 25
       DIV 7
       HLT
@@ -131,7 +131,7 @@ describe("integration: integer programs", () => {
     });
 
     it("10. Fault -- division by zero", () => {
-        const cpu = runAsm(`
+        const { cpu } = runAsm(`
       MOV A, 42
       DIV 0
       HLT
@@ -159,7 +159,7 @@ describe("integration: integer programs", () => {
 
 describe("integration: FP programs", () => {
     it("12. FP load, add, store (3.0 + 2.0 = 5.0)", () => {
-        const cpu = runAsm(`
+        const { cpu, labels } = runAsm(`
       FMOV.F FA, [data1]
       FADD.F FA, [data2]
       FMOV.F [result], FA
@@ -172,15 +172,6 @@ describe("integration: FP programs", () => {
         expect(cpu.fpu.fa).toBeCloseTo(5.0, 5);
 
         // Verify memory at result: 5.0 as float32 LE = 0x40A00000
-        const { labels } = assemble(`
-      FMOV.F FA, [data1]
-      FADD.F FA, [data2]
-      FMOV.F [result], FA
-      HLT
-      data1: DB 0x00, 0x00, 0x40, 0x40
-      data2: DB 0x00, 0x00, 0x00, 0x40
-      result: DB 0x00, 0x00, 0x00, 0x00
-    `);
         const resultAddr = labels["result"];
         expect(cpu.mem.get(resultAddr + 0)).toBe(0x00);
         expect(cpu.mem.get(resultAddr + 1)).toBe(0x00);
@@ -189,7 +180,7 @@ describe("integration: FP programs", () => {
     });
 
     it("13. FP multiply-accumulate (3.0 * 4.0 + 2.0 = 14.0)", () => {
-        const cpu = runAsm(`
+        const { cpu } = runAsm(`
       FMOV.F FA, [val1]
       FMOV.F FB, [val2]
       FMADD.F FA, FB, [val3]
@@ -203,7 +194,7 @@ describe("integration: FP programs", () => {
     });
 
     it("14. FP comparison and conditional jump (3.14 > 3.0)", () => {
-        const cpu = runAsm(`
+        const { cpu } = runAsm(`
       FMOV.F FA, [pi]
       FCMP.F FA, [three]
       JA greater
@@ -219,7 +210,7 @@ describe("integration: FP programs", () => {
     });
 
     it("15. Integer to float and back (FITOF + FADD + FFTOI)", () => {
-        const cpu = runAsm(`
+        const { cpu } = runAsm(`
       MOV A, 42
       FITOF.F FA, A
       FADD.F FA, [quarter]

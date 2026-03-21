@@ -6,28 +6,10 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { assemble, AsmError } from "../lib/asm.js";
+import { assemble } from "../lib/asm.js";
 import { Op, Reg, encodeFpm, encodeRegaddr, FP_FMT_F, FP_FMT_H, FP_FMT_O3 } from "../lib/isa.js";
 import { encodeFloat32, encodeFloat16 } from "../lib/fp.js";
-
-// ── Helpers ─────────────────────────────────────────────────────────
-
-/** Shorthand: assemble and return just the code bytes. */
-function asm(source, arch = 2) {
-    return assemble(source, arch).code;
-}
-
-/** Shorthand: assemble expecting AsmError, return the error. */
-function asmError(source, arch = 2) {
-    let caught;
-    try {
-        assemble(source, arch);
-    } catch (e) {
-        caught = e;
-    }
-    expect(caught).toBeInstanceOf(AsmError);
-    return caught;
-}
+import { asm, asmError } from "./_helpers.js";
 
 // ── 1. Basic instructions ───────────────────────────────────────────
 

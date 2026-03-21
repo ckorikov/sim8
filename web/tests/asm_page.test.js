@@ -3,28 +3,8 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { assemble, AsmError } from "../lib/asm.js";
-
-// ── Helpers ─────────────────────────────────────────────────────────
-
-function asm(source, arch = 2) {
-    return assemble(source, arch).code;
-}
-
-function labels(source, arch = 2) {
-    return assemble(source, arch).labels;
-}
-
-function asmError(source, arch = 2) {
-    let caught;
-    try {
-        assemble(source, arch);
-    } catch (e) {
-        caught = e;
-    }
-    expect(caught).toBeInstanceOf(AsmError);
-    return caught;
-}
+import { assemble } from "../lib/asm.js";
+import { asm, labels, asmError } from "./_helpers.js";
 
 // ── @page directive parsing ──────────────────────────────────────────
 
