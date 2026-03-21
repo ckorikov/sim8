@@ -847,8 +847,16 @@ function _collectLines(source, files, filename, visited, depth, outLines, lineMa
             }
             const included = files[path];
             if (included instanceof Uint8Array || included instanceof ArrayBuffer) {
-                // Binary file: embed raw bytes as a single DB directive.
+                // Binary file: embed raw bytes as a DB directive.
                 const bytes = included instanceof ArrayBuffer ? new Uint8Array(included) : included;
+                if (bytes.length > 256) {
+                    throw new AsmError(
+                        `@include "${path}": binary file is ${bytes.length} bytes (page limit is 256). ` +
+                            "Place it on a dedicated page with @page N before the @include.",
+                        lineNo,
+                        filename,
+                    );
+                }
                 if (bytes.length > 0) {
                     const flatLineNo = outLines.length + 1;
                     lineMap.set(flatLineNo, { file: filename, line: lineNo });
