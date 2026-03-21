@@ -420,7 +420,7 @@ def _pass1(parsed: list[ParsedLine], prep: PreprocessResult, arch: int) -> _Pass
     st = _Pass1State()
 
     for pline in parsed:
-        loc = prep.line_map.get(pline.line_no, (None, pline.line_no))  # type: ignore[union-attr]
+        loc = prep.line_map.get(pline.line_no, (None, pline.line_no))
 
         if pline.label is not None:
             pos = len(st.page_codes[st.current_page])
@@ -564,7 +564,12 @@ def _build_output(st: _Pass1State) -> AssembleResult:
 # ── Main entry point ─────────────────────────────────────────────
 
 
-def assemble(source: str, arch: int = 1, base_path: Path | None = None) -> AssembleResult:
+def assemble(
+    source: str,
+    arch: int = 1,
+    base_path: Path | None = None,
+    include_paths: list[Path] | None = None,
+) -> AssembleResult:
     """Assemble source code into machine code.
 
     Pipeline: Phase 0 (preprocessing) → Pass 1 (codegen) → Pass 2 (label resolution).
@@ -573,12 +578,13 @@ def assemble(source: str, arch: int = 1, base_path: Path | None = None) -> Assem
         source: Assembly source text.
         arch: Architecture version (1=integer-only, 2=with FPU). Default 1.
         base_path: Directory for resolving @include paths.
+        include_paths: Additional search directories for @include (like -I in C).
 
     Returns AssembleResult with code, labels, and source mapping.
     """
     # Phase 0: preprocessing (@include resolution)
     try:
-        prep = preprocess(source, base_path)
+        prep = preprocess(source, base_path, include_paths=include_paths)
     except PreprocessError as e:
         raise AssemblerError(e.message, e.line, filename=e.filename) from e
 

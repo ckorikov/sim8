@@ -20,12 +20,16 @@ from pysim8.asm.codegen import AssemblerError, assemble
     help="Write raw bytes to stdout (for piping into pysim8).",
 )
 @click.option("--arch", type=click.IntRange(1, 2), default=2, help="Architecture version (1=integer, 2=FPU)")
+@click.option(
+    "-I", "--include", "include_dirs", multiple=True, type=click.Path(exists=True), help="Add include search path"
+)
 def main(
     source: str,
     output: str | None,
     stdout: bool,
     binary: bool,
     arch: int,
+    include_dirs: tuple[str, ...],
 ) -> None:
     """Assemble SOURCE file into machine code.
 
@@ -39,8 +43,10 @@ def main(
         text = src_path.read_text()
         base_path = src_path.parent
 
+    inc_paths = [Path(d).resolve() for d in include_dirs] or None
+
     try:
-        result = assemble(text, arch=arch, base_path=base_path)
+        result = assemble(text, arch=arch, base_path=base_path, include_paths=inc_paths)
     except AssemblerError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)

@@ -43,11 +43,17 @@ class PreprocessResult:
     line_map: dict[int, SourceLoc] = field(default_factory=dict)
 
 
-def preprocess(source: str, base_path: Path | None) -> PreprocessResult:
+def preprocess(
+    source: str,
+    base_path: Path | None,
+    include_paths: list[Path] | None = None,
+) -> PreprocessResult:
     """Resolve all @include directives and return a flat annotated source.
 
     base_path: directory used to resolve relative paths in @include directives.
       Pass None when assembling from an in-memory string — @include is then an error.
+    include_paths: additional directories to search for @include files (like -I in C).
+      Tried in order after the including file's own directory.
     """
     out_lines: list[str] = []
     line_map: dict[int, SourceLoc] = {}
@@ -60,6 +66,7 @@ def preprocess(source: str, base_path: Path | None) -> PreprocessResult:
         depth=0,
         out_lines=out_lines,
         line_map=line_map,
+        include_paths=include_paths or [],
     )
     return PreprocessResult(source="\n".join(out_lines), line_map=line_map)
 
@@ -73,6 +80,7 @@ def _collect(
     depth: int,
     out_lines: list[str],
     line_map: dict[int, SourceLoc],
+    include_paths: list[Path] | None = None,
 ) -> None:
     for lineno, text in enumerate(source.splitlines(), start=1):
         if _RE_INCLUDE_START.match(text):
@@ -86,6 +94,7 @@ def _collect(
                 depth=depth,
                 out_lines=out_lines,
                 line_map=line_map,
+                include_paths=include_paths,
             )
         else:
             flat_lineno = len(out_lines) + 1
@@ -153,6 +162,24 @@ def _handle_url_include(
     )
 
 
+def _resolve_include(
+    path_str: str,
+    current_dir: Path | None,
+    include_paths: list[Path] | None,
+) -> Path | None:
+    """Try current_dir first, then each include_path. Return resolved Path or None."""
+    candidates: list[Path] = []
+    if current_dir is not None:
+        candidates.append(current_dir)
+    if include_paths:
+        candidates.extend(include_paths)
+    for base in candidates:
+        candidate = (base / path_str).resolve()
+        if candidate.is_file():
+            return candidate
+    return None
+
+
 def _handle_include(
     text: str,
     lineno: int,
@@ -163,6 +190,7 @@ def _handle_include(
     depth: int,
     out_lines: list[str],
     line_map: dict[int, SourceLoc],
+    include_paths: list[Path] | None = None,
 ) -> None:
     m = _RE_INCLUDE_FULL.match(text)
     if not m or not m.group(1):
@@ -186,16 +214,16 @@ def _handle_include(
         )
         return
 
-    if current_dir is None:
+    if current_dir is None and not include_paths:
         raise PreprocessError("@include: no filesystem context", lineno, filename=filename)
 
-    inc_path = (current_dir / path_str).resolve()
+    inc_path = _resolve_include(path_str, current_dir, include_paths)
+
+    if inc_path is None:
+        raise PreprocessError(f"@include: file not found: {path_str}", lineno, filename=filename)
 
     if inc_path in chain:
         raise PreprocessError(f"@include: circular include: {path_str}", lineno, filename=filename)
-
-    if not inc_path.is_file():
-        raise PreprocessError(f"@include: file not found: {path_str}", lineno, filename=filename)
 
     inc_filename = _normalize(inc_path, root_dir)
 
@@ -214,6 +242,7 @@ def _handle_include(
         depth=depth + 1,
         out_lines=out_lines,
         line_map=line_map,
+        include_paths=include_paths,
     )
 
 

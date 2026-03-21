@@ -128,6 +128,74 @@ class TestPathResolution:
         assert result == assemble("MOV A, 5\nHLT").code
 
 
+# ── §5.8 Include paths (-I) ──────────────────────────────────────────
+
+
+class TestIncludePaths:
+    """include_paths provides additional search directories (like -I in C)."""
+
+    def test_include_from_search_path(self, tmp_path: Path) -> None:
+        lib = tmp_path / "mylibs"
+        lib.mkdir()
+        (lib / "helper.asm").write_text("MOV A, 42\n")
+        result = assemble(
+            '@include "helper.asm"\nHLT',
+            base_path=tmp_path,
+            include_paths=[lib],
+        )
+        assert result.code == assemble("MOV A, 42\nHLT").code
+
+    def test_current_dir_takes_priority(self, tmp_path: Path) -> None:
+        """File in current_dir wins over file in include_paths."""
+        lib = tmp_path / "lib"
+        lib.mkdir()
+        (tmp_path / "a.asm").write_text("MOV A, 1\n")
+        (lib / "a.asm").write_text("MOV A, 99\n")
+        result = assemble('@include "a.asm"\nHLT', base_path=tmp_path, include_paths=[lib])
+        assert result.code == assemble("MOV A, 1\nHLT").code
+
+    def test_multiple_include_paths(self, tmp_path: Path) -> None:
+        d1 = tmp_path / "d1"
+        d2 = tmp_path / "d2"
+        d1.mkdir()
+        d2.mkdir()
+        (d1 / "a.asm").write_text("MOV A, 1\n")
+        (d2 / "b.asm").write_text("MOV B, 2\n")
+        result = assemble(
+            '@include "a.asm"\n@include "b.asm"\nHLT',
+            base_path=tmp_path,
+            include_paths=[d1, d2],
+        )
+        assert result.code == assemble("MOV A, 1\nMOV B, 2\nHLT").code
+
+    def test_include_paths_without_base_path(self) -> None:
+        """include_paths works even when base_path is None (e.g. MCP with stdin)."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            lib = Path(td)
+            (lib / "helper.asm").write_text("MOV A, 42\n")
+            result = assemble(
+                '@include "helper.asm"\nHLT',
+                base_path=None,
+                include_paths=[lib],
+            )
+            assert result.code == assemble("MOV A, 42\nHLT").code
+
+    def test_nested_include_from_search_path(self, tmp_path: Path) -> None:
+        """File found via include_paths can itself @include relative to its dir."""
+        lib = tmp_path / "lib"
+        lib.mkdir()
+        (lib / "inner.asm").write_text("MOV A, 1\n")
+        (lib / "outer.asm").write_text('@include "inner.asm"\nMOV B, 2\n')
+        result = assemble(
+            '@include "outer.asm"\nHLT',
+            base_path=tmp_path,
+            include_paths=[lib],
+        )
+        assert result.code == assemble("MOV A, 1\nMOV B, 2\nHLT").code
+
+
 # ── §5.8 Nesting ─────────────────────────────────────────────────────
 
 
