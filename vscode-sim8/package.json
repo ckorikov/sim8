@@ -1,7 +1,7 @@
 {
   "name": "sim8-asm",
   "displayName": "sim8 Assembly",
-  "description": "Syntax highlighting for sim8 8-bit CPU assembler (v2, FPU support)",
+  "description": "Syntax highlighting for sim8 8-bit CPU assembler (v3, FPU + VU support)",
   "version": "0.1.0",
   "publisher": "sim8",
   "repository": {

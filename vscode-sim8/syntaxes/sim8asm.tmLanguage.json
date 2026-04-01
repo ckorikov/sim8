@@ -7,10 +7,13 @@
     { "include": "#comment" },
     { "include": "#label-def" },
     { "include": "#directive" },
+    { "include": "#vu-instruction" },
+    { "include": "#vu-sync" },
     { "include": "#fp-instruction" },
     { "include": "#fp-control" },
     { "include": "#db-pseudo" },
     { "include": "#mnemonic" },
+    { "include": "#register-vu" },
     { "include": "#memory" },
     { "include": "#page-expr" },
     { "include": "#string" },
@@ -58,6 +61,27 @@
           ]
         }
       ]
+    },
+
+    "vu-instruction": {
+      "comment": "VU async instructions with format/mode/cond suffixes: VADD.U  VMUL.F.VV  VCMP.U.EQ",
+      "match": "(?i)\\b(VADD|VSUB|VMUL|VDIV|VMAX|VMIN|VDOT|VSQRT|VNEG|VABS|VCMP|VSEL|VMOV|VFILL)((?:\\.(?:BF|O[23]|[FHUI]|VV|VS|VI|R|EQ|NE|LT|LE|GT|GE))+)\\b",
+      "captures": {
+        "1": { "name": "keyword.mnemonic.vu.sim8" },
+        "2": { "name": "storage.type.vu-format.sim8" }
+      }
+    },
+
+    "vu-sync": {
+      "comment": "VU synchronous instructions (no format suffix)",
+      "match": "(?i)\\b(VSET|VFSTAT|VFCLR|VWAIT)\\b",
+      "name": "keyword.mnemonic.vu.sim8"
+    },
+
+    "register-vu": {
+      "comment": "VU registers: VA, VB, VC (pointers), VM (mask), VL (length)",
+      "match": "(?i)\\b(VA|VB|VC|VM|VL)\\b",
+      "name": "support.type.register.vu.sim8"
     },
 
     "fp-instruction": {

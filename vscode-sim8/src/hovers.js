@@ -6,9 +6,12 @@ const vscode = require("vscode");
 const {
   ISA,
   ISA_FP,
+  ISA_VU,
   MNEMONIC_ALIASES,
   MNEMONICS_FP,
+  MNEMONICS_VU,
   FP_CONTROL_MNEMONICS,
+  VU_SYNC_MNEMONICS,
 } = require("../../web/lib/isa.js");
 
 const {
@@ -26,7 +29,7 @@ const {
 
 function buildSyntaxForms() {
   const forms = {};
-  for (const def of [...ISA, ...ISA_FP]) {
+  for (const def of [...ISA, ...ISA_FP, ...ISA_VU]) {
     const sig = def.sig.map((s) => SIG_LABELS[s] ?? "?").join(", ");
     const form = sig ? `${def.mnemonic} ${sig}` : def.mnemonic;
     if (!forms[def.mnemonic]) forms[def.mnemonic] = new Set();
@@ -48,6 +51,13 @@ const FP_INSTR_RE = new RegExp(
   "i",
 );
 
+// VU async mnemonics that take format/mode suffixes
+const VU_ASYNC = [...MNEMONICS_VU].filter((m) => !VU_SYNC_MNEMONICS.has(m));
+const VU_INSTR_RE = new RegExp(
+  `^(${VU_ASYNC.join("|")})((?:\\.(?:BF|O[23]|[FHUI]|VV|VS|VI|R|EQ|NE|LT|LE|GT|GE))+)$`,
+  "i",
+);
+
 // ── Main lookup ───────────────────────────────────────────────────────────────
 
 function buildHoverContent(word) {
@@ -61,6 +71,10 @@ function buildHoverContent(word) {
   const fpMatch = resolved.match(FP_INSTR_RE);
   if (fpMatch)
     return mnemonicHover(fpMatch[1], fpMatch[2], canonical ? upper : null);
+
+  const vuMatch = resolved.match(VU_INSTR_RE);
+  if (vuMatch)
+    return mnemonicHover(vuMatch[1], vuMatch[2], canonical ? upper : null);
 
   if (MNEMONIC_INFO[resolved])
     return mnemonicHover(resolved, null, canonical ? upper : null);
