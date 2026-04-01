@@ -5,10 +5,12 @@
 import {
     MNEMONICS,
     MNEMONICS_FP,
+    MNEMONICS_VU,
     Reg,
     FP_REGISTERS,
     ISA,
     ISA_FP,
+    ISA_VU,
     MNEMONIC_ALIASES,
     FP_CONTROL_MNEMONICS,
 } from "../lib/isa.js";
@@ -24,12 +26,10 @@ import {
     DIRECTIVE_DOCS,
 } from "../lib/isa-docs.js";
 
-const ALL_MNEMONICS_RE = new RegExp(
-    "\\b(" + [...MNEMONICS, ...MNEMONICS_FP, ...Object.keys(MNEMONIC_ALIASES)].join("|") + ")\\b",
-    "i",
-);
+const _ALL_MNEMONICS = [...MNEMONICS, ...MNEMONICS_FP, ...Object.keys(MNEMONIC_ALIASES), ...MNEMONICS_VU];
+const ALL_MNEMONICS_RE = new RegExp("\\b(" + _ALL_MNEMONICS.join("|") + ")(\\.[A-Z0-9]+)*\\b", "i");
 const ALL_REGISTERS_RE = new RegExp(
-    "\\b(" + [...Object.keys(Reg), ...Object.keys(FP_REGISTERS)].join("|") + ")\\b",
+    "\\b(" + [...Object.keys(Reg), ...Object.keys(FP_REGISTERS), "VA", "VB", "VC", "VM", "VL"].join("|") + ")\\b",
     "i",
 );
 
@@ -293,7 +293,7 @@ export async function initEditor(container, defaultCode) {
 
         function buildMnemonicVariants() {
             const variants = {};
-            for (const def of [...ISA, ...ISA_FP]) {
+            for (const def of [...ISA, ...ISA_FP, ...ISA_VU]) {
                 const sig = def.sig.map((s) => SIG_LABELS[s] || "?").join(", ");
                 const form = sig ? `${def.mnemonic} ${sig}` : def.mnemonic;
                 if (!variants[def.mnemonic]) variants[def.mnemonic] = new Set();
@@ -324,7 +324,7 @@ export async function initEditor(container, defaultCode) {
             if (flags) _infoline(el, "cm-instr-form", `Flags: ${flags}`);
             const fpex = MNEMONIC_FP_EXCEPTIONS[canonical];
             if (fpex) _infoline(el, "cm-instr-form", `FP exc: ${fpex}`);
-            if (MNEMONICS_FP.includes(canonical) && !FP_CONTROL_MNEMONICS.has(canonical)) {
+            if (MNEMONICS_FP.has(canonical) && !FP_CONTROL_MNEMONICS.has(canonical)) {
                 const suffixes = Object.entries(FP_FORMAT_DOCS)
                     .filter(([k]) => k.length <= 2)
                     .map(([k, v]) => `.${k}=${v.name}`)
@@ -337,7 +337,7 @@ export async function initEditor(container, defaultCode) {
         }
 
         const MNEMONIC_COMPLETIONS = [
-            ...[...MNEMONICS, ...MNEMONICS_FP].map((m) => ({
+            ...[...MNEMONICS, ...MNEMONICS_FP, ...MNEMONICS_VU].map((m) => ({
                 label: m,
                 info: () => mnemonicInfoDom(m),
                 type: "keyword",
@@ -360,6 +360,11 @@ export async function initEditor(container, defaultCode) {
                 const fmt = FP_FMT_NAMES[FP_REGISTERS[r].fmt] || `${FP_REGISTERS[r].width}b`;
                 return { label: r, info: doc ? doc.description : `FP ${fmt}`, type: "variable" };
             }),
+            ...["VA", "VB", "VC", "VM", "VL"].map((r) => ({
+                label: r,
+                info: r === "VL" ? "VU vector length (16-bit)" : `VU address pointer (16-bit)`,
+                type: "variable",
+            })),
         ];
 
         function sim8CompletionSource(context) {

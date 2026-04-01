@@ -193,6 +193,31 @@ export const Op = Object.freeze({
     // FP -- FMOV immediate (161-162)
     FMOV_FP_IMM8: 161,
     FMOV_FP_IMM16: 162,
+
+    // VU -- Sync (163-169)
+    VSET_IMM16: 163,
+    VSET_GPR: 164,
+    VSET_MEM: 165,
+    VSET_MEMI: 166,
+    VFSTAT: 167,
+    VFCLR: 168,
+    VWAIT: 169,
+
+    // VU -- Async (170-183)
+    VADD: 170,
+    VSUB: 171,
+    VMUL: 172,
+    VDIV: 173,
+    VMAX: 174,
+    VMIN: 175,
+    VDOT: 176,
+    VSQRT: 177,
+    VNEG: 178,
+    VABS: 179,
+    VCMP: 180,
+    VSEL: 181,
+    VMOV: 182,
+    VFILL: 183,
 });
 
 // ── Registers ────────────────────────────────────────────────────
@@ -614,3 +639,121 @@ export const MNEMONICS = new Set([...Object.keys(BY_MNEMONIC), "DB"]);
 export const MNEMONICS_FP = new Set(Object.keys(BY_MNEMONIC_FP));
 
 export const FP_CONTROL_MNEMONICS = new Set(["FSTAT", "FCFG", "FSCFG", "FCLR"]);
+
+// ── VU format constants ──────────────────────────────────────────
+
+export const VU_FMT_U = 5;
+export const VU_FMT_I = 6;
+
+export const VU_SUFFIX_TO_FMT = Object.freeze({ F: 0, H: 1, BF: 2, O3: 3, O2: 4, U: 5, I: 6 });
+export const VU_FMT_ELEM_SIZE = Object.freeze({ 0: 4, 1: 2, 2: 2, 3: 1, 4: 1, 5: 1, 6: 1 });
+
+// ── VU mode constants ────────────────────────────────────────────
+
+export const VU_MODE_VV = 0;
+export const VU_MODE_VS = 1;
+export const VU_MODE_VI = 2;
+export const VU_MODE_R = 3;
+
+export const VU_SUFFIX_TO_MODE = Object.freeze({ VV: 0, VS: 1, VI: 2, R: 3 });
+
+// ── VU compare condition constants ───────────────────────────────
+
+export const VU_CMP_EQ = 0;
+export const VU_CMP_NE = 1;
+export const VU_CMP_LT = 2;
+export const VU_CMP_LE = 3;
+export const VU_CMP_GT = 4;
+export const VU_CMP_GE = 5;
+
+export const VU_CMP_SUFFIX = Object.freeze({ EQ: 0, NE: 1, LT: 2, LE: 3, GT: 4, GE: 5 });
+
+// ── VU window sizes ──────────────────────────────────────────────
+
+// VU reads 16 bytes from memory per tick; window = 16 / elem_size elements
+// VU memory port: 16 bytes/tick → elements/tick = 16 / elem_size
+export const VU_WINDOW_SIZE = Object.freeze({ 1: 16, 2: 8, 4: 4 });
+
+// ── VFM encoding/decoding ────────────────────────────────────────
+
+export function encodeVfm(fmt, mode, cond = 0) {
+    return (cond << 5) | (mode << 3) | fmt;
+}
+
+export function decodeVfm(vfm) {
+    return [vfm & 7, (vfm >> 3) & 3, (vfm >> 5) & 7];
+}
+
+// ── VU register encoding/decoding ────────────────────────────────
+
+export function encodeVuRegs(dst, src1, src2) {
+    return (dst << 6) | (src1 << 4) | (src2 << 2);
+}
+
+export function decodeVuRegs(r) {
+    return [(r >> 6) & 3, (r >> 4) & 3, (r >> 2) & 3];
+}
+
+// ── VU ISA ───────────────────────────────────────────────────────
+
+function vuInstr(op, mnemonic, size, cost = 1, formatDep = false) {
+    return Object.freeze({ op, mnemonic, sig: Object.freeze([]), cost, size, formatDep });
+}
+
+export const ISA_VU = Object.freeze([
+    // Sync (163-169)
+    vuInstr(Op.VSET_IMM16, "VSET", 4),
+    vuInstr(Op.VSET_GPR, "VSET", 3),
+    vuInstr(Op.VSET_MEM, "VSET", 3),
+    vuInstr(Op.VSET_MEMI, "VSET", 3),
+    vuInstr(Op.VFSTAT, "VFSTAT", 2),
+    vuInstr(Op.VFCLR, "VFCLR", 1),
+    vuInstr(Op.VWAIT, "VWAIT", 1),
+    // Async (170-183)
+    vuInstr(Op.VADD, "VADD", 3, 1, true),
+    vuInstr(Op.VSUB, "VSUB", 3, 1, true),
+    vuInstr(Op.VMUL, "VMUL", 3, 1, true),
+    vuInstr(Op.VDIV, "VDIV", 3, 1, true),
+    vuInstr(Op.VMAX, "VMAX", 3, 1, true),
+    vuInstr(Op.VMIN, "VMIN", 3, 1, true),
+    vuInstr(Op.VDOT, "VDOT", 3, 1, true),
+    vuInstr(Op.VSQRT, "VSQRT", 3, 1, true),
+    vuInstr(Op.VNEG, "VNEG", 3, 1, true),
+    vuInstr(Op.VABS, "VABS", 3, 1, true),
+    vuInstr(Op.VCMP, "VCMP", 3, 1, true),
+    vuInstr(Op.VSEL, "VSEL", 3, 1, true),
+    vuInstr(Op.VMOV, "VMOV", 3, 1, true),
+    vuInstr(Op.VFILL, "VFILL", 3, 1, true),
+]);
+
+// ── VU lookup tables ─────────────────────────────────────────────
+
+export const BY_CODE_VU = Object.freeze(Object.fromEntries(ISA_VU.map((i) => [i.op, i])));
+const BY_MNEMONIC_VU = _buildByMnemonic(ISA_VU);
+export const MNEMONICS_VU = new Set(Object.keys(BY_MNEMONIC_VU));
+
+// ── VU instruction categories ────────────────────────────────────
+
+export const VU_SYNC_MNEMONICS = new Set(["VSET", "VFSTAT", "VFCLR", "VWAIT"]);
+
+export const VU_ASYNC_OPS = new Set([
+    Op.VADD,
+    Op.VSUB,
+    Op.VMUL,
+    Op.VDIV,
+    Op.VMAX,
+    Op.VMIN,
+    Op.VDOT,
+    Op.VSQRT,
+    Op.VNEG,
+    Op.VABS,
+    Op.VCMP,
+    Op.VSEL,
+    Op.VMOV,
+    Op.VFILL,
+]);
+
+export const VU_ARITH_OPS = new Set([Op.VADD, Op.VSUB, Op.VMUL, Op.VDIV, Op.VMAX, Op.VMIN]);
+export const VU_UNARY_OPS = new Set([Op.VSQRT, Op.VNEG, Op.VABS]);
+export const VU_VV_ONLY_OPS = new Set([Op.VDOT, Op.VCMP, Op.VSEL]);
+export const VU_INT_FMTS = new Set([VU_FMT_U, VU_FMT_I]);

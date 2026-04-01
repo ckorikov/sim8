@@ -1,24 +1,7 @@
 /**
- * CPU core: memory, registers, ALU, decoder, handlers, and control unit.
- * Port of pysim8/src/pysim8/sim/ into a single ES module.
+ * CPU core: instruction execution, dispatch tables, and control unit.
+ * Helper types (Memory, ALU, RegisterFile, etc.) live in core-types.js.
  */
-
-import {
-    Op,
-    Reg,
-    BY_CODE,
-    BY_CODE_FP,
-    ISA,
-    ISA_FP,
-    decodeRegaddr,
-    decodeFpm,
-    validateFpm,
-    FP_FMT_WIDTH,
-    FP_FMT_H,
-    FP_FMT_BF,
-    FP_FMT_O3,
-    FP_FMT_O2,
-} from "./isa.js";
 
 import {
     bytesToFloat,
@@ -34,364 +17,50 @@ import {
     fpClassify,
 } from "./fp.js";
 
-// ── Constants ────────────────────────────────────────────────────
+import { VectorUnit, VuCommand } from "./vu.js";
 
-const MEMORY_SIZE = 65536;
-export const PAGE_SIZE = 256;
-export const IO_START = 232;
-export const SP_INIT = 231;
+import {
+    // ISA symbols (re-exported by core-types from isa.js)
+    Op,
+    Reg,
+    ISA,
+    ISA_FP,
+    ISA_VU,
+    decodeRegaddr,
+    decodeFpm,
+    validateFpm,
+    FP_FMT_WIDTH,
+    FP_FMT_H,
+    FP_FMT_BF,
+    FP_FMT_O3,
+    FP_FMT_O2,
+    VU_ASYNC_OPS,
+    VU_UNARY_OPS,
+    VU_VV_ONLY_OPS,
+    VU_INT_FMTS,
+    VU_FMT_ELEM_SIZE,
+    VU_MODE_VS,
+    VU_MODE_VI,
+    VU_MODE_R,
+    decodeVfm,
+    decodeVuRegs,
+    // Core types
+    Memory,
+    ALU,
+    RegisterFile,
+    CpuFault,
+    CpuState,
+    ErrorCode,
+    PAGE_SIZE,
+    IO_START,
+    SP_INIT,
+    decode,
+    intFromBytesLE,
+    intToBytesLE,
+} from "./core-types.js";
 
-export const CpuState = Object.freeze({
-    IDLE: "IDLE",
-    RUNNING: "RUNNING",
-    HALTED: "HALTED",
-    FAULT: "FAULT",
-});
-
-export const ErrorCode = Object.freeze({
-    DIV_ZERO: 1,
-    STACK_OVERFLOW: 2,
-    STACK_UNDERFLOW: 3,
-    INVALID_REG: 4,
-    PAGE_BOUNDARY: 5,
-    INVALID_OPCODE: 6,
-    FP_FORMAT: 12,
-});
-
-// ── CpuFault ─────────────────────────────────────────────────────
-
-class CpuFault extends Error {
-    constructor(code, ip = 0) {
-        super(`FAULT(${code}) at IP=${ip}`);
-        this.code = code;
-        this.ip = ip;
-    }
-}
-
-// ── Memory ───────────────────────────────────────────────────────
-
-export class Memory {
-    constructor() {
-        this._data = new Uint8Array(MEMORY_SIZE);
-        this._nonZero = 0; // tracked incrementally for usedBytes()
-    }
-
-    get(addr) {
-        return this._data[addr];
-    }
-
-    /** @returns {boolean} true if addr is in the I/O region (excluded from usedBytes) */
-    _isIO(addr) {
-        return addr < PAGE_SIZE && addr >= IO_START;
-    }
-
-    set(addr, val) {
-        const byte = val & 0xff;
-        const old = this._data[addr];
-        this._data[addr] = byte;
-        if (!this._isIO(addr)) {
-            if (old === 0 && byte !== 0) this._nonZero++;
-            else if (old !== 0 && byte === 0) this._nonZero--;
-        }
-    }
-
-    load(data, offset = 0) {
-        if (offset + data.length > MEMORY_SIZE) {
-            throw new RangeError(
-                `Data (${data.length} bytes at offset ${offset}) exceeds memory size (${MEMORY_SIZE})`,
-            );
-        }
-        for (let i = 0; i < data.length; i++) {
-            this.set(offset + i, data[i]);
-        }
-    }
-
-    reset() {
-        this._data.fill(0);
-        this._nonZero = 0;
-    }
-
-    usedBytes() {
-        return this._nonZero;
-    }
-}
-
-// ── ALU ──────────────────────────────────────────────────────────
-
-const ALU = {
-    add(a, b) {
-        const raw = a + b;
-        const carry = raw > 255;
-        const result = raw & 0xff;
-        return [result, carry, result === 0];
-    },
-
-    sub(a, b) {
-        const raw = a - b;
-        const carry = raw < 0;
-        const result = ((raw % 256) + 256) % 256;
-        return [result, carry, result === 0];
-    },
-
-    mul(a, b) {
-        const raw = a * b;
-        const carry = raw > 255;
-        const result = raw & 0xff;
-        return [result, carry, result === 0];
-    },
-
-    div(a, b) {
-        const result = Math.floor(a / b);
-        const carry = result > 255 || result < 0;
-        const clamped = ((result % 256) + 256) % 256;
-        return [clamped, carry, clamped === 0];
-    },
-
-    inc(a) {
-        const raw = a + 1;
-        const carry = raw > 255;
-        const result = raw & 0xff;
-        return [result, carry, result === 0];
-    },
-
-    dec(a) {
-        const raw = a - 1;
-        const carry = raw < 0;
-        const result = ((raw % 256) + 256) % 256;
-        return [result, carry, result === 0];
-    },
-
-    and_op(a, b) {
-        const result = a & b;
-        return [result, result === 0];
-    },
-
-    or_op(a, b) {
-        const result = a | b;
-        return [result, result === 0];
-    },
-
-    xor_op(a, b) {
-        const result = a ^ b;
-        return [result, result === 0];
-    },
-
-    not_op(a) {
-        const result = a ^ 0xff;
-        return [result, result === 0];
-    },
-
-    shl(value, count) {
-        if (count >= 8) return [0, value !== 0, true];
-        const raw = (value << count) & 0xffff;
-        const carry = raw > 255;
-        const result = raw & 0xff;
-        return [result, carry, result === 0];
-    },
-
-    shr(value, count) {
-        if (count >= 8) return [0, value !== 0, true];
-        const carry = (value & ((1 << count) - 1)) !== 0;
-        const result = value >>> count;
-        return [result, carry, result === 0];
-    },
-};
-
-// ── Flags ────────────────────────────────────────────────────────
-
-class Flags {
-    constructor() {
-        this.z = false;
-        this.c = false;
-        this.f = false;
-    }
-
-    reset() {
-        this.z = false;
-        this.c = false;
-        this.f = false;
-    }
-}
-
-// ── FpuRegisters ─────────────────────────────────────────────────
-
-// Shared buffer for raw-bits <-> float32 conversion inside FpuRegisters
-const _fpBuf = new ArrayBuffer(4);
-const _fpF32 = new Float32Array(_fpBuf);
-const _fpU32 = new Uint32Array(_fpBuf);
-
-class FpuRegisters {
-    constructor() {
-        this._fp32 = [0, 0];
-        this.fpcr = 0;
-        this.fpsr = 0;
-    }
-
-    get fa() {
-        _fpU32[0] = this._fp32[0] >>> 0;
-        return _fpF32[0];
-    }
-    get fb() {
-        _fpU32[0] = this._fp32[1] >>> 0;
-        return _fpF32[0];
-    }
-
-    get roundingMode() {
-        return this.fpcr & 0x03;
-    }
-
-    readBits(pos, fmt, phys = 0) {
-        const width = FP_FMT_WIDTH[fmt];
-        if (width === 32) {
-            return this._fp32[phys] >>> 0;
-        }
-        const bitOffset = pos * width;
-        const mask = (1 << width) - 1;
-        return (this._fp32[phys] >> bitOffset) & mask;
-    }
-
-    writeBits(pos, fmt, value, phys = 0) {
-        const width = FP_FMT_WIDTH[fmt];
-        if (width === 32) {
-            this._fp32[phys] = value >>> 0;
-            return;
-        }
-        const bitOffset = pos * width;
-        const mask = (1 << width) - 1;
-        this._fp32[phys] = ((this._fp32[phys] & ~(mask << bitOffset)) | ((value & mask) << bitOffset)) >>> 0;
-    }
-
-    accumulateExceptions(exc) {
-        if (exc.invalid) this.fpsr |= 0x01;
-        if (exc.divZero) this.fpsr |= 0x02;
-        if (exc.overflow) this.fpsr |= 0x04;
-        if (exc.underflow) this.fpsr |= 0x08;
-        if (exc.inexact) this.fpsr |= 0x10;
-    }
-
-    reset() {
-        this._fp32[0] = 0;
-        this._fp32[1] = 0;
-        this.fpcr = 0;
-        this.fpsr = 0;
-    }
-}
-
-// ── RegisterFile ─────────────────────────────────────────────────
-
-class RegisterFile {
-    constructor(arch = 1) {
-        this._regs = [0, 0, 0, 0, SP_INIT, 0];
-        this.ip = 0;
-        this.flags = new Flags();
-        this.fpu = arch >= 2 ? new FpuRegisters() : null;
-    }
-
-    read(code) {
-        return this._regs[code];
-    }
-    write(code, val) {
-        this._regs[code] = val & 0xff;
-    }
-
-    get a() {
-        return this._regs[0];
-    }
-    set a(val) {
-        this._regs[0] = val & 0xff;
-    }
-
-    get b() {
-        return this._regs[1];
-    }
-    set b(val) {
-        this._regs[1] = val & 0xff;
-    }
-
-    get c() {
-        return this._regs[2];
-    }
-    set c(val) {
-        this._regs[2] = val & 0xff;
-    }
-
-    get d() {
-        return this._regs[3];
-    }
-    set d(val) {
-        this._regs[3] = val & 0xff;
-    }
-
-    get sp() {
-        return this._regs[4];
-    }
-    set sp(val) {
-        this._regs[4] = val & 0xff;
-    }
-
-    get dp() {
-        return this._regs[5];
-    }
-    set dp(val) {
-        this._regs[5] = val & 0xff;
-    }
-
-    reset(arch = 1) {
-        this._regs = [0, 0, 0, 0, SP_INIT, 0];
-        this.ip = 0;
-        this.flags.reset();
-        if (arch >= 2) {
-            if (this.fpu === null) {
-                this.fpu = new FpuRegisters();
-            } else {
-                this.fpu.reset();
-            }
-        } else {
-            this.fpu = null;
-        }
-    }
-}
-
-// ── Decoder ──────────────────────────────────────────────────────
-
-function decode(mem, ip, arch) {
-    const opcode = mem.get(ip);
-    let defn = BY_CODE[opcode];
-    if (defn === undefined && arch >= 2) {
-        defn = BY_CODE_FP[opcode];
-    }
-    if (defn === undefined) {
-        throw new CpuFault(ErrorCode.INVALID_OPCODE, ip);
-    }
-    const size = defn.size;
-    if (ip + size > PAGE_SIZE) {
-        throw new CpuFault(ErrorCode.PAGE_BOUNDARY, ip);
-    }
-    const operands = [];
-    for (let k = 1; k < size; k++) {
-        operands.push(mem.get(ip + k));
-    }
-    return { op: defn.op, size, operands };
-}
-
-// ── Byte conversion helpers ──────────────────────────────────────
-
-function intFromBytesLE(data) {
-    let raw = 0;
-    for (let i = data.length - 1; i >= 0; i--) {
-        raw = (raw << 8) | data[i];
-    }
-    if (data.length === 4) return raw >>> 0;
-    return raw;
-}
-
-function intToBytesLE(raw, nbytes) {
-    const data = new Uint8Array(nbytes);
-    for (let i = 0; i < nbytes; i++) {
-        data[i] = (raw >> (i * 8)) & 0xff;
-    }
-    return data;
-}
+// Re-export public API from core-types so existing imports keep working
+export { CpuState, ErrorCode, PAGE_SIZE, IO_START, SP_INIT, Memory };
 
 // ── CPU ──────────────────────────────────────────────────────────
 
@@ -424,8 +93,16 @@ export class CPU {
         if (arch >= 2) {
             this._buildFpDispatch();
         }
+        this.vu = null;
+        this._vuWaiting = false;
+        this._vwaitSize = 0;
+        if (arch >= 3) {
+            this.vu = new VectorUnit();
+            this._buildVuDispatch();
+        }
 
-        const allIsa = arch < 2 ? ISA : ISA.concat(ISA_FP);
+        let allIsa = arch < 2 ? ISA : ISA.concat(ISA_FP);
+        if (arch >= 3) allIsa = allIsa.concat(ISA_VU);
         this._instrDef = {};
         this._opCost = {};
         for (const d of allIsa) {
@@ -442,10 +119,45 @@ export class CPU {
         this._peakMem = code.length;
     }
 
-    step() {
-        if (this.state === CpuState.FAULT || this.state === CpuState.HALTED) {
+    /** True when VU queue has pending work. */
+    get vuBusy() {
+        return this.vu !== null && !this.vu.isEmpty;
+    }
+
+    /** True when CPU is stalled on VWAIT. */
+    get vuWaiting() {
+        return this._vuWaiting;
+    }
+
+    /** Tick VU independently. Returns true if VU did work. */
+    vuTick() {
+        if (this.vu === null || this.vu.isEmpty) return false;
+        this.vu.tick(this.mem, this._vuRoundingMode());
+        if (this.vu.fault !== 0) {
+            const code = this.vu.fault;
+            this.vu.fault = 0;
+            this._vuWaiting = false;
+            this._enterFault(code);
             return false;
         }
+        // VWAIT stall: each VU tick costs 1 CPU cycle
+        if (this._vuWaiting) {
+            this._cycles += 1;
+            if (this.vu.isEmpty) {
+                this._vuWaiting = false;
+                this.regs.ip += this._vwaitSize;
+                this._vwaitSize = 0;
+            }
+        }
+        return true;
+    }
+
+    /** Execute one CPU instruction. Does NOT touch VU. */
+    step() {
+        if (this.state === CpuState.FAULT) return false;
+        if (this.state === CpuState.HALTED) return false;
+        if (this._vuWaiting) return false; // CPU stalled on VWAIT
+
         if (this.state === CpuState.IDLE) {
             this.state = CpuState.RUNNING;
         }
@@ -486,7 +198,8 @@ export class CPU {
 
     run(maxSteps = 100000) {
         for (let i = 0; i < maxSteps; i++) {
-            if (!this.step()) break;
+            this.vuTick();
+            if (!this.step() && !this.vuBusy) break;
         }
         return this.state;
     }
@@ -504,6 +217,9 @@ export class CPU {
         this._steps = 0;
         this._cycles = 0;
         this._peakMem = 0;
+        this._vuWaiting = false;
+        this._vwaitSize = 0;
+        if (this.vu !== null) this.vu.reset();
     }
 
     get steps() {
@@ -1355,5 +1071,236 @@ export class CPU {
         });
         this._fpWriteReg(dstPos, dstFmt, result, dstPhys);
         this.regs.ip += instr.size;
+    }
+
+    // ── VU helpers ────────────────────────────────────────────────────
+
+    _vuRoundingMode() {
+        const fpu = this.regs.fpu;
+        return fpu !== null ? fpu.roundingMode : 0;
+    }
+
+    get vuRegs() {
+        return this.vu !== null ? this.vu.regs : null;
+    }
+
+    get vuState() {
+        return this.vu !== null ? this.vu.state : null;
+    }
+
+    get vuQueueItems() {
+        return this.vu !== null ? this.vu.queueItems : [];
+    }
+
+    // ── VU dispatch table ─────────────────────────────────────────────
+
+    _buildVuDispatch() {
+        const d = this._dispatch;
+        d[Op.VSET_IMM16] = (instr) => this._hVsetImm16(instr);
+        d[Op.VSET_GPR] = (instr) => this._hVsetGpr(instr);
+        d[Op.VSET_MEM] = (instr) => this._hVsetMem(instr);
+        d[Op.VSET_MEMI] = (instr) => this._hVsetMemi(instr);
+        d[Op.VFSTAT] = (instr) => this._hVfstat(instr);
+        d[Op.VFCLR] = (instr) => this._hVfclr(instr);
+        d[Op.VWAIT] = (instr) => this._hVwait(instr);
+        for (const opVal of VU_ASYNC_OPS) {
+            d[opVal] = (instr) => this._hVasync(instr, opVal);
+        }
+    }
+
+    // ── VU sync handlers ──────────────────────────────────────────────
+
+    _hVsetImm16(instr) {
+        const target = instr.operands[0];
+        if (target > 4) throw new CpuFault(ErrorCode.INVALID_REG, this.regs.ip);
+        const val = (instr.operands[2] << 8) | instr.operands[1];
+        this.vu.regs.writeReg(target, val);
+        this.regs.ip += instr.size;
+    }
+
+    _hVsetGpr(instr) {
+        const target = instr.operands[0];
+        if (target > 4) throw new CpuFault(ErrorCode.INVALID_REG, this.regs.ip);
+        const packed = instr.operands[1];
+        const rH = (packed >> 2) & 3;
+        const rL = packed & 3;
+        const val = (this.regs.read(rH) << 8) | this.regs.read(rL);
+        this.vu.regs.writeReg(target, val);
+        this.regs.ip += instr.size;
+    }
+
+    _hVsetMem(instr) {
+        const target = instr.operands[0];
+        if (target > 4) throw new CpuFault(ErrorCode.INVALID_REG, this.regs.ip);
+        const addr = instr.operands[1];
+        if (addr + 1 > 255) throw new CpuFault(ErrorCode.PAGE_BOUNDARY, this.regs.ip);
+        const ea = this._directAddr(addr);
+        const val = this.mem.get(ea) | (this.mem.get(ea + 1) << 8);
+        this.vu.regs.writeReg(target, val);
+        this.regs.ip += instr.size;
+    }
+
+    _hVsetMemi(instr) {
+        const target = instr.operands[0];
+        if (target > 4) throw new CpuFault(ErrorCode.INVALID_REG, this.regs.ip);
+        const ea = this._indirectAddr(instr.operands[1]);
+        const pageOff = ea % PAGE_SIZE;
+        if (pageOff + 1 >= PAGE_SIZE) {
+            throw new CpuFault(ErrorCode.PAGE_BOUNDARY, this.regs.ip);
+        }
+        const val = this.mem.get(ea) | (this.mem.get(ea + 1) << 8);
+        this.vu.regs.writeReg(target, val);
+        this.regs.ip += instr.size;
+    }
+
+    _hVfstat(instr) {
+        const gpr = instr.operands[0];
+        if (gpr > 3) throw new CpuFault(ErrorCode.INVALID_REG, this.regs.ip);
+        this.regs.write(gpr, this.vu.regs.vfpsr);
+        this.regs.ip += instr.size;
+    }
+
+    _hVfclr(instr) {
+        this.vu.regs.vfpsr = 0;
+        this.regs.ip += instr.size;
+    }
+
+    _hVwait(instr) {
+        if (!this.vu.isEmpty) {
+            this._vuWaiting = true;
+            this._vwaitSize = instr.size;
+        } else {
+            this.regs.ip += instr.size;
+        }
+    }
+
+    // ── VU async handler ──────────────────────────────────────────────
+
+    _hVasync(instr, opcode) {
+        const vu = this.vu;
+        const [fmt, mode, cond] = decodeVfm(instr.operands[0]);
+        const [dstCode, s1Code, s2Code] = decodeVuRegs(instr.operands[1]);
+
+        this._validateVfm(opcode, fmt, mode, cond, instr.operands[1]);
+
+        if (vu.regs.vl === 0) {
+            this.regs.ip += instr.size;
+            return;
+        }
+
+        const elemSize = VU_FMT_ELEM_SIZE[fmt] || 1;
+
+        // Build immediate value
+        let imm = 0;
+        if (mode === VU_MODE_VI) {
+            for (let i = 2; i < instr.operands.length; i++) {
+                imm |= instr.operands[i] << (8 * (i - 2));
+            }
+        } else if (mode === VU_MODE_VS) {
+            imm = this.regs.read(s2Code);
+        }
+
+        // Build command with snapshotted pointers
+        const cmd = new VuCommand(
+            opcode,
+            fmt,
+            mode,
+            cond,
+            vu.regs.readPtr(dstCode),
+            vu.regs.readPtr(s1Code),
+            mode !== VU_MODE_VS ? vu.regs.readPtr(s2Code) : 0,
+            vu.regs.vm,
+            vu.regs.vl,
+            imm,
+            this._instrDef[opcode]?.mnemonic ?? "V??",
+            dstCode,
+            s1Code,
+            s2Code,
+        );
+
+        // Auto-increment VU pointers
+        this._vuAutoInc(vu, opcode, mode, dstCode, s1Code, s2Code, vu.regs.vl, elemSize);
+
+        // If queue is full, drain until there is space
+        while (vu.isFull) {
+            vu.tick(this.mem, this._vuRoundingMode());
+        }
+        vu.enqueue(cmd);
+        this.regs.ip += instr.size;
+    }
+
+    _validateVfm(opcode, fmt, mode, cond, regsByte) {
+        if (fmt > 6) {
+            throw new CpuFault(ErrorCode.VU_FORMAT, this.regs.ip);
+        }
+        if (opcode !== Op.VCMP && cond !== 0) {
+            throw new CpuFault(ErrorCode.VU_FORMAT, this.regs.ip);
+        }
+        if (opcode === Op.VCMP && cond > 5) {
+            throw new CpuFault(ErrorCode.VU_FORMAT, this.regs.ip);
+        }
+        if (VU_INT_FMTS.has(fmt) && (opcode === Op.VDOT || opcode === Op.VSQRT)) {
+            throw new CpuFault(ErrorCode.VU_FORMAT, this.regs.ip);
+        }
+        // GPR broadcast restricted to byte formats (elem_size == 1)
+        if (mode === VU_MODE_VS && (VU_FMT_ELEM_SIZE[fmt] || 1) > 1) {
+            throw new CpuFault(ErrorCode.VU_FORMAT, this.regs.ip);
+        }
+        if (!this._vuValidMode(opcode, mode)) {
+            throw new CpuFault(ErrorCode.VU_FORMAT, this.regs.ip);
+        }
+        // Reserved bits in regs byte
+        if (regsByte & 0x03) {
+            throw new CpuFault(ErrorCode.VU_FORMAT, this.regs.ip);
+        }
+    }
+
+    _vuValidMode(opcode, mode) {
+        if (VU_VV_ONLY_OPS.has(opcode)) return mode === 0;
+        if (VU_UNARY_OPS.has(opcode) || opcode === Op.VMOV) return mode === 0;
+        if (opcode === Op.VFILL) return mode === VU_MODE_VI;
+        return true;
+    }
+
+    _vuAutoInc(vu, op, mode, dstCode, s1Code, s2Code, vl, sz) {
+        const [dstInc, s1Inc, s2Inc] = this._vuComputeIncrements(op, mode, vl, sz);
+        const increments = {};
+        for (const [code, inc] of [
+            [dstCode, dstInc],
+            [s1Code, s1Inc],
+            [s2Code, s2Inc],
+        ]) {
+            if (inc > 0) {
+                increments[code] = Math.max(increments[code] || 0, inc);
+            }
+        }
+        for (const code of Object.keys(increments)) {
+            vu.regs.incPtr(Number(code), increments[code]);
+        }
+    }
+
+    static _NO_S2_OPS = new Set([Op.VSQRT, Op.VNEG, Op.VABS, Op.VMOV, Op.VFILL]);
+
+    _vuComputeIncrements(op, mode, vl, sz) {
+        const bigS = vl * sz;
+        const smallS = sz;
+
+        // dst
+        let dstInc;
+        if (op === Op.VDOT) dstInc = smallS;
+        else if (op === Op.VCMP) dstInc = vl;
+        else if (mode === VU_MODE_R) dstInc = smallS;
+        else dstInc = bigS;
+
+        // src1
+        const s1Inc = op === Op.VFILL || op === Op.VSEL ? 0 : bigS;
+
+        // src2
+        let s2Inc;
+        if (CPU._NO_S2_OPS.has(op)) s2Inc = 0;
+        else if (mode === VU_MODE_VS || mode === VU_MODE_VI || mode === VU_MODE_R) s2Inc = 0;
+        else s2Inc = bigS;
+
+        return [dstInc, s1Inc, s2Inc];
     }
 }

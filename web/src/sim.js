@@ -1,23 +1,34 @@
 /**
- * sim8 v2 — Browser UI orchestrator.
+ * sim8 v3 — Browser UI orchestrator.
  * Wires CPU, assembler, and all UI modules together.
  */
 
 import { assembleAsync, AsmError } from "../lib/asm.js";
 import { CpuState } from "../lib/core.js";
-import { BY_CODE_FP } from "../lib/isa.js";
-
+import { BY_CODE_FP, BY_CODE_VU } from "../lib/isa.js";
 import { cpu, asm, refreshColors, IO_BASE, PAGE_SIZE } from "./state.js";
 import { renderCPU } from "./ui/cpu.js";
 import { renderFPU } from "./ui/fpu.js";
+import { renderVU } from "./ui/vu.js";
 import { renderMemory } from "./ui/mem.js";
 import { renderDisplay } from "./ui/display.js";
 import { renderLabels } from "./ui/labels.js";
+import { onToggle } from "./ui/marker-toggle.js";
 import { setupControls, stopRun, isRunning, updateRunBtnColor } from "./controls.js";
 import { initEditor, highlightExecLine, clearExecLine, showDiagnostic, clearDiagnostics } from "./editor.js";
 import { initTabs, saveCurrentTab, getVirtualFiles, getMainSource, switchTabForExec } from "./tabs.js";
 import { breakpoints } from "./breakpoints.js";
-import { flashWire, initWires, updateWireColors, WIRE_DATA, WIRE_FP, WIRE_IO } from "./wires.js";
+import {
+    flashWire,
+    initWires,
+    updateWireColors,
+    WIRE_DATA,
+    WIRE_FP,
+    WIRE_IO,
+    WIRE_VU_CMD,
+    WIRE_VU_A,
+    WIRE_VU_B,
+} from "./wires.js";
 import { fitDiagram, setupSplitHandle, adjustBlockPositions } from "./layout.js";
 
 // ── Render all ─────────────────────────────────────────────────
@@ -40,10 +51,17 @@ function showExecLine() {
 function renderAll() {
     renderCPU();
     renderFPU();
+    renderVU(cpu.vu);
     renderMemory();
     renderDisplay();
     showExecLine();
 }
+
+onToggle(() => {
+    renderCPU();
+    renderVU(cpu.vu);
+    renderMemory();
+});
 
 // ── Assembly ───────────────────────────────────────────────────
 
@@ -64,7 +82,7 @@ async function doAssemble() {
     asm.labelNames = new Map();
 
     try {
-        const result = await assembleAsync(getMainSource(), 2, getVirtualFiles());
+        const result = await assembleAsync(getMainSource(), 3, getVirtualFiles());
         asm.codeLen = result.code.length;
         asm.labels = result.labels;
         asm.mapping = result.mapping;
@@ -95,25 +113,39 @@ function ioChanged() {
     return _ioSnap.some((v, i) => cpu.mem.get(IO_BASE + i) !== v);
 }
 
-function stepCPU() {
-    if (cpu.state === CpuState.FAULT || cpu.state === CpuState.HALTED) return 0;
+function _activeWires(cpuDid, vuDid, opcode) {
+    const wires = [];
+    if (vuDid) wires.push(WIRE_VU_A, WIRE_VU_B);
+    if (cpuDid) {
+        if (BY_CODE_VU[opcode] !== undefined) {
+            wires.push(WIRE_VU_CMD);
+        } else if (BY_CODE_FP[opcode] !== undefined) {
+            wires.push(WIRE_FP);
+        } else {
+            wires.push(WIRE_DATA);
+        }
+    }
+    if (ioChanged()) wires.push(WIRE_IO);
+    return wires;
+}
 
-    const prevCycles = cpu.cycles;
-    const opcode = cpu.mem.get(cpu.ip);
+function stepCPU() {
+    if (cpu.state === CpuState.FAULT) return 0;
 
     for (let i = 0; i < _ioSnap.length; i++) _ioSnap[i] = cpu.mem.get(IO_BASE + i);
 
-    const wasRunning = cpu.step();
+    const opcode = cpu.mem.get(cpu.ip);
 
-    if (BY_CODE_FP[opcode] !== undefined) {
-        flashWire(WIRE_FP);
-    } else {
-        flashWire(WIRE_DATA);
-    }
-    if (ioChanged()) flashWire(WIRE_IO);
+    // VU ticks first — newly issued commands appear in queue for 1 UI frame
+    const vuDid = cpu.vuTick();
+    const cpuDid = cpu.step();
+
+    if (!cpuDid && !vuDid && !cpu.vuWaiting) return 0;
+
+    for (const w of _activeWires(cpuDid, vuDid, opcode)) flashWire(w);
 
     renderAll();
-    return wasRunning ? cpu.cycles - prevCycles : 0;
+    return 1;
 }
 
 async function resetCPU() {

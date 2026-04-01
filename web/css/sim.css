@@ -30,7 +30,7 @@
 
     /* ── Layout sizes (for resizable diagram) ── */
     --s-split: 38%;
-    --s-diagram-w: 840px;
+    --s-diagram-w: 930px;
     --s-block-radius: 4px;
     --s-block-font: 11px;
     --s-hdr-font: 10px;
@@ -67,6 +67,11 @@
     --s-tab-pad: 2px 8px;
     --s-page-btn: 20px;
     --s-fp-cell-h: 22px;
+
+    /* ── VU block ── */
+    --s-vu-w: 220px;
+    --s-vu-x: 660px;
+    --s-vu-queue-h: 22px;
 }
 
 :root.light {
@@ -240,6 +245,19 @@ body {
 
 .mem-cell.marker-d {
     border-color: var(--a-red);
+}
+
+/* ── VU window markers (dashed border, distinct from scalar) ── */
+.mem-cell.marker-va {
+    border: 1px dashed var(--a-green);
+}
+
+.mem-cell.marker-vb {
+    border: 1px dashed var(--a-blue);
+}
+
+.mem-cell.marker-vc {
+    border: 1px dashed var(--a-orange);
 }
 
 /* ── Register rows ── */
@@ -836,4 +854,44 @@ body {
     outline: none;
     width: 120px;
     padding: 0;
+}
+
+/* ── Vector Unit queue ── */
+.vu-queue {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    width: 100%;
+}
+
+.vu-queue-slot {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    height: var(--s-vu-queue-h);
+    font-size: 9px;
+    border: 1px solid var(--t-border);
+    border-radius: 2px;
+    color: var(--t-dim);
+}
+
+.vu-queue-slot.pending {
+    color: var(--t-mid);
+}
+
+.vu-queue-slot.active {
+    color: var(--a-orange);
+    border-color: var(--a-orange);
+    background: var(--a-orange-a20);
+    font-weight: 700;
+}
+
+.vu-q-mn {
+    font-weight: 700;
+}
+
+.vu-q-op {
+    font-weight: 400;
+    font-size: 8px;
 }

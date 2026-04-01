@@ -11,6 +11,7 @@ export function adjustBlockPositions(initWiresFn) {
     const cpuEl = document.getElementById("blk-cpu");
     const fpuEl = document.getElementById("blk-fpu");
     const memEl = document.getElementById("blk-mem");
+    const vuEl = document.getElementById("blk-vu");
     const dispEl = document.getElementById("blk-disp");
     const wireGap = parseInt(cssVar("--s-wire-gap")) || 56;
 
@@ -26,6 +27,11 @@ export function adjustBlockPositions(initWiresFn) {
 
     const memTop = parseInt(memEl.style.top);
     const memH = memEl.offsetHeight;
+
+    if (vuEl) {
+        vuEl.style.top = memTop + "px";
+    }
+
     dispEl.style.top = memTop + memH + wireGap + "px";
 
     const container = document.getElementById("diagram-container");

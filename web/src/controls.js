@@ -103,7 +103,8 @@ export function setupControls({ onStep, onReset, renderAll, checkBp, getExecLine
 
     btnStep.addEventListener("click", () => {
         if (runTimer) stopRun();
-        if (cpu.state === CpuState.HALTED || cpu.state === CpuState.FAULT) return;
+        if (cpu.state === CpuState.FAULT) return;
+        if (cpu.state === CpuState.HALTED) return;
         if (stepTimer) {
             clearTimeout(stepTimer);
             stepTimer = null;

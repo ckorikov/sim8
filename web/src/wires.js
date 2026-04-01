@@ -8,6 +8,9 @@ const WIRE_FLASH_MS = 350;
 export const WIRE_DATA = 0;
 export const WIRE_FP = 1;
 export const WIRE_IO = 2;
+export const WIRE_VU_CMD = 3;
+export const WIRE_VU_A = 4;
+export const WIRE_VU_B = 5;
 
 export function flashWire(idx) {
     const edge = document.querySelectorAll("#wire-canvas .x6-edge")[idx];
@@ -18,7 +21,14 @@ export function flashWire(idx) {
 
 export function updateWireColors() {
     document.querySelectorAll("#wire-canvas rect[rx]").forEach((r) => r.setAttribute("fill", colors.canvas));
-    const wireColors = [colors.yl, colors.or, colors.gr];
+    const wireColors = {
+        [WIRE_DATA]: colors.yl,
+        [WIRE_FP]: colors.or,
+        [WIRE_IO]: colors.gr,
+        [WIRE_VU_CMD]: colors.yl,
+        [WIRE_VU_A]: colors.yl,
+        [WIRE_VU_B]: colors.yl,
+    };
     document.querySelectorAll("#wire-canvas .x6-edge").forEach((edge, i) => {
         const c = wireColors[i];
         if (!c) return;
@@ -120,7 +130,21 @@ export function initWires() {
         });
     }
 
-    addWire("port-cpu-bottom", "port-mem-top", colors.yl, "data bus");
+    const cpuBot = portPos("port-cpu-bottom");
+    const memTop = portPos("port-mem-top");
+    const dataBusY = memTop.y - 20;
+    addWire("port-cpu-bottom", "port-mem-top", colors.yl, "data bus", {
+        vertices: [
+            { x: cpuBot.x, y: dataBusY },
+            { x: memTop.x, y: dataBusY },
+        ],
+    });
     addWire("port-cpu-right", "port-fpu-left", colors.or, "fp bus", { labelOffset: -12 });
     addWire("port-mem-bottom", "port-disp-top", colors.gr, "i/o", { bidir: false, labelOffset: 20 });
+
+    if (document.getElementById("port-vu-top")) {
+        addWire("port-cpu-vu", "port-vu-top", colors.yl, "cmd bus", { labelOffset: 14 });
+        addWire("port-mem-right-a", "port-vu-left-a", colors.yl, "vu bus", { vertices: [], labelOffset: -12 });
+        addWire("port-mem-right-b", "port-vu-left-b", colors.yl, "", { vertices: [] });
+    }
 }

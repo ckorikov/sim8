@@ -7,7 +7,7 @@ import { CPU, IO_START, SP_INIT, PAGE_SIZE } from "../lib/core.js";
 
 // ── CPU instance ────────────────────────────────────────────────
 
-export const cpu = new CPU();
+export const cpu = new CPU({ arch: 3 });
 
 // ── Constants ───────────────────────────────────────────────────
 
@@ -90,6 +90,15 @@ export function initFormatToggle(blockId, tabsSelector, attr, renderFn, initial 
     });
     return { get: () => state.fmt };
 }
+
+/** FP status register flag layout — shared by FPU (FPSR) and VU (VFPSR). */
+export const FPSR_FLAGS = [
+    { n: "NV", bit: 0 },
+    { n: "DZ", bit: 1 },
+    { n: "OF", bit: 2 },
+    { n: "UF", bit: 3 },
+    { n: "NX", bit: 4 },
+];
 
 export function escapeHtml(s) {
     return s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");

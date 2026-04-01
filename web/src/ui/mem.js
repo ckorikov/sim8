@@ -17,6 +17,7 @@ import {
 } from "../state.js";
 import { decodeFloat32, decodeFloat16, decodeBfloat16, decodeOfp8E4M3, decodeOfp8E5M2 } from "../../lib/fp.js";
 import { BY_CODE, BY_CODE_FP, OpType, FP_REGISTERS, decodeRegaddr } from "../../lib/isa.js";
+import { isHidden } from "./marker-toggle.js";
 
 // ── Data inspector tooltip ───────────────────────────────────────
 
@@ -154,9 +155,6 @@ function cellClass(addr, val, showInstr) {
     const absAddr = pageBase + addr;
     let cl = "mem-cell";
 
-    if (absAddr === cpu.ip) return cl + " marker-ip";
-    if (absAddr === cpu.sp) return cl + " marker-sp";
-
     if (showInstr && asm.instrStarts.has(absAddr)) {
         cl += " instr-start";
     } else if (page === 0 && addr >= IO_BASE) {
@@ -169,15 +167,54 @@ function cellClass(addr, val, showInstr) {
 
     if (asm.labelAddrs.has(absAddr)) cl += " label";
 
-    const dpBase = cpu.dp * PAGE_SIZE;
-    if (dpBase + cpu.a === absAddr && absAddr !== cpu.ip) cl += " marker-a";
-    if (dpBase + cpu.b === absAddr && absAddr !== cpu.ip) cl += " marker-b";
-    if (dpBase + cpu.c === absAddr && absAddr !== cpu.ip) cl += " marker-c";
-    if (dpBase + cpu.d === absAddr && absAddr !== cpu.ip) cl += " marker-d";
+    for (const m of _markers) {
+        if (absAddr >= m.addr && absAddr < m.addr + m.len) {
+            if (m.exclusive) return cl + m.cls;
+            cl += m.cls;
+        }
+    }
     return cl;
 }
 
+/** Build pointer markers: [{addr, len, cls, exclusive}] for CPU and VU. */
+function _buildMarkers() {
+    const markers = [];
+    const seen = new Set();
+
+    function add(addr, len, cls, regName, exclusive = false) {
+        if (isHidden(regName)) return;
+        const key = `${addr}:${len}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        markers.push({ addr, len, cls: " " + cls, exclusive });
+    }
+
+    // CPU instruction/stack pointers (exclusive — override other markers)
+    add(cpu.ip, 1, "marker-ip", "IP", true);
+    add(cpu.sp, 1, "marker-sp", "SP", true);
+
+    // CPU scalar pointers
+    const dpBase = cpu.dp * PAGE_SIZE;
+    add(dpBase + cpu.a, 1, "marker-a", "A");
+    add(dpBase + cpu.b, 1, "marker-b", "B");
+    add(dpBase + cpu.c, 1, "marker-c", "C");
+    add(dpBase + cpu.d, 1, "marker-d", "D");
+
+    // VU pointer windows: fixed 16-byte memory port width
+    const vu = cpu.vu;
+    if (vu && vu.regs.vl > 0) {
+        add(vu.regs.va, 16, "marker-va", "VA");
+        add(vu.regs.vb, 16, "marker-vb", "VB");
+        add(vu.regs.vc, 16, "marker-vc", "VC");
+    }
+
+    return markers;
+}
+
+let _markers = [];
+
 export function renderMemory() {
+    _markers = _buildMarkers();
     const showInstr = document.getElementById("chk-instr").checked;
     const baseCw = parseInt(cssVar("--s-mem-cell-w")) || 28;
     const cellW = memFmt.get() === "dec" ? baseCw + 2 : baseCw;

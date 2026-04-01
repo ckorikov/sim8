@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>sim8 v2 — Hardware Simulator</title>
+        <title>sim8 v3 — Hardware Simulator</title>
 
         <link
             href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap"
@@ -22,7 +22,7 @@
             style="background: var(--t-nav); border-color: var(--t-border)"
         >
             <span class="text-xs font-bold tracking-widest uppercase" style="color: var(--t-dim)">sim8</span>
-            <span class="text-xs font-bold" style="color: var(--a-orange)">v2</span>
+            <span class="text-xs font-bold" style="color: var(--a-orange)">v3</span>
 
             <div class="w-px h-4 mx-1" style="background: var(--t-border)"></div>
 
@@ -303,7 +303,12 @@
                         <div
                             class="hw-port"
                             id="port-cpu-bottom"
-                            style="bottom: -4px; left: 50%; transform: translateX(-50%); background: var(--a-yellow)"
+                            style="bottom: -4px; left: 33%; background: var(--a-yellow)"
+                        ></div>
+                        <div
+                            class="hw-port"
+                            id="port-cpu-vu"
+                            style="bottom: -4px; left: 66%; background: var(--a-yellow)"
                         ></div>
                         <div
                             class="hw-port"
@@ -501,6 +506,125 @@
                             class="hw-port"
                             id="port-mem-bottom"
                             style="bottom: -4px; left: 50%; transform: translateX(-50%); background: var(--a-green)"
+                        ></div>
+                        <div
+                            class="hw-port"
+                            id="port-mem-right-a"
+                            style="right: -4px; top: calc(50% - 8px); background: var(--a-yellow)"
+                        ></div>
+                        <div
+                            class="hw-port"
+                            id="port-mem-right-b"
+                            style="right: -4px; top: calc(50% + 8px); background: var(--a-yellow)"
+                        ></div>
+                    </div>
+
+                    <!-- Vector Unit Block -->
+                    <div class="hw-block" id="blk-vu" style="left: var(--s-vu-x); top: 288px; width: var(--s-vu-w)">
+                        <div class="hw-hdr" style="justify-content: space-between">
+                            <div style="display: flex; align-items: center; gap: 8px">
+                                <div class="dot" id="vu-state-dot" style="background: var(--t-dim)"></div>
+                                vu
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 4px" id="vu-fmt-tabs">
+                                <span
+                                    style="
+                                        font-size: var(--s-tab-font);
+                                        color: var(--t-dim);
+                                        font-weight: 400;
+                                        text-transform: none;
+                                        letter-spacing: 0;
+                                    "
+                                    >view:</span
+                                >
+                                <button class="ft act" data-vfmt="hex">hex</button>
+                                <button class="ft" data-vfmt="dec">dec</button>
+                            </div>
+                        </div>
+                        <div
+                            class="hw-body"
+                            style="padding: var(--s-body-compact-pad); gap: 0; align-items: flex-start"
+                        >
+                            <!-- Pointers: VA, VB, VC -->
+                            <div style="width: 100%; margin-bottom: var(--s-row-gap)">
+                                <div
+                                    style="
+                                        font-size: var(--s-label-font);
+                                        color: var(--t-dim);
+                                        text-transform: uppercase;
+                                        letter-spacing: 0.1em;
+                                        margin-bottom: 4px;
+                                    "
+                                >
+                                    addresses
+                                </div>
+                                <div
+                                    class="rr"
+                                    id="vu-ptrs"
+                                    style="margin-bottom: 0; justify-content: flex-start; flex-wrap: nowrap"
+                                ></div>
+                            </div>
+                            <!-- Mask + Length -->
+                            <div style="width: 100%; margin-bottom: var(--s-row-gap)">
+                                <div
+                                    style="
+                                        font-size: var(--s-label-font);
+                                        color: var(--t-dim);
+                                        text-transform: uppercase;
+                                        letter-spacing: 0.1em;
+                                        margin-bottom: 4px;
+                                    "
+                                >
+                                    mask &amp; length
+                                </div>
+                                <div class="rr" id="vu-ml" style="margin-bottom: 0; justify-content: flex-start"></div>
+                            </div>
+                            <!-- Status -->
+                            <div style="width: 100%; margin-bottom: var(--s-row-gap)">
+                                <div
+                                    style="
+                                        font-size: var(--s-label-font);
+                                        color: var(--t-dim);
+                                        text-transform: uppercase;
+                                        letter-spacing: 0.1em;
+                                        margin-bottom: 4px;
+                                    "
+                                >
+                                    status
+                                </div>
+                                <div class="rr" id="vu-flags" style="margin-bottom: 0"></div>
+                            </div>
+                            <!-- Queue -->
+                            <div style="width: 100%; margin-bottom: var(--s-row-gap)">
+                                <div
+                                    style="
+                                        font-size: var(--s-label-font);
+                                        color: var(--t-dim);
+                                        text-transform: uppercase;
+                                        letter-spacing: 0.1em;
+                                        margin-bottom: 4px;
+                                    "
+                                >
+                                    queue
+                                    <span id="vu-queue-depth" style="color: var(--t-dim); text-transform: none"></span>
+                                </div>
+                                <div id="vu-queue" class="vu-queue"></div>
+                            </div>
+                        </div>
+                        <div
+                            class="hw-port"
+                            id="port-vu-top"
+                            style="top: -4px; left: 50%; transform: translateX(-50%); background: var(--a-yellow)"
+                        ></div>
+                        <div
+                            class="hw-port"
+                            id="port-vu-left-a"
+                            style="left: -4px; top: calc(50% - 8px); background: var(--a-yellow)"
+                        ></div>
+                        <div
+                            class="hw-port"
+                            id="port-vu-left-b"
+                            style="left: -4px; top: calc(50% + 8px); background: var(--a-yellow)"
                         ></div>
                     </div>
 

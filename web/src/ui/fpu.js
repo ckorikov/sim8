@@ -2,7 +2,7 @@
  * FPU block renderer: FA/FB registers, rounding mode, status flags, format toggle.
  */
 
-import { cpu, colors, hex, initFormatToggle } from "../state.js";
+import { cpu, colors, hex, initFormatToggle, FPSR_FLAGS } from "../state.js";
 import { decodeFloat16Bits, decodeBfloat16, decodeOfp8E4M3, decodeOfp8E5M2 } from "../../lib/fp.js";
 
 // Sub-register names by physical register index, ordered MSB→LSB (display order)
@@ -109,14 +109,7 @@ export function renderFPU() {
     ).join("");
 
     const fpsr = fpu.fpsr;
-    const fl = [
-        { n: "NV", bit: 0 },
-        { n: "DZ", bit: 1 },
-        { n: "OF", bit: 2 },
-        { n: "UF", bit: 3 },
-        { n: "NX", bit: 4 },
-    ];
-    elFpuFlags.innerHTML = fl
-        .map((f) => `<span class="fb ${(fpsr >> f.bit) & 1 ? "fb-on" : "fb-off"}" style="font-size:8px;">${f.n}</span>`)
-        .join("");
+    elFpuFlags.innerHTML = FPSR_FLAGS.map(
+        (f) => `<span class="fb ${(fpsr >> f.bit) & 1 ? "fb-on" : "fb-off"}" style="font-size:8px;">${f.n}</span>`,
+    ).join("");
 }

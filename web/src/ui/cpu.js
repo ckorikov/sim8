@@ -3,6 +3,7 @@
  */
 
 import { cpu, colors, regColors, hex, initFormatToggle } from "../state.js";
+import { isHidden, bindToggleClicks } from "./marker-toggle.js";
 
 const cpuFmt = initFormatToggle("blk-cpu", "#cpu-fmt-tabs", "cfmt", () => renderCPU());
 
@@ -37,9 +38,15 @@ const STATE_INFO = {
     },
 };
 
+bindToggleClicks("blk-cpu");
+
 export function renderCPU() {
-    const ri = (n, v) =>
-        `<div class="ri"><span class="ri-l" style="color:${regColors[n] || colors.dim}">${n}</span><span class="ri-v" style="color:${regColors[n] || colors.txt}">${cpuFmtVal(v)}</span></div>`;
+    const ri = (n, v) => {
+        const off = isHidden(n);
+        const lc = off ? colors.dim : regColors[n] || colors.dim;
+        const vc = off ? colors.txt : regColors[n] || colors.txt;
+        return `<div class="ri"><span class="ri-l" style="color:${lc}">${n}</span><span class="ri-v" style="color:${vc}">${cpuFmtVal(v)}</span></div>`;
+    };
     const fl = (n, v) =>
         `<span class="fb" style="border-color:${v ? colors.or : "var(--t-border)"};color:${v ? colors.or : colors.dim};min-width:var(--s-flag-min-w);">${n}</span>`;
 
