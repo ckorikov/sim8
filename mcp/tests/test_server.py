@@ -13,6 +13,8 @@ run_binary = srv.tool_run_binary
 disassemble = srv.tool_disassemble
 get_spec = srv.tool_get_spec
 search_spec = srv.tool_search_spec
+describe_instr = srv.tool_describe_instr
+list_instructions = srv.tool_list_instructions
 
 
 # ── MCP registration ─────────────────────────────────────────────
@@ -20,7 +22,16 @@ search_spec = srv.tool_search_spec
 
 def test_mcp_tools_registered() -> None:
     tools = asyncio.run(srv.mcp._tool_manager.get_tools())
-    expected = {"assemble_source", "run_program", "run_binary", "disassemble", "get_spec", "search_spec"}
+    expected = {
+        "assemble_source",
+        "run_program",
+        "run_binary",
+        "disassemble",
+        "get_spec",
+        "search_spec",
+        "describe_instr",
+        "list_instructions",
+    }
     assert expected == set(tools.keys())
 
 
@@ -275,3 +286,126 @@ def test_search_spec_invalid_section() -> None:
 def test_search_spec_empty_query() -> None:
     result = search_spec("")
     assert "error" in result
+
+
+# ── memory dump ──────────────────────────────────────────────────
+
+
+def test_run_program_memory_dump() -> None:
+    result = run_program("MOV A, 42\nMOV [100], A\nHLT", mem_start=100, mem_len=1)
+    assert "error" not in result
+    assert result["state"] == "HALTED"
+    assert result["memory"]["start"] == 100
+    assert result["memory"]["length"] == 1
+    assert result["memory"]["bytes"] == [42]
+    assert result["memory"]["hex"] == "2a"
+
+
+def test_run_program_no_memory_by_default() -> None:
+    result = run_program("HLT")
+    assert "memory" not in result
+
+
+def test_run_binary_memory_dump() -> None:
+    asm_result = assemble_source("MOV A, 7\nMOV [50], A\nHLT")
+    assert "error" not in asm_result
+    result = run_binary(asm_result["code_hex"], mem_start=50, mem_len=2)
+    assert result["memory"]["bytes"][0] == 7
+    assert result["memory"]["length"] == 2
+
+
+def test_run_program_memory_dump_page() -> None:
+    """Dump a full page (default mem_len=256)."""
+    result = run_program("MOV A, 0xFF\nMOV [0], A\nHLT", mem_start=0)
+    assert result["memory"]["length"] == 256
+    # byte at address 0 is the MOV opcode, not 0xFF (code is loaded there)
+    assert len(result["memory"]["hex"]) == 512  # 256 bytes * 2 hex chars
+
+
+def test_run_program_memory_invalid_start() -> None:
+    result = run_program("HLT", mem_start=-1)
+    assert "error" in result
+
+
+def test_run_program_memory_invalid_len() -> None:
+    result = run_program("HLT", mem_start=0, mem_len=0)
+    assert "error" in result
+
+
+# ── describe_instr ───────────────────────────────────────────────
+
+
+def test_describe_instr_mov() -> None:
+    result = describe_instr("MOV")
+    assert "error" not in result
+    assert result["mnemonic"] == "MOV"
+    assert "Copy value" in result["description"]
+    assert len(result["forms"]) > 0
+    assert any("reg" in f for f in result["forms"])
+
+
+def test_describe_instr_fadd() -> None:
+    result = describe_instr("FADD")
+    assert "error" not in result
+    assert result["mnemonic"] == "FADD"
+    assert "fp_exceptions" in result
+    assert "fp_formats" in result
+
+
+def test_describe_instr_alias() -> None:
+    result = describe_instr("JB")
+    assert "error" not in result
+    assert result["mnemonic"] == "JC"
+    assert result["alias_of"] == "JC"
+
+
+def test_describe_instr_case_insensitive() -> None:
+    result = describe_instr("mov")
+    assert "error" not in result
+    assert result["mnemonic"] == "MOV"
+
+
+def test_describe_instr_unknown() -> None:
+    result = describe_instr("XYZZY")
+    assert "error" in result
+    assert "mnemonics" in result
+    assert "aliases" in result
+
+
+def test_describe_instr_empty() -> None:
+    result = describe_instr("")
+    assert "error" in result
+
+
+def test_describe_instr_fcontrol_no_formats() -> None:
+    """FP control instructions (FSTAT, FCLR) should not show fp_formats."""
+    result = describe_instr("FSTAT")
+    assert "error" not in result
+    assert "fp_formats" not in result
+
+
+def test_describe_instr_flags() -> None:
+    result = describe_instr("ADD")
+    assert "flags" in result
+    assert "Z" in result["flags"]
+
+
+def test_describe_instr_note() -> None:
+    result = describe_instr("DIV")
+    assert "note" in result
+    assert "FAULT" in result["note"]
+
+
+# ── list_instructions ────────────────────────────────────────────
+
+
+def test_list_instructions() -> None:
+    result = list_instructions()
+    assert "instructions" in result
+    assert "aliases" in result
+    mnemonics = [i["mnemonic"] for i in result["instructions"]]
+    assert "MOV" in mnemonics
+    assert "FADD" in mnemonics
+    assert "HLT" in mnemonics
+    assert len(result["aliases"]) > 0
+    assert result["aliases"]["JB"] == "JC"
