@@ -6,7 +6,7 @@
 **Target Platform:** Modern Web Browsers
 **Purpose:** Educational tool for assembly language learning
 
-**Architecture Version:** 2
+**Architecture Version:** 3
 
 ---
 
@@ -22,6 +22,7 @@
 | [6. Test Specification](tests.md) | `tests.md` |
 | [7. Floating-Point Unit (FPU)](fp.md) | `fp.md` |
 | [8. FP Test Specification](tests-fp.md) | `tests-fp.md` |
+| [9. Vector Unit (VU)](vector.md) | `vector.md` |
 | [Appendix A: Complete Opcode Table](opcodes.md) | `opcodes.md` |
 | [Appendix B: Error Codes](errors.md) | `errors.md` |
 
@@ -88,7 +89,7 @@ Redesigned architecture with formal specification and verification. Key changes 
 - Terminal TUI (Rich): scrolling trace, register panel, I/O display, playback control
 - MCP server for LLM integration (Claude Code / Claude Desktop)
 
-### v2 — sim8 FPU extension (current)
+### v2 — sim8 FPU extension
 
 IEEE 754 floating-point coprocessor extension. Key additions from v1:
 
@@ -146,3 +147,74 @@ IEEE 754 floating-point coprocessor extension. Key additions from v1:
 - See [uarch.md §4.6](uarch.md#46-fpu-pipeline) for the complete model
 
 **Totals:** 109 opcodes assigned (74 integer + 35 FP), 147 free, 7 error codes
+
+### v3 — sim8 Vector Unit extension (current)
+
+Asynchronous Vector Unit (VU) coprocessor for bulk data operations. Designed for neural network inference (transformer models) on the 8-bit CPU. Key additions from v2:
+
+**Execution model — async command queue:**
+
+- CPU decodes vector instructions, resolves addresses, pushes fully-resolved commands to VU FIFO queue
+- VU executes commands in-order, independently of CPU (true parallelism)
+- Fixed queue depth (implementation-defined, minimum 8), CPU stalls on overflow (back-pressure)
+- VWAIT instruction drains queue; VU faults propagate to CPU at VWAIT
+
+**Two interfaces — synchronous and asynchronous:**
+
+- Synchronous (CPU-immediate): VSET (register configuration), VFSTAT/VFCLR (FP status), VWAIT (barrier)
+- Asynchronous (queued): all data operations (arithmetic, dot product, unary, mask, memory)
+
+**VU registers (new):**
+
+- VA, VB, VC (16-bit): address pointers (absolute, not DP-relative)
+- VM (16-bit): mask pointer
+- VL (16-bit): vector length in elements (0–65535)
+- VFPSR (8-bit): vector FP status register (separate from scalar FPSR, same flag layout)
+
+**Data formats:**
+
+- All 5 active FP formats from v2: float32, float16, bfloat16, OFP8 E4M3, OFP8 E5M2
+- New: UINT8 (unsigned 8-bit integer), INT8 (signed 8-bit integer)
+- Format encoded as instruction suffix (like FPU: `.F`, `.H`, `.BF`, `.O3`, `.O2`, `.U`, `.I`)
+
+**Addressing modes (RVV-style):**
+
+- vv (vector-vector): both operands from memory — inferred when 3rd operand is VU register
+- vs (GPR broadcast): scalar from CPU register (A–D), broadcast to all lanes — inferred when 3rd operand is GPR
+- vi (immediate broadcast): inline immediate — inferred when 3rd operand is number
+- r (reduction): scalar result — inferred when 2 operands
+
+**Vector instructions (21 opcodes, 163–183):**
+
+- Configuration: VSET (4 opcodes), VFSTAT, VFCLR, VWAIT
+- Arithmetic: VADD, VSUB, VMUL, VDIV, VMAX, VMIN (6 opcodes, each with vv/vs/vi/r modes)
+- Dot product: VDOT (all pointer operands auto-increment per universal rule)
+- Unary: VSQRT, VNEG, VABS
+- Mask: VCMP (6 conditions: EQ/NE/LT/LE/GT/GE) → byte mask at [VM]; VSEL (select by mask)
+- Memory: VMOV (copy with auto-increment), VFILL (fill with immediate)
+
+**VFM Byte Encoding:**
+
+- 1-byte Vector Format Modifier: `[cond:3][mode:2][fmt:3]`
+- Encodes format, addressing mode, and comparison condition in one byte
+- All async commands: 3 bytes (opcode + VFM + register operand byte), or 3 + elem_size for immediate mode
+
+**Memory model:**
+
+- Shared 64 KB, VU has own memory bus
+- No hardware coherence — concurrent CPU/VU access = undefined behavior (Ascend-style)
+- Programmer manages synchronization via VWAIT
+
+**Fault model:**
+
+- VU faults (OOB): deferred — CPU discovers at VWAIT
+- VFM decode errors: immediate CPU FAULT (like FPM errors)
+- FP exceptions: sticky flags in VFPSR (never FAULT)
+- No VSTART/resume — partial writes undefined
+
+**New error codes:**
+
+- ERR_VU_OOB (13): VU memory access overflow
+- ERR_VU_FORMAT (14): invalid VFM byte encoding
+
+**Totals:** 130 opcodes assigned (74 integer + 35 FP + 21 vector), 126 free, 9 error codes

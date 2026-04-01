@@ -1,6 +1,6 @@
 # Appendix A: Complete Opcode Table
 
-> Architecture v2 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Instruction Encoding](isa.md#18-instruction-encoding-format), [FPU](fp.md)
+> Architecture v3 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Instruction Encoding](isa.md#18-instruction-encoding-format), [FPU](fp.md), [Vector Unit](vector.md)
 
 | Opcode | Mnemonic | Operands | Bytes |
 |--------|----------|----------|-------|
@@ -117,5 +117,31 @@
 | 161 | FMOV | FP, imm8 | 3 |
 | 162 | FMOV | FP, imm16 | 4 |
 
-**Total: 109 opcodes** (74 integer + 35 FP)
-**Unused (reserved):** 9, 24-29, 44-49, 58-59, 68-69, 83-89, 98-127, 163-255. These ranges are reserved for future architecture versions. Executing a reserved opcode triggers FAULT (`ERR_INVALID_OPCODE`, A=6).
+| | **Vector Instructions (Synchronous)** | | |
+| 163 | VSET | reg, #imm16 | 4 |
+| 164 | VSET | reg, rH, rL | 3 |
+| 165 | VSET | reg, [addr] | 3 |
+| 166 | VSET | reg, [reg] | 3 |
+| 167 | VFSTAT | gpr | 2 |
+| 168 | VFCLR | — | 1 |
+| 169 | VWAIT | — | 1 |
+| | **Vector Instructions (Asynchronous)** | | |
+| 170 | VADD | vfm, regs [#imm] | 3/4/5/7 |
+| 171 | VSUB | vfm, regs [#imm] | 3/4/5/7 |
+| 172 | VMUL | vfm, regs [#imm] | 3/4/5/7 |
+| 173 | VDIV | vfm, regs [#imm] | 3/4/5/7 |
+| 174 | VMAX | vfm, regs [#imm] | 3/4/5/7 |
+| 175 | VMIN | vfm, regs [#imm] | 3/4/5/7 |
+| 176 | VDOT | vfm, regs | 3 |
+| 177 | VSQRT | vfm, regs | 3 |
+| 178 | VNEG | vfm, regs | 3 |
+| 179 | VABS | vfm, regs | 3 |
+| 180 | VCMP | vfm, regs | 3 |
+| 181 | VSEL | vfm, regs | 3 |
+| 182 | VMOV | vfm, regs | 3 |
+| 183 | VFILL | vfm, regs, imm | 4/5/7 |
+
+**Total: 130 opcodes** (74 integer + 35 FP + 21 vector)
+**Unused (reserved):** 9, 24-29, 44-49, 58-59, 68-69, 83-89, 98-127, 184-255. These ranges are reserved for future architecture versions. Executing a reserved opcode triggers FAULT (`ERR_INVALID_OPCODE`, A=6).
+
+**Variable-length vector instructions:** Async vector instructions (170–183) have variable size depending on VFM mode and data format. In `.vv`/`.vs`/`.r` modes the instruction is 3 bytes (opcode + VFM + register byte). In `.vi` (immediate) mode, an inline element follows the register byte: 1 byte for OFP8/UINT8/INT8, 2 bytes for float16/bfloat16, 4 bytes for float32 — giving total sizes of 4, 5, or 7 bytes respectively. VFILL (183) always uses `.vi` mode, so it is 4/5/7 bytes.

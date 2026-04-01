@@ -1,6 +1,6 @@
 # 2. Memory Model & Addressing
 
-> Architecture v2 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [CPU Architecture](cpu.md), [Microarchitecture](uarch.md), [Assembler](asm.md), [Tests](tests.md), [FP Tests](tests-fp.md), [FPU](fp.md)
+> Architecture v3 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [CPU Architecture](cpu.md), [Microarchitecture](uarch.md), [Assembler](asm.md), [Tests](tests.md), [FP Tests](tests-fp.md), [FPU](fp.md), [Vector Unit](vector.md)
 
 This document is a focused reference for **memory layout**, **paged addressing via DP**, and **effective address calculation**.
 
@@ -129,6 +129,33 @@ An FP memory access must not cross a page boundary. If `page_offset + size - 1 >
 ### Atomicity
 
 FP memory reads and writes are not atomic with respect to interrupts (sim8 has no interrupt model). A multi-byte read fetches bytes sequentially from low to high address. A multi-byte write stores bytes sequentially from low to high address.
+
+## VU Memory Access
+
+The Vector Unit accesses the same 64 KB address space as the CPU but uses a conceptually independent memory bus.
+
+### Addressing
+
+VU commands use **absolute 16-bit addresses** resolved from VA, VB, VC, VM registers. The DP register has no effect on vector memory access. A vector of VL elements in format fmt occupies contiguous bytes from address $A$ to $A + VL \times \text{elem\_size} - 1$.
+
+### Byte Ordering
+
+Multi-byte elements (float32, float16, bfloat16) use **little-endian** byte order, same as FPU memory access.
+
+### No Hardware Coherence
+
+There is no cache coherence or memory ordering guarantee between CPU and VU memory access. Concurrent access by both CPU and VU to overlapping memory regions is **undefined behavior**. Programs must use `VWAIT` to synchronize:
+
+- Before the CPU reads memory that the VU has written.
+- Before the CPU writes memory that the VU will read.
+
+### I/O Region
+
+The VU can access the page-0 I/O region (0x00E8–0x00FF). Writing to this region from the VU updates the memory-mapped display, same as CPU writes.
+
+### Address Overflow
+
+If a VU command accesses an address range that exceeds 0xFFFF (i.e., start address + VL × elem_size > 65536), the VU raises FAULT(`ERR_VU_OOB`), discovered by the CPU at `VWAIT`.
 
 ## Conformance Notes
 

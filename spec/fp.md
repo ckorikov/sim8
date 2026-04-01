@@ -1,6 +1,6 @@
 # 7. Floating-Point Unit (FPU)
 
-> Architecture v2 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Memory Model](mem.md), [CPU Architecture](cpu.md), [Microarchitecture](uarch.md), [Opcodes](opcodes.md), [Error Codes](errors.md), [Assembler](asm.md)
+> Architecture v3 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Memory Model](mem.md), [CPU Architecture](cpu.md), [Microarchitecture](uarch.md), [Opcodes](opcodes.md), [Error Codes](errors.md), [Assembler](asm.md), [Vector Unit](vector.md)
 
 ## 7.1 Overview
 
@@ -315,7 +315,7 @@ Per-instruction exception lists below document only **IEEE 754 arithmetic except
 - Opcode 162: fmt must be 1 or 2 (16-bit formats: float16, bfloat16). If fmt is not 1 or 2 → FAULT(`ERR_FP_FORMAT`).
 - Standard FPM validation also applies (phys ≤ 1, pos in range for fmt).
 
-**Float32 restriction:** float32 immediate is not supported because it would require 6 bytes (opcode + FPM + 4 immediate bytes), exceeding the 4-byte maximum instruction length. Use FMOV from memory instead.
+**Float32 restriction:** float32 immediate is not supported because it would require 6 bytes (opcode + FPM + 4 immediate bytes). No float32 immediate opcode is assigned. Use FMOV from memory instead.
 
 **Byte order:** imm16 is little-endian (low byte first), consistent with FMOV memory byte order.
 

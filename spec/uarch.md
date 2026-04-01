@@ -1,6 +1,6 @@
 # 4. Microarchitecture: Interpreter Model
 
-> Architecture v2 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Memory Model & Addressing](mem.md), [CPU Architecture](cpu.md), [FPU](fp.md)
+> Architecture v3 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Memory Model & Addressing](mem.md), [CPU Architecture](cpu.md), [FPU](fp.md), [Vector Unit](vector.md)
 
 ## 4.0 Pseudocode Conventions
 
@@ -15,7 +15,7 @@ The pseudocode in this section is language-agnostic. All values are integers unl
 
 **Instruction stream:** Machine code is stored in memory. The opcode is fetched from `memory[IP]`, and operand bytes are fetched from `memory[IP + k]` as part of instruction decode.
 
-Instruction length is opcode-dependent (1–4 bytes). Each instruction handler advances `IP` by its own encoded length (or assigns `IP` directly for control-flow instructions).
+Instruction length is opcode-dependent (1–7 bytes; up to 4 for integer/FP, up to 7 for vector immediate mode). Each instruction handler advances `IP` by its own encoded length (or assigns `IP` directly for control-flow instructions).
 
 **Instruction fetch boundary:** If `IP + instrLength >= 256`, the instruction extends to or past the page 0 boundary. This is a `FAULT(5)` (`ERR_PAGE_BOUNDARY`) before any operand bytes are read. For example, a 3-byte instruction at IP=254 faults because 254 + 3 = 257 >= 256.
 
@@ -341,11 +341,20 @@ ELSE:
 **PUSH reg (Opcode 50):**
 
 ```
-reg = decodeGPR(instrByte(1))
+reg = decodeStackReg(instrByte(1))
 IF SP == 0: FAULT(2)      // ERR_STACK_OVERFLOW (check BEFORE write)
-memory[SP] = registers[reg]
+IF reg == 5:
+    value = DP
+ELSE:
+    value = registers[reg]
+memory[SP] = value
 SP = SP - 1
 IP = IP + 2
+
+FUNCTION decodeStackReg(reg_code):
+    // Accept A,B,C,D,DP (not SP)
+    IF reg_code > 5 OR reg_code == 4: FAULT(4)
+    RETURN reg_code
 ```
 
 **PUSH [addr] (Opcode 52):**
@@ -371,10 +380,13 @@ IP = IP + 2
 **POP reg (Opcode 54):**
 
 ```
-reg = decodeGPR(instrByte(1))
+reg = decodeStackReg(instrByte(1))
 IF SP >= 231: FAULT(3)    // ERR_STACK_UNDERFLOW (check BEFORE increment)
 SP = SP + 1
-registers[reg] = memory[SP]
+IF reg == 5:
+    DP = memory[SP]
+ELSE:
+    registers[reg] = memory[SP]
 IP = IP + 2
 ```
 
@@ -592,6 +604,304 @@ Operations without memory access have the same cost for all formats.
 
 **Scheduling:** memory and FPU stages are sequential (data dependency). FP binary+mem: `mem(fmt) + fpu(2)`. FDIV mem: `mem(fmt) + fpu_d(3)`. FMADD: `mem(fmt) + fpu_ma(4)`.
 
+## 4.6b VU Pipeline
+
+The VU cost model has two independent components: **CPU-side issue cost** (counted in `cycles`) and **VU-internal execution cost** (determines queue drain rate, not counted in `cycles`).
+
+### CPU-Side Issue Cost
+
+All VU instructions cost **1 tick** to issue, regardless of format or vector length.
+
+| Category | CPU cost (ticks) | Rule | Examples |
+|----------|-----------------|------|----------|
+| Register setup | 1 | reg(1) | `VSET VA, 0x100`, `VSET VL, A, D` |
+| Status access | 1 | reg(1) | `VFSTAT A`, `VFCLR` |
+| Sync barrier | 1 | reg(1) | `VWAIT` |
+| Async issue (all) | 1 | reg(1) | `VADD.F VC, VA, VB`, `VMUL.U VC, VA, VB` |
+| Queue stall | +1/slot freed | stall | CPU blocks when queue is full (depth = 8) |
+
+**Scheduling rule:** VU issue is a single `reg(1)` stage — no memory or ALU pipeline interaction. The CPU decodes, snapshots VU registers, auto-increments pointers, and pushes the command to the queue — all in 1 tick.
+
+### VU-Internal Execution Cost (Window Model)
+
+The VU processes elements in fixed-size windows. One window executes in **1 VU tick**. Window size depends on element byte width:
+
+The VU memory port is **16 bytes wide**. Each tick processes 16 bytes of data regardless of element format:
+
+| Element size | Formats | Bytes/tick | Elements/tick (W) | Cost for VL elements |
+|-------------|---------|-----------|------------------|---------------------|
+| 1 byte | O3, O2, U, I | 16 | 16 | ceil(VL / 16) ticks |
+| 2 bytes | H, BF | 16 | 8 | ceil(VL / 8) ticks |
+| 4 bytes | F | 16 | 4 | ceil(VL / 4) ticks |
+
+**Formula:** VU execution cost = **ceil(VL / W)** VU ticks per command, where W = 16 / elem_size.
+
+Windows execute sequentially within a command. The VU dequeues the next command only after the current one completes all windows.
+
+VU and CPU share the same **main clock**. Each clock tick:
+
+1. VU processes one window of the front-of-queue command (if any).
+2. CPU executes one instruction (unless stalled by VWAIT).
+
+When CPU and VU operate on different memory regions, they run in true parallel — the CPU continues issuing instructions while the VU processes earlier commands.
+
+**VWAIT** synchronizes: CPU stalls (no instruction fetch) while VU drains the queue. Each VU drain tick costs **1 CPU cycle** (stall). VWAIT does not drive the VU clock — it only checks VU state. The VU continues ticking from the main clock.
+
+**Queue stall:** When the queue is full at async issue time, the CPU blocks until the VU frees a slot. Each slot freed costs +1 tick.
+
+**HLT:** Hard stop. CPU halts immediately; pending VU commands are abandoned (not drained).
+
+### Clock Diagram: VMOV.U (Page Copy)
+
+```
+; Copy 16 bytes: page 1 → page 2
+    VSET VL, 16          ; 1 tick — set vector length
+    VSET VA, 256         ; 1 tick — source = page 1
+    VSET VB, 512         ; 1 tick — destination = page 2
+    VMOV.U VB, VA        ; 1 tick — issue (enqueue, auto-increment)
+    VWAIT                ; 1 tick — stall while VU drains (1 window)
+    HLT
+```
+
+```
+Tick  CPU                      VU queue     VU executes
+───── ──────────────────────── ──────────── ────────────────
+  1   VSET VL, 16              []           —
+  2   VSET VA, 256             []           —
+  3   VSET VB, 512             []           —
+  4   VMOV.U VB, VA (issue)    [VMOV.U]     —
+  5   VWAIT (stall, +1 cycle)  [VMOV.U]     VMOV window 0..15
+  6   HLT                     []           done
+```
+
+**Total: 5 CPU cycles** (4 issue + 1 VWAIT drain). The VWAIT issue tick and the first VU drain tick overlap on the same clock edge.
+
+### Scalar Equivalent
+
+```
+; Copy 16 bytes scalar: ~183 CPU cycles
+    MOV D, 1             ; DP = source page
+    MOV C, 0             ; counter
+.loop:
+    MOV A, [C]           ; 2 ticks (mem)
+    PUSH C               ; 1 tick
+    ADD C, 16            ; 1 tick
+    MOV [C], A           ; 2 ticks (mem)
+    POP C                ; 1 tick
+    INC C                ; 1 tick
+    DEC B                ; 1 tick
+    JNZ .loop            ; 2 ticks (mem)
+                         ; ≈ 11 ticks × 16 iterations + setup ≈ 183 cycles
+```
+
+**Speedup: 37x** for 16-byte copy (5 vs 183 cycles).
+
+### Cost Table by VL
+
+| VL | Windows | Total cycles | Breakdown |
+|----|---------|-------------|-----------|
+| 1–16 | 1 | 5 | 3×VSET + VMOV + 1 drain |
+| 17–32 | 2 | 6 | ... + 2 drain |
+| 33–48 | 3 | 7 | ... + 3 drain |
+| 64 | 4 | 8 | ... + 4 drain |
+| 128 | 8 | 12 | ... + 8 drain |
+| 256 | 16 | 20 | ... + 16 drain |
+
+### Parallel Issue (No VWAIT Between Commands)
+
+```
+    VMUL.U VC, VA, VB    ; 1 tick — issue, VU starts
+    VSET VA, ...         ; 1 tick — CPU continues while VU works
+    VSET VB, ...         ; 1 tick — VU still processing VMUL
+    VADD.U VC, VA, VB    ; 1 tick — second command queued
+    VWAIT                ; stall: drain both commands
+```
+
+CPU issues 4 instructions in 4 ticks. VU processes VMUL in parallel during ticks 2–4. Total stall at VWAIT depends on remaining VU work.
+
+## 4.6c VU Pseudocode
+
+### VFM Decode
+
+```
+FUNCTION decodeVFM(vfm_byte):
+    fmt  = vfm_byte AND 0x07            // bits [2:0]
+    mode = (vfm_byte >> 3) AND 0x03     // bits [4:3]
+    cond = (vfm_byte >> 5) AND 0x07     // bits [7:5]
+    IF fmt > 6: FAULT(14)               // ERR_VU_FORMAT: reserved format
+    RETURN (fmt, mode, cond)
+```
+
+### VU Register Byte Decode
+
+```
+FUNCTION decodeVuRegs(regs_byte):
+    dst  = (regs_byte >> 6) AND 0x03    // bits [7:6]
+    src1 = (regs_byte >> 4) AND 0x03    // bits [5:4]
+    src2 = (regs_byte >> 2) AND 0x03    // bits [3:2]
+    IF (regs_byte AND 0x03) != 0: FAULT(14)  // reserved bits must be 0
+    RETURN (dst, src1, src2)
+```
+
+### VU Element Size
+
+```
+FUNCTION vuElemSize(fmt):
+    IF fmt == 0: RETURN 4     // F (float32)
+    IF fmt == 1: RETURN 2     // H (float16)
+    IF fmt == 2: RETURN 2     // BF (bfloat16)
+    RETURN 1                  // O3, O2, U, I (1 byte)
+```
+
+### VU Window Size
+
+```
+FUNCTION vuWindowSize(elem_size):
+    RETURN 16 DIV elem_size   // 16B port: 16, 8, or 4 elements/tick
+```
+
+### VU Element Read/Write
+
+```
+FUNCTION vuReadElem(addr, fmt):
+    sz = vuElemSize(fmt)
+    raw = 0
+    FOR i = 0 TO sz - 1:
+        raw = raw + memory[addr + i] * (2 ^ (i * 8))
+    IF fmt in {F, H, BF, O3, O2}:
+        RETURN decodeFloat(raw, fmt)
+    IF fmt == I:
+        RETURN raw < 128 ? raw : raw - 256    // sign-extend
+    RETURN raw                                  // U: unsigned byte
+
+FUNCTION vuWriteElem(addr, fmt, value, rm):
+    sz = vuElemSize(fmt)
+    IF fmt in {F, H, BF, O3, O2}:
+        (raw, exc) = encodeFloat(value, fmt, rm)
+    ELSE:
+        raw = value AND ((2 ^ (sz * 8)) - 1)
+        exc = {overflow: value > 255, underflow: value < 0}
+    FOR i = 0 TO sz - 1:
+        memory[addr + i] = (raw >> (i * 8)) AND 0xFF
+    RETURN exc
+```
+
+### Main Clock Tick
+
+```
+FUNCTION clockTick():
+    // Phase 1: VU processes one window (parallel with CPU)
+    IF vu_queue NOT empty AND vu_fault == 0:
+        cmd = vu_queue.front()          // peek, don't dequeue
+        sz = vuElemSize(cmd.fmt)
+        W = vuWindowSize(sz)
+        start = cmd.progress
+        end = min(start + W, cmd.vl)
+        vuExecWindow(cmd, start, end, sz)
+        cmd.progress = end
+        IF cmd.progress >= cmd.vl:
+            vu_queue.dequeue()
+
+    // Phase 2: CPU executes one instruction (or stalls on VWAIT)
+    IF vwait_pending:
+        cycles += 1                     // stall cost
+        IF vu_fault != 0:
+            ENTER FAULT(vu_fault)
+        IF vu_queue IS empty:
+            vwait_pending = false
+            IP += vwait_size
+    ELSE:
+        executeOneInstruction()
+```
+
+### VMOV.U — Vector Byte Copy (Opcode 182)
+
+**CPU-side issue (1 tick):**
+
+```
+FUNCTION handleVMOV(instr):
+    (fmt, mode, cond) = decodeVFM(instr.operands[0])
+    (dst, src1, src2) = decodeVuRegs(instr.operands[1])
+
+    // Validate
+    IF mode != 0: FAULT(14)             // VMOV: mode must be VV (0)
+    IF cond != 0: FAULT(14)             // cond field reserved for non-VCMP
+    IF VL == 0:
+        IP += 3
+        RETURN                          // no-op
+
+    // Snapshot addresses from VU registers
+    cmd = {
+        op      = VMOV,
+        fmt     = fmt,
+        dstAddr = VU_REGS[dst],         // absolute 16-bit address
+        s1Addr  = VU_REGS[src1],
+        vl      = VL,
+    }
+
+    // Auto-increment: dst += VL * elem_size, src1 += VL * elem_size
+    sz = vuElemSize(fmt)
+    VU_REGS[dst]  = (VU_REGS[dst]  + VL * sz) MOD 65536
+    VU_REGS[src1] = (VU_REGS[src1] + VL * sz) MOD 65536
+
+    // Stall if queue full
+    WHILE vu_queue IS full:
+        clockTick()                     // VU drains one window, CPU stalls
+        cycles += 1
+
+    vu_queue.enqueue(cmd)
+    IP += 3
+```
+
+**VU-side execution (windowed):**
+
+```
+FUNCTION vuExecWindow_VMOV(cmd, start, end, sz):
+    // OOB check on first window only
+    IF start == 0:
+        IF cmd.dstAddr + cmd.vl * sz > 65536: vu_fault = 13; RETURN
+        IF cmd.s1Addr + cmd.vl * sz > 65536: vu_fault = 13; RETURN
+
+    // Copy bytes for elements [start, end)
+    FOR i = start TO end - 1:
+        offset = i * sz
+        FOR b = 0 TO sz - 1:
+            memory[cmd.dstAddr + offset + b] = memory[cmd.s1Addr + offset + b]
+```
+
+**End-to-end example — copy page 1 to page 2:**
+
+```
+    VSET VL, 256              // VL = 256 elements (1 byte each)
+    VSET VA, 256              // VA = page 1 start (0x0100)
+    VSET VB, 512              // VB = page 2 start (0x0200)
+    VMOV.U VB, VA             // issue: enqueue, auto-inc VA/VB by 256
+    VWAIT                     // stall: 16 windows × 1 tick = 16 drain ticks
+    HLT
+
+    // Total: 4 issue + 16 drain = 20 cycles
+    // Scalar equivalent: ~3000 cycles (MOV+MOV+INC+INC × 256 + loop)
+```
+
+### VWAIT — Synchronization Barrier (Opcode 169)
+
+```
+FUNCTION handleVWAIT(instr):
+    // Check deferred VU fault (OOB detected during earlier tick)
+    IF vu_fault != 0:
+        code = vu_fault
+        vu_fault = 0
+        FAULT(code)                     // CPU enters FAULT state
+
+    IF vu_queue IS NOT empty:
+        vwait_pending = true            // CPU stalls
+        vwait_size = 1                  // IP advances when queue drains
+    ELSE:
+        IP += 1                         // queue already empty, no stall
+```
+
+Note: VWAIT does **not** tick the VU. The main clock (`clockTick`) drives VU execution. VWAIT only sets a flag; the CPU stalls until the VU finishes draining via regular clock ticks.
+
 ## 4.7 FPU Pseudocode
 
 ### FPM Decode
@@ -689,7 +999,7 @@ FP arithmetic exceptions never cause FAULT. The operation produces the IEEE 754 
 
 ### Representative Instruction Handlers
 
-**FMOV FP, [addr] (Opcode 128):**
+**FMOV FP, [addr] — load from memory (Opcode 128):**
 
 ```
 (fmt, pos, phys) = decodeFPM(instrByte(1))
@@ -698,6 +1008,76 @@ width = fpWidth(fmt)
 value = fpMemRead(addr, width)
 fpWrite(fmt, pos, phys, value)
 IP = IP + 3
+```
+
+**FMOV FP, [reg] — load from register-indirect (Opcode 129):**
+
+```
+(fmt, pos, phys) = decodeFPM(instrByte(1))
+(reg, offset) = decodeRegaddr(instrByte(2))
+addr = (registers[reg] + offset) mod 256
+width = fpWidth(fmt)
+value = fpMemRead(addr, width)
+fpWrite(fmt, pos, phys, value)
+IP = IP + 3
+```
+
+**FMOV [addr], FP — store to memory (Opcode 130):**
+
+```
+(fmt, pos, phys) = decodeFPM(instrByte(1))
+addr = directAddress(instrByte(2))
+width = fpWidth(fmt)
+value = fpRead(fmt, pos, phys)
+fpMemWrite(addr, width, value)
+IP = IP + 3
+```
+
+**FMOV [reg], FP — store to register-indirect (Opcode 131):**
+
+```
+(fmt, pos, phys) = decodeFPM(instrByte(1))
+(reg, offset) = decodeRegaddr(instrByte(2))
+addr = (registers[reg] + offset) mod 256
+width = fpWidth(fmt)
+value = fpRead(fmt, pos, phys)
+fpMemWrite(addr, width, value)
+IP = IP + 3
+```
+
+**FMOV FP, FP — register-to-register copy (Opcode 145):**
+
+```
+(dst_fmt, dst_pos, dst_phys) = decodeFPM(instrByte(1))
+(src_fmt, src_pos, src_phys) = decodeFPM(instrByte(2))
+// Raw bit copy — no format conversion. Widths must match.
+width = fpWidth(src_fmt)
+IF fpWidth(dst_fmt) != width: FAULT(12)  // ERR_FP_FORMAT
+value = fpRead(src_fmt, src_pos, src_phys)
+fpWrite(dst_fmt, dst_pos, dst_phys, value)
+IP = IP + 3
+```
+
+**FMOV FP, imm8 — load 8-bit immediate (Opcode 161):**
+
+```
+(fmt, pos, phys) = decodeFPM(instrByte(1))
+imm = instrByte(2)
+// Width of target sub-register must be 8 bits (O3 or O2)
+IF fpWidth(fmt) != 8: FAULT(12)  // ERR_FP_FORMAT
+fpWrite(fmt, pos, phys, imm)
+IP = IP + 3
+```
+
+**FMOV FP, imm16 — load 16-bit immediate (Opcode 162):**
+
+```
+(fmt, pos, phys) = decodeFPM(instrByte(1))
+imm = instrByte(2) + instrByte(3) * 256   // little-endian
+// Width of target sub-register must be 16 bits (H or BF)
+IF fpWidth(fmt) != 16: FAULT(12)  // ERR_FP_FORMAT
+fpWrite(fmt, pos, phys, imm)
+IP = IP + 4
 ```
 
 **FADD FP, [addr] (Opcode 132):**
