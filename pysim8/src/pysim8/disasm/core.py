@@ -14,6 +14,7 @@ from pysim8.fp_formats import (
 from pysim8.isa import (
     BY_CODE,
     BY_CODE_FP,
+    BY_CODE_VU,
     FP_CONTROL_MNEMONICS,
     FP_FMT_BF,
     FP_FMT_F,
@@ -21,10 +22,19 @@ from pysim8.isa import (
     FP_FMT_O3,
     FP_REGISTERS,
     FP_SUFFIX_TO_FMT,
+    VU_ASYNC_OPS,
+    VU_CMP_SUFFIX,
+    VU_REGISTERS,
+    VU_SUFFIX_TO_FMT,
+    VU_SUFFIX_TO_MODE,
+    Op,
     OpType,
     Reg,
     decode_fpm,
     decode_regaddr,
+    decode_vfm,
+    decode_vu_regs,
+    vu_instr_size,
 )
 
 __all__ = ["disasm_insn", "disasm"]
@@ -146,6 +156,100 @@ def _disasm_fp_insn(opcode: int, raw_operands: tuple[int, ...]) -> str | None:
     return f"{label} {', '.join(parts)}" if parts else label
 
 
+# ── VU helpers ────────────────────────────────────────────────────
+
+_VU_REG_NAMES: dict[int, str] = {v: k for k, v in VU_REGISTERS.items() if k != "VL"}
+_VU_REG_NAMES[4] = "VL"
+
+_VU_FMT_TO_SUFFIX: dict[int, str] = {}
+for _name, _code in VU_SUFFIX_TO_FMT.items():
+    if _code not in _VU_FMT_TO_SUFFIX or len(_name) < len(_VU_FMT_TO_SUFFIX[_code]):
+        _VU_FMT_TO_SUFFIX[_code] = _name
+
+_VU_MODE_TO_SUFFIX: dict[int, str] = {v: k.lower() for k, v in VU_SUFFIX_TO_MODE.items()}
+
+_VU_COND_TO_SUFFIX: dict[int, str] = {v: k for k, v in VU_CMP_SUFFIX.items()}
+
+# Instructions with no mode suffix (single valid mode)
+_VU_SINGLE_MODE = frozenset({"VDOT", "VSQRT", "VNEG", "VABS", "VSEL", "VMOV", "VFILL"})
+# Instructions with only dst, src1 operands
+_VU_DST_SRC1_ONLY = frozenset({"VSQRT", "VNEG", "VABS", "VMOV"})
+
+
+def _disasm_vu_sync(opcode: int, raw: tuple[int, ...]) -> str | None:
+    """Disassemble a synchronous VU instruction."""
+    defn = BY_CODE_VU.get(opcode)
+    if defn is None:
+        return None
+    if opcode == Op.VFCLR:
+        return "VFCLR"
+    if opcode == Op.VWAIT:
+        return "VWAIT"
+    if opcode == Op.VFSTAT:
+        return f"VFSTAT {_REG_NAMES.get(raw[0], '?')}"
+    # VSET variants
+    target = _VU_REG_NAMES.get(raw[0], f"?{raw[0]}")
+    if opcode == Op.VSET_IMM16:
+        val = raw[1] | (raw[2] << 8)
+        return f"VSET {target}, {val:#06x}"
+    if opcode == Op.VSET_GPR:
+        rh = (raw[1] >> 2) & 0x03
+        rl = raw[1] & 0x03
+        return f"VSET {target}, {_REG_NAMES.get(rh, '?')}, {_REG_NAMES.get(rl, '?')}"
+    if opcode == Op.VSET_MEM:
+        return f"VSET {target}, [{raw[1]}]"
+    if opcode == Op.VSET_MEMI:
+        return f"VSET {target}, {_fmt_regaddr(raw[1])}"
+    return None
+
+
+def _disasm_vu_async(opcode: int, code: bytes | list[int], offset: int) -> tuple[str, int] | None:
+    """Disassemble an async VU instruction. Returns (text, size) or None."""
+    if opcode not in VU_ASYNC_OPS:
+        return None
+    defn = BY_CODE_VU.get(opcode)
+    if defn is None:
+        return None
+    if offset + 3 > len(code):
+        return None
+    vfm = code[offset + 1]
+    regs = code[offset + 2]
+    fmt, mode, cond = decode_vfm(vfm)
+    dst, src1, src2 = decode_vu_regs(regs)
+    size = vu_instr_size(opcode, vfm)
+    if offset + size > len(code):
+        return None
+
+    mnemonic = defn.mnemonic
+    suffix = _VU_FMT_TO_SUFFIX.get(fmt, f"?{fmt}")
+    dn = _VU_REG_NAMES.get(dst, f"?{dst}")
+    s1n = _VU_REG_NAMES.get(src1, f"?{src1}")
+    s2n = _VU_REG_NAMES.get(src2, f"?{src2}")
+
+    # Label: MNEMONIC.fmt[.cond] — no mode suffix (inferred from operands)
+    if mnemonic == "VCMP":
+        label = f"{mnemonic}.{suffix}.{_VU_COND_TO_SUFFIX.get(cond, f'?{cond}')}"
+    else:
+        label = f"{mnemonic}.{suffix}"
+
+    # Operands — mode determines src2 display
+    if mnemonic in _VU_DST_SRC1_ONLY:
+        parts = f"{dn}, {s1n}"
+    elif mnemonic == "VFILL" or mode == 2:  # immediate
+        imm_bytes = code[offset + 3 : offset + size]
+        imm = int.from_bytes(imm_bytes, "little") if imm_bytes else 0
+        parts = f"{dn}, {imm}" if mnemonic == "VFILL" else f"{dn}, {s1n}, {imm}"
+    elif mode == 1:  # GPR broadcast
+        gpr_name = _REG_NAMES.get(src2, f"?{src2}")
+        parts = f"{dn}, {s1n}, {gpr_name}"
+    elif mode == 3:  # reduction
+        parts = f"{dn}, {s1n}"
+    else:  # .vv
+        parts = f"{dn}, {s1n}, {s2n}"
+
+    return f"{label} {parts}", size
+
+
 def disasm_insn(opcode: int, operands: tuple[int, ...] = ()) -> str:
     """Disassemble one instruction to text, e.g. 'MOV A, 42'."""
     defn = BY_CODE.get(opcode)
@@ -160,6 +264,18 @@ def disasm_insn(opcode: int, operands: tuple[int, ...] = ()) -> str:
     if result is not None:
         return result
 
+    # Try VU sync instruction
+    vu_result = _disasm_vu_sync(opcode, operands)
+    if vu_result is not None:
+        return vu_result
+
+    # Try VU async instruction (reconstruct code bytes)
+    if opcode in VU_ASYNC_OPS:
+        buf = bytes([opcode, *operands])
+        vu = _disasm_vu_async(opcode, buf, 0)
+        if vu is not None:
+            return vu[0]
+
     return f"??? ({opcode})"
 
 
@@ -173,9 +289,21 @@ def disasm(code: bytes | list[int]) -> list[tuple[int, str, int]]:
     i = 0
     while i < len(code):
         opcode = code[i]
+
+        # Try async VU first (variable-size, needs raw code access)
+        if opcode in VU_ASYNC_OPS:
+            vu = _disasm_vu_async(opcode, code, i)
+            if vu is not None:
+                text, size = vu
+                result.append((i, text, size))
+                i += size
+                continue
+
         defn = BY_CODE.get(opcode)
         if defn is None:
             defn = BY_CODE_FP.get(opcode)
+        if defn is None:
+            defn = BY_CODE_VU.get(opcode)
         if defn is None:
             result.append((i, f"DB {opcode}", 1))
             i += 1

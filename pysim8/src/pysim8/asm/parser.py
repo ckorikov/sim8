@@ -22,7 +22,9 @@ from pysim8.isa import (
     MNEMONIC_ALIASES,
     MNEMONICS,
     MNEMONICS_FP,
+    MNEMONICS_VU,
     REGISTERS,
+    VU_REGISTERS,
 )
 
 __all__ = [
@@ -38,6 +40,7 @@ __all__ = [
     "OpFpReg",
     "OpFloat",
     "OpFpImm",
+    "OpVuReg",
     "parse_lines",
     "AsmError",
     "ParseError",
@@ -148,8 +151,26 @@ class OpFpImm:
     fmt: int | None  # FP_FMT_* or None (resolved from instruction suffix)
 
 
+@dataclass(frozen=True, slots=True)
+class OpVuReg:
+    """VU register operand: VA, VB, VC, VM, VL."""
+
+    code: int  # 0=VA, 1=VB, 2=VC, 3=VM, 4=VL
+
+
 Operand = (
-    OpReg | OpConst | OpAddr | OpRegAddr | OpString | OpLabel | OpAddrLabel | OpPageLabel | OpFpReg | OpFloat | OpFpImm
+    OpReg
+    | OpConst
+    | OpAddr
+    | OpRegAddr
+    | OpString
+    | OpLabel
+    | OpAddrLabel
+    | OpPageLabel
+    | OpFpReg
+    | OpFloat
+    | OpFpImm
+    | OpVuReg
 )
 
 
@@ -175,6 +196,7 @@ _RE_HEX = re.compile(r"^0x([0-9A-Fa-f]+)$")
 _RE_OCT = re.compile(r"^0o([0-7]+)$")
 _RE_BIN = re.compile(r"^([01]+)b$")
 _RE_DEC_EXPLICIT = re.compile(r"^(\d+)d$")
+_RE_DEC_UNSIGNED = re.compile(r"^(\d+)u$")  # C-style unsigned suffix
 _RE_DEC = re.compile(r"^(\d+)$")
 _RE_CHAR = re.compile(r"^'(.)'$")
 _RE_CHAR_MULTI = re.compile(r"^'(.{2,})'$")
@@ -189,16 +211,27 @@ _NUM_FORMATS: tuple[tuple[re.Pattern[str], int], ...] = (
     (_RE_OCT, 8),
     (_RE_BIN, 2),
     (_RE_DEC_EXPLICIT, 10),
+    (_RE_DEC_UNSIGNED, 10),
     (_RE_DEC, 10),
 )
 
 
 def _try_parse_number(token: str) -> int | None:
-    """Try to parse a numeric literal. Returns value or None."""
+    """Try to parse a numeric literal. Returns value or None.
+
+    Supports negative decimals: -5, -128. Stored as two's complement by caller.
+    """
     if m := _RE_CHAR_MULTI.match(token):
         return None  # multi-char literals handled as error elsewhere
     if m := _RE_CHAR.match(token):
         return ord(m.group(1))
+    # Handle negative prefix (decimal only)
+    if token.startswith("-"):
+        inner = token[1:]
+        for pattern, base in _NUM_FORMATS:
+            if base == 10 and (m := pattern.match(inner)):
+                return -int(m.group(1), base)
+        return None
     for pattern, base in _NUM_FORMATS:
         if m := pattern.match(token):
             return int(m.group(1), base)
@@ -216,10 +249,10 @@ def parse_number(token: str, line: int) -> int:
 
 
 def _check_byte_range(value: int, line: int) -> int:
-    """Validate value is in 0-255."""
-    if value < 0 or value > 255:
-        raise ParseError(f"{value} must have a value between 0-255", line)
-    return value
+    """Validate value is in -128..255 and convert negatives to two's complement."""
+    if value < -128 or value > 255:
+        raise ParseError(f"{value} must have a value between -128 and 255", line)
+    return value & 0xFF
 
 
 # ── Bracket operand parsing ─────────────────────────────────────────
@@ -275,11 +308,13 @@ def _try_bracket(token: str, line: int) -> Operand | None:
     return None
 
 
-def _try_register(token: str, line: int) -> Operand | None:
-    """Try to parse register name: A, B, C, D, SP, DP, or FP regs."""
+def _try_register(token: str, line: int, arch: int = 1) -> Operand | None:
+    """Try to parse register name: A, B, C, D, SP, DP, FP regs, or VU regs."""
     up = token.upper()
     if up in REGISTERS:
         return OpReg(REGISTERS[up])
+    if arch >= 3 and up in VU_REGISTERS:
+        return OpVuReg(VU_REGISTERS[up])
     if up in FP_REGISTERS:
         info = FP_REGISTERS[up]
         return OpFpReg(up, info.pos, info.fmt, info.phys)
@@ -389,11 +424,19 @@ _OPERAND_PARSERS = [
 ]
 
 
-def _parse_operand(token: str, line: int) -> Operand:
+def _parse_operand(token: str, line: int, arch: int = 1) -> Operand:
     """Parse a single operand token into an Operand."""
     token = token.strip()
+    # arch >= 3: try 16-bit number first (for VSET etc — codegen validates range)
+    if arch >= 3:
+        val = _try_parse_number(token)
+        if val is not None and val > 255:
+            return OpConst(val)
     for parser in _OPERAND_PARSERS:
-        result = parser(token, line)
+        if parser is _try_register:
+            result = _try_register(token, line, arch)
+        else:
+            result = parser(token, line)
         if result is not None:
             return result
     raise ParseError(f"Invalid operand: {token}", line)
@@ -474,7 +517,7 @@ def _parse_db_operands(raw: str, line: int, arch: int = 1) -> list[Operand]:
 
         has_int = True
         val = parse_number(part, line)
-        _check_byte_range(val, line)
+        val = _check_byte_range(val, line)
         operands.append(OpConst(val))
     return operands
 
@@ -536,81 +579,75 @@ _RE_LABEL_DEF = re.compile(r"^([.A-Za-z]\w*)\s*:")
 _RE_LABEL_START = re.compile(r"^[.A-Za-z]\w*\s*:")
 
 
-def parse_line(raw: str, line_no: int, arch: int = 1) -> ParsedLine:
-    """Parse a single source line."""
-    text = _tokenize_line(raw)
+def _parse_page_directive(text: str, line_no: int) -> ParsedLine | None:
+    """Parse @page directive. Returns ParsedLine or None if not a directive."""
+    if not _RE_PAGE_DIRECTIVE.match(text):
+        return None
+    if _RE_LABEL_START.match(text):
+        raise ParseError("@page must be on its own line", line_no)
+    m = _RE_PAGE_FULL.match(text)
+    if not m:
+        if _RE_PAGE_BARE.match(text):
+            raise ParseError("@page: missing page number", line_no)
+        raise ParseError("@page: invalid syntax", line_no)
+    page_val = _try_parse_number(m.group(1))
+    if page_val is None:
+        raise ParseError("@page: invalid syntax", line_no)
+    if page_val < 0 or page_val > 255:
+        raise ParseError("@page value must be 0-255", line_no)
+    operands: list[Operand] = [OpConst(page_val)]
+    if m.group(2) is not None:
+        offset_val = _try_parse_number(m.group(2))
+        if offset_val is None:
+            raise ParseError("@page: invalid offset", line_no)
+        if offset_val < 0 or offset_val > 255:
+            raise ParseError("@page offset must be 0-255", line_no)
+        operands.append(OpConst(offset_val))
+    return ParsedLine(line_no=line_no, mnemonic="@PAGE", operands=operands)
 
-    result = ParsedLine(line_no=line_no)
 
-    if not text:
-        return result
-
-    # @page directive (must come before label check)
-    if _RE_PAGE_DIRECTIVE.match(text):
-        if _RE_LABEL_START.match(text):
-            raise ParseError("@page must be on its own line", line_no)
-        m = _RE_PAGE_FULL.match(text)
-        if not m:
-            if _RE_PAGE_BARE.match(text):
-                raise ParseError("@page: missing page number", line_no)
-            raise ParseError("@page: invalid syntax", line_no)
-        page_val = _try_parse_number(m.group(1))
-        if page_val is None:
-            raise ParseError("@page: invalid syntax", line_no)
-        if page_val < 0 or page_val > 255:
-            raise ParseError("@page value must be 0-255", line_no)
-        result.mnemonic = "@PAGE"
-        result.operands = [OpConst(page_val)]
-        if m.group(2) is not None:
-            offset_val = _try_parse_number(m.group(2))
-            if offset_val is None:
-                raise ParseError("@page: invalid offset", line_no)
-            if offset_val < 0 or offset_val > 255:
-                raise ParseError("@page offset must be 0-255", line_no)
-            result.operands.append(OpConst(offset_val))
-        return result
-
-    # Check for label
+def _parse_label(text: str, line_no: int, arch: int) -> tuple[str | None, str]:
+    """Extract label from start of text. Returns (label, remaining_text)."""
     label_match = _RE_LABEL_DEF.match(text)
-    if label_match:
-        label_name = label_match.group(1)
-        up = label_name.upper()
-        if up in REGISTERS or (arch >= 2 and up in FORBIDDEN_FP_LABEL_NAMES):
-            raise ParseError(f"Label contains keyword: {up}", line_no)
-        result.label = label_name.lower()
-        text = text[label_match.end() :].strip()
+    if not label_match:
+        return None, text
+    label_name = label_match.group(1)
+    up = label_name.upper()
+    if up in REGISTERS or (arch >= 2 and up in FORBIDDEN_FP_LABEL_NAMES):
+        raise ParseError(f"Label contains keyword: {up}", line_no)
+    return label_name.lower(), text[label_match.end() :].strip()
 
-    if not text:
-        return result
 
-    # Split mnemonic from operands
-    parts = text.split(None, 1)
-    mnemonic_raw = parts[0].upper()
+def _resolve_mnemonic(mnemonic_raw: str, line_no: int, arch: int) -> tuple[str, str | None, str | None]:
+    """Resolve mnemonic, aliases, and FP suffixes.
 
-    # Resolve aliases
+    Returns (mnemonic, dst_suffix, src_suffix).
+    """
     mnemonic = MNEMONIC_ALIASES.get(mnemonic_raw, mnemonic_raw)
-
-    # Check for FP mnemonic with suffix (contains dot)
     dst_suffix: str | None = None
     src_suffix: str | None = None
-    if "." in mnemonic and arch >= 2:
+
+    _dotted = MNEMONICS_FP if arch >= 2 else frozenset()
+    if arch >= 3:
+        _dotted = _dotted | MNEMONICS_VU
+    if "." in mnemonic and _dotted:
         dot_parts = mnemonic.split(".")
         base = dot_parts[0]
-        if base in MNEMONICS_FP:
+        if base in _dotted:
+            if len(dot_parts) > 3:
+                raise ParseError("Syntax error", line_no)
             mnemonic = base
             dst_suffix = dot_parts[1] if len(dot_parts) > 1 else None
             src_suffix = dot_parts[2] if len(dot_parts) > 2 else None
-            if len(dot_parts) > 3:
-                raise ParseError("Syntax error", line_no)
 
-    # Check against known mnemonics
     all_mnemonics = MNEMONICS if arch < 2 else MNEMONICS | MNEMONICS_FP
+    if arch >= 3:
+        all_mnemonics = all_mnemonics | MNEMONICS_VU
     if mnemonic not in all_mnemonics:
         if _RE_LABEL.match(mnemonic_raw):
             raise ParseError(f"Invalid instruction: {mnemonic_raw}", line_no)
         raise ParseError("Syntax error", line_no)
 
-    # Validate FP suffix requirements
     if arch >= 2 and mnemonic in MNEMONICS_FP:
         if mnemonic in FP_CONTROL_MNEMONICS:
             if dst_suffix is not None:
@@ -622,24 +659,48 @@ def parse_line(raw: str, line_no: int, arch: int = 1) -> ParsedLine:
             if dst_suffix is None:
                 raise ParseError("FP format suffix required", line_no)
 
-    result.mnemonic = mnemonic
-    result.dst_suffix = dst_suffix
-    result.src_suffix = src_suffix
+    return mnemonic, dst_suffix, src_suffix
+
+
+def parse_line(raw: str, line_no: int, arch: int = 1) -> ParsedLine:
+    """Parse a single source line."""
+    text = _tokenize_line(raw)
+    if not text:
+        return ParsedLine(line_no=line_no)
+
+    # @page directive (must come before label check)
+    page_result = _parse_page_directive(text, line_no)
+    if page_result is not None:
+        return page_result
+
+    # Label and remaining text
+    label, text = _parse_label(text, line_no, arch)
+    if not text:
+        return ParsedLine(line_no=line_no, label=label)
+
+    # Mnemonic and FP suffixes
+    parts = text.split(None, 1)
+    mnemonic, dst_suffix, src_suffix = _resolve_mnemonic(parts[0].upper(), line_no, arch)
     operand_str = parts[1].strip() if len(parts) > 1 else ""
 
-    # Parse operands based on mnemonic
+    # Parse operands
     if mnemonic == "DB":
-        result.operands = _parse_db_operands(operand_str, line_no, arch=arch)
-        return result
-
-    if mnemonic in ("HLT", "RET", "FCLR"):
+        operands = _parse_db_operands(operand_str, line_no, arch=arch)
+    elif mnemonic in ("HLT", "RET", "FCLR", "VFCLR", "VWAIT"):
         if operand_str:
             raise ParseError(f"{mnemonic}: too many arguments", line_no)
-        result.operands = []
-        return result
+        operands = []
+    else:
+        operands = [_parse_operand(t, line_no, arch) for t in _split_operands(operand_str)]
 
-    result.operands = [_parse_operand(t, line_no) for t in _split_operands(operand_str)]
-    return result
+    return ParsedLine(
+        line_no=line_no,
+        label=label,
+        mnemonic=mnemonic,
+        operands=operands,
+        dst_suffix=dst_suffix,
+        src_suffix=src_suffix,
+    )
 
 
 def parse_lines(source: str, arch: int = 1) -> list[ParsedLine]:

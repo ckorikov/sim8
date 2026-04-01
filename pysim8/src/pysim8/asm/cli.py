@@ -19,7 +19,7 @@ from pysim8.asm.codegen import AssemblerError, assemble
     is_flag=True,
     help="Write raw bytes to stdout (for piping into pysim8).",
 )
-@click.option("--arch", type=click.IntRange(1, 2), default=2, help="Architecture version (1=integer, 2=FPU)")
+@click.option("--arch", type=click.IntRange(1, 3), default=2, help="Architecture version (1=integer, 2=FPU, 3=FPU+VU)")
 @click.option(
     "-I", "--include", "include_dirs", multiple=True, type=click.Path(exists=True), help="Add include search path"
 )

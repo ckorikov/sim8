@@ -361,9 +361,9 @@ def run_tui(
 @click.option("--paused", is_flag=True, help="Start paused (use Space to run).")
 @click.option(
     "--arch",
-    type=int,
+    type=click.IntRange(1, 3),
     default=2,
-    help="Architecture version (1=integer, 2=FPU).",
+    help="Architecture version (1=integer, 2=FPU, 3=FPU+VU).",
 )
 @click.option("--headless", is_flag=True, help="Run without TUI, print final state.")
 @click.option("--json", "json_out", is_flag=True, help="Output full state as JSON (implies --headless).")

@@ -8,21 +8,22 @@ from __future__ import annotations
 
 import math
 import struct
+from collections.abc import Callable
 from typing import NamedTuple, cast
 
-from pysim8.isa import (
+from pysim8.constants import (
     FP_FMT_BF as _FMT_BF,
 )
-from pysim8.isa import (
+from pysim8.constants import (
     FP_FMT_F as _FMT_F,
 )
-from pysim8.isa import (
+from pysim8.constants import (
     FP_FMT_H as _FMT_H,
 )
-from pysim8.isa import (
+from pysim8.constants import (
     FP_FMT_O2 as _FMT_O2,
 )
-from pysim8.isa import (
+from pysim8.constants import (
     FP_FMT_O3 as _FMT_O3,
 )
 
@@ -83,6 +84,57 @@ _OVERFLOW_THRESH_F32 = 3.4028235677973366e38  # (2-2^-23)*2^127 + 2^103
 _OVERFLOW_THRESH_F16 = 65520.0  # 65504 + 16 (half ULP at max)
 
 
+# ── IEEE struct-based encoder (float32/float16 RNE) ──────────────
+
+
+class _IeeeParams(NamedTuple):
+    """Parameters for a struct-based IEEE format."""
+
+    pack_fmt: str  # struct format string
+    exp_bits: int
+    mant_bits: int
+    bias: int
+    overflow_thresh: float
+    min_normal: float
+
+
+_F32_PARAMS = _IeeeParams("<f", 8, 23, 127, _OVERFLOW_THRESH_F32, _MIN_NORMAL_F32)
+_F16_PARAMS = _IeeeParams("<e", 5, 10, 15, _OVERFLOW_THRESH_F16, _MIN_NORMAL_F16)
+
+
+def _encode_ieee_rne(
+    value: float,
+    p: _IeeeParams,
+) -> tuple[bytes, FpExceptions]:
+    """Encode a finite non-zero float using struct.pack with RNE rounding.
+
+    Common path for float32 and float16.
+    """
+    if abs(value) >= p.overflow_thresh:
+        sign = -1.0 if value < 0 else 1.0
+        data = struct.pack(p.pack_fmt, math.copysign(math.inf, sign))
+        return data, FpExceptions(overflow=True, inexact=True)
+    data = struct.pack(p.pack_fmt, value)
+    rt = struct.unpack(p.pack_fmt, data)[0]
+    overflow = math.isinf(rt) and not math.isinf(value)
+    bits = int.from_bytes(data, "little")
+    exp_mask = (1 << p.exp_bits) - 1
+    mant_mask = (1 << p.mant_bits) - 1
+    exp_val = (bits >> p.mant_bits) & exp_mask
+    is_subnormal = exp_val == 0 and (bits & mant_mask) != 0
+    flushed_to_zero = rt == 0.0 and value != 0.0
+    # IEEE 754 §7.5: underflow "before rounding" — exact value in
+    # subnormal range even if rounding pushes it to normal.
+    exact_subnormal = 0 < abs(value) < p.min_normal
+    underflow = is_subnormal or flushed_to_zero or exact_subnormal
+    inexact = rt != value
+    return data, FpExceptions(
+        overflow=overflow,
+        underflow=underflow,
+        inexact=inexact or overflow,
+    )
+
+
 # ── float32 ──────────────────────────────────────────────────────
 
 
@@ -93,35 +145,9 @@ def encode_float32(
     """Encode Python float as little-endian float32 bytes."""
     if math.isnan(value) or math.isinf(value) or value == 0.0:
         return struct.pack("<f", value), NO_EXC
-
     if rm != RoundingMode.RNE:
         return _encode_ieee_directed(value, 8, 23, 127, rm)
-
-    # RNE: use struct.pack for hardware-accurate rounding.
-    # Overflow threshold = MAX_FLOAT32 + half ULP = (2 - 2^-23)*2^127 + 2^103.
-    # Values below this round back to MAX_FLOAT32 under RNE.
-    # struct.pack raises OverflowError above MAX_FLOAT32, so we guard here.
-    if abs(value) >= _OVERFLOW_THRESH_F32:
-        sign = -1.0 if value < 0 else 1.0
-        data = struct.pack("<f", math.copysign(math.inf, sign))
-        return data, FpExceptions(overflow=True, inexact=True)
-    data = struct.pack("<f", value)
-    rt = struct.unpack("<f", data)[0]
-    overflow = math.isinf(rt) and not math.isinf(value)
-    f32_bits = int.from_bytes(data, "little")
-    exp_bits = (f32_bits >> 23) & 0xFF
-    is_subnormal = exp_bits == 0 and (f32_bits & 0x7FFFFF) != 0
-    flushed_to_zero = rt == 0.0 and value != 0.0
-    # IEEE 754 §7.5: underflow "before rounding" — exact value in
-    # subnormal range even if rounding pushes it to normal.
-    exact_subnormal = 0 < abs(value) < _MIN_NORMAL_F32
-    underflow = is_subnormal or flushed_to_zero or exact_subnormal
-    inexact = rt != value
-    return data, FpExceptions(
-        overflow=overflow,
-        underflow=underflow,
-        inexact=inexact or overflow,
-    )
+    return _encode_ieee_rne(value, _F32_PARAMS)
 
 
 def decode_float32(data: bytes) -> float:
@@ -139,31 +165,9 @@ def encode_float16(
     """Encode Python float as little-endian float16 (IEEE 754) bytes."""
     if math.isnan(value) or math.isinf(value) or value == 0.0:
         return struct.pack("<e", value), NO_EXC
-
     if rm != RoundingMode.RNE:
         return _encode_ieee_directed(value, 5, 10, 15, rm)
-
-    # RNE: use struct.pack for hardware-accurate rounding.
-    # struct.pack("<e") raises OverflowError above MAX_F16, so we guard here.
-    if abs(value) >= _OVERFLOW_THRESH_F16:
-        sign = -1.0 if value < 0 else 1.0
-        data = struct.pack("<e", math.copysign(math.inf, sign))
-        return data, FpExceptions(overflow=True, inexact=True)
-    data = struct.pack("<e", value)
-    rt = struct.unpack("<e", data)[0]
-    overflow = math.isinf(rt) and not math.isinf(value)
-    f16_bits = int.from_bytes(data, "little")
-    exp_bits = (f16_bits >> 10) & 0x1F
-    is_subnormal = exp_bits == 0 and (f16_bits & 0x3FF) != 0
-    flushed_to_zero = rt == 0.0 and value != 0.0
-    exact_subnormal = 0 < abs(value) < _MIN_NORMAL_F16
-    underflow = is_subnormal or flushed_to_zero or exact_subnormal
-    inexact = rt != value
-    return data, FpExceptions(
-        overflow=overflow,
-        underflow=underflow,
-        inexact=inexact or overflow,
-    )
+    return _encode_ieee_rne(value, _F16_PARAMS)
 
 
 def decode_float16(data: bytes) -> float:
@@ -257,6 +261,53 @@ def decode_bfloat16(data: bytes) -> float:
     return cast(float, struct.unpack("<f", padded)[0])
 
 
+# ── Generic mini-float decoder ────────────────────────────────────
+
+
+def _decode_mini_float(
+    byte_val: int,
+    exp_bits: int,
+    mant_bits: int,
+    bias: int,
+    *,
+    has_inf: bool = False,
+    nan_pred: Callable[[int, int], bool] | None = None,
+) -> float:
+    """Decode a mini-float byte to Python float.
+
+    Args:
+        byte_val: Raw byte value.
+        exp_bits: Number of exponent bits.
+        mant_bits: Number of mantissa bits.
+        bias: Exponent bias.
+        has_inf: If True, max_exp with mant=0 is Inf, mant!=0 is NaN.
+        nan_pred: Custom NaN predicate(exp, mant). If None, uses has_inf rule.
+    """
+    sign = (byte_val >> (exp_bits + mant_bits)) & 1
+    max_exp = (1 << exp_bits) - 1
+    exp = (byte_val >> mant_bits) & max_exp
+    mant = byte_val & ((1 << mant_bits) - 1)
+
+    # Special values
+    if nan_pred is not None:
+        if nan_pred(exp, mant):
+            return float("nan")
+    elif has_inf and exp == max_exp:
+        if mant == 0:
+            return float("-inf") if sign else float("inf")
+        return float("nan")
+
+    # Zero / denorm / normal
+    if exp == 0:
+        if mant == 0:
+            return -0.0 if sign else 0.0
+        val: float = (mant / (1 << mant_bits)) * float(2 ** (1 - bias))
+    else:
+        val = (1.0 + mant / (1 << mant_bits)) * float(2 ** (exp - bias))
+
+    return -val if sign else val
+
+
 # ── OFP8 E4M3 ───────────────────────────────────────────────────
 
 # E4M3: bias=7, 4-bit exponent, 3-bit mantissa.
@@ -315,22 +366,13 @@ def encode_ofp8_e4m3(
 
 def decode_ofp8_e4m3(byte_val: int) -> float:
     """Decode OFP8 E4M3 byte to Python float."""
-    sign = (byte_val >> 7) & 1
-    exp = (byte_val >> _E4M3_MANT_BITS) & _E4M3_MAX_EXP
-    mant = byte_val & ((1 << _E4M3_MANT_BITS) - 1)
-
-    if exp == _E4M3_MAX_EXP and mant == (1 << _E4M3_MANT_BITS) - 1:
-        return float("nan")
-
-    if exp == 0:
-        # Denorm or zero
-        if mant == 0:
-            return -0.0 if sign else 0.0
-        val: float = (mant / (1 << _E4M3_MANT_BITS)) * float(2 ** (1 - _E4M3_BIAS))
-    else:
-        val = (1.0 + mant / (1 << _E4M3_MANT_BITS)) * float(2 ** (exp - _E4M3_BIAS))
-
-    return -val if sign else val
+    return _decode_mini_float(
+        byte_val,
+        _E4M3_EXP_BITS,
+        _E4M3_MANT_BITS,
+        _E4M3_BIAS,
+        nan_pred=lambda e, m: e == _E4M3_MAX_EXP and m == (1 << _E4M3_MANT_BITS) - 1,
+    )
 
 
 # ── OFP8 E5M2 ───────────────────────────────────────────────────
@@ -381,23 +423,13 @@ def encode_ofp8_e5m2(
 
 def decode_ofp8_e5m2(byte_val: int) -> float:
     """Decode OFP8 E5M2 byte to Python float."""
-    sign = (byte_val >> 7) & 1
-    exp = (byte_val >> _E5M2_MANT_BITS) & _E5M2_MAX_EXP
-    mant = byte_val & ((1 << _E5M2_MANT_BITS) - 1)
-
-    if exp == _E5M2_MAX_EXP:
-        if mant == 0:
-            return float("-inf") if sign else float("inf")
-        return float("nan")
-
-    if exp == 0:
-        if mant == 0:
-            return -0.0 if sign else 0.0
-        val: float = (mant / (1 << _E5M2_MANT_BITS)) * float(2 ** (1 - _E5M2_BIAS))
-    else:
-        val = (1.0 + mant / (1 << _E5M2_MANT_BITS)) * float(2 ** (exp - _E5M2_BIAS))
-
-    return -val if sign else val
+    return _decode_mini_float(
+        byte_val,
+        _E5M2_EXP_BITS,
+        _E5M2_MANT_BITS,
+        _E5M2_BIAS,
+        has_inf=True,
+    )
 
 
 # ── Generic mini-float encoder ───────────────────────────────────
@@ -619,6 +651,34 @@ def _round_mantissa(
         return floor_val
 
 
+# ── Dispatch tables ──────────────────────────────────────────────
+
+_ENCODERS: dict[int, Callable[[float, int], tuple[bytes, FpExceptions]]] = {
+    _FMT_F: encode_float32,
+    _FMT_H: encode_float16,
+    _FMT_BF: encode_bfloat16,
+    _FMT_O3: encode_ofp8_e4m3,
+    _FMT_O2: encode_ofp8_e5m2,
+}
+
+# Byte width per format (for decoder slicing)
+_FMT_BYTES: dict[int, int] = {
+    _FMT_F: 4,
+    _FMT_H: 2,
+    _FMT_BF: 2,
+    _FMT_O3: 1,
+    _FMT_O2: 1,
+}
+
+_DECODERS_RAW: dict[int, Callable[..., float]] = {
+    _FMT_F: decode_float32,
+    _FMT_H: decode_float16,
+    _FMT_BF: decode_bfloat16,
+    _FMT_O3: decode_ofp8_e4m3,
+    _FMT_O2: decode_ofp8_e5m2,
+}
+
+
 # ── Dispatcher functions ─────────────────────────────────────────
 
 
@@ -637,17 +697,10 @@ def float_to_bytes(
     Returns:
         (bytes_le, exceptions)
     """
-    if fmt == _FMT_F:
-        return encode_float32(value, rm)
-    if fmt == _FMT_H:
-        return encode_float16(value, rm)
-    if fmt == _FMT_BF:
-        return encode_bfloat16(value, rm)
-    if fmt == _FMT_O3:
-        return encode_ofp8_e4m3(value, rm)
-    if fmt == _FMT_O2:
-        return encode_ofp8_e5m2(value, rm)
-    raise ValueError(f"unsupported FP format code: {fmt}")
+    encoder = _ENCODERS.get(fmt)
+    if encoder is None:
+        raise ValueError(f"unsupported FP format code: {fmt}")
+    return encoder(value, rm)
 
 
 def bytes_to_float(data: bytes, fmt: int) -> float:
@@ -660,17 +713,12 @@ def bytes_to_float(data: bytes, fmt: int) -> float:
     Returns:
         Python float value.
     """
-    if fmt == _FMT_F:
-        return decode_float32(data[:4])
-    if fmt == _FMT_H:
-        return decode_float16(data[:2])
-    if fmt == _FMT_BF:
-        return decode_bfloat16(data[:2])
-    if fmt == _FMT_O3:
-        return decode_ofp8_e4m3(data[0])
-    if fmt == _FMT_O2:
-        return decode_ofp8_e5m2(data[0])
-    raise ValueError(f"unsupported FP format code: {fmt}")
+    width = _FMT_BYTES.get(fmt)
+    if width is None:
+        raise ValueError(f"unsupported FP format code: {fmt}")
+    raw = data[:width]
+    decoder = _DECODERS_RAW[fmt]
+    return decoder(raw[0]) if width == 1 else decoder(raw)
 
 
 # ── FP arithmetic helpers ────────────────────────────────────────

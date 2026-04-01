@@ -1,11 +1,8 @@
 """Memory unit: 64KB byte-addressable memory."""
 
-__all__ = ["Memory", "MEMORY_SIZE", "PAGE_SIZE", "IO_START", "SP_INIT"]
+from pysim8.constants import IO_START, MEMORY_SIZE, PAGE_SIZE, SP_INIT
 
-MEMORY_SIZE = 65536
-PAGE_SIZE = 256
-IO_START = 232
-SP_INIT = 231
+__all__ = ["Memory", "MEMORY_SIZE", "PAGE_SIZE", "IO_START", "SP_INIT"]
 
 
 class Memory:

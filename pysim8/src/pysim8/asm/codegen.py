@@ -22,6 +22,7 @@ from pysim8.asm.parser import (
     OpReg,
     OpRegAddr,
     OpString,
+    OpVuReg,
     ParsedLine,
     ParseError,
     parse_lines,
@@ -38,15 +39,29 @@ from pysim8.isa import (
     FP_SUFFIX_TO_FMT,
     FP_WIDTH_REGS,
     GPR_CODES,
+    IO_START,
+    ISA_VU,
     MNEMONICS_FP,
+    MNEMONICS_VU,
+    PAGE_SIZE,
     STACK_CODES,
+    VU_CMP_SUFFIX,
+    VU_FMT_ELEM_SIZE,
+    VU_MODE_R,
+    VU_MODE_VI,
+    VU_MODE_VS,
+    VU_MODE_VV,
+    VU_SUFFIX_TO_FMT,
+    VU_SUFFIX_TO_MODE,
+    VU_SYNC_MNEMONICS,
     InstrDef,
     Op,
     OpType,
     encode_fpm,
     encode_regaddr,
+    encode_vfm,
+    encode_vu_regs,
 )
-from pysim8.sim.memory import IO_START, PAGE_SIZE
 
 __all__ = ["assemble", "AssemblerError", "AssembleResult"]
 
@@ -293,6 +308,199 @@ def _encode_fmov_imm(
         return [int(Op.FMOV_FP_IMM16), fpm_byte, data[0], data[1]]
 
 
+# ── VU instruction encoding ───────────────────────────────────────
+
+
+def _encode_vu_instruction(
+    mnemonic: str,
+    operands: list[Operand],
+    dst_suffix: str | None,
+    src_suffix: str | None,
+    line: int,
+) -> list[int]:
+    """Encode one VU instruction into bytes."""
+    # Synchronous: VSET, VFSTAT, VFCLR, VWAIT
+    if mnemonic in VU_SYNC_MNEMONICS:
+        return _encode_vu_sync(mnemonic, operands, line)
+
+    # Asynchronous: VADD..VFILL
+    return _encode_vu_async(mnemonic, operands, dst_suffix, src_suffix, line)
+
+
+def _encode_vu_sync(mnemonic: str, operands: list[Operand], line: int) -> list[int]:
+    """Encode synchronous VU instruction."""
+    if mnemonic == "VFCLR":
+        return [int(Op.VFCLR)]
+    if mnemonic == "VWAIT":
+        return [int(Op.VWAIT)]
+    if mnemonic == "VFSTAT":
+        if len(operands) != 1 or not isinstance(operands[0], OpReg):
+            raise AssemblerError("VFSTAT requires one GPR operand", line)
+        if operands[0].code > 3:
+            raise AssemblerError("VFSTAT requires GPR A-D", line)
+        return [int(Op.VFSTAT), operands[0].code]
+    if mnemonic == "VSET":
+        return _encode_vset(operands, line)
+    raise AssemblerError(f"Unknown VU sync instruction: {mnemonic}", line)
+
+
+def _encode_vset(operands: list[Operand], line: int) -> list[int]:
+    """Encode VSET instruction (4 forms: imm16, gpr-pair, mem, memi)."""
+    if len(operands) < 2:
+        raise AssemblerError("VSET requires at least 2 operands", line)
+    if not isinstance(operands[0], OpVuReg):
+        raise AssemblerError("VSET first operand must be a VU register", line)
+    target = operands[0].code
+
+    # VSET reg, imm16 (opcode 163)
+    if isinstance(operands[1], OpConst) and len(operands) == 2:
+        val = operands[1].value
+        if val < 0 or val > 65535:
+            raise AssemblerError(f"VSET immediate must be 0-65535, got {val}", line)
+        return [int(Op.VSET_IMM16), target, val & 0xFF, (val >> 8) & 0xFF]
+
+    # VSET reg, {label}, label (opcode 163) — page + offset as two standard patches
+    if len(operands) == 3 and isinstance(operands[1], OpPageLabel) and isinstance(operands[2], (OpLabel, OpConst)):
+        # operands[1] = {label} → page (patched in pass 2)
+        lo = operands[2]  # label → offset (patched in pass 2)
+        lo_val = lo.value if isinstance(lo, OpConst) else 0
+        return [int(Op.VSET_IMM16), target, lo_val, 0]
+
+    # VSET reg, rH, rL (opcode 164)
+    if len(operands) == 3 and isinstance(operands[1], OpReg) and isinstance(operands[2], OpReg):
+        rh, rl = operands[1].code, operands[2].code
+        if rh > 3 or rl > 3:
+            raise AssemblerError("VSET GPR pair requires A-D", line)
+        return [int(Op.VSET_GPR), target, (rh << 2) | rl]
+
+    # VSET reg, [addr] / [label] (opcode 165)
+    if isinstance(operands[1], (OpAddr, OpAddrLabel)):
+        addr = operands[1].value if isinstance(operands[1], OpAddr) else 0
+        return [int(Op.VSET_MEM), target, addr]
+
+    # VSET reg, [reg±offset] (opcode 166)
+    if isinstance(operands[1], OpRegAddr):
+        return [int(Op.VSET_MEMI), target, encode_regaddr(operands[1].reg_code, operands[1].offset)]
+
+    raise AssemblerError("VSET does not support this operand(s)", line)
+
+
+_VU_MNEMONIC_TO_OP: dict[str, int] = {d.mnemonic: int(d.op) for d in ISA_VU if d.mnemonic not in VU_SYNC_MNEMONICS}
+
+_VU_SINGLE_MODE: frozenset[str] = frozenset({"VDOT", "VSQRT", "VNEG", "VABS", "VSEL", "VMOV"})
+
+
+def _resolve_vu_mode_cond(
+    mnemonic: str,
+    mode_suffix: str | None,
+    operands: list[Operand],
+    line: int,
+) -> tuple[int, int]:
+    """Resolve VU mode and condition from mnemonic, suffix, and operands.
+
+    Mode is inferred from operand types when suffix is omitted.
+    """
+    if mnemonic == "VCMP":
+        if mode_suffix is None:
+            raise AssemblerError("VCMP requires a condition suffix", line)
+        cond_upper = mode_suffix.upper()
+        if cond_upper not in VU_CMP_SUFFIX:
+            raise AssemblerError(f"Invalid VCMP condition: .{mode_suffix}", line)
+        return 0, VU_CMP_SUFFIX[cond_upper]
+    if mnemonic == "VFILL":
+        return VU_MODE_VI, 0
+    if mnemonic in _VU_SINGLE_MODE:
+        return 0, 0
+    # Explicit suffix takes priority
+    if mode_suffix is not None:
+        mode_upper = mode_suffix.upper()
+        if mode_upper not in VU_SUFFIX_TO_MODE:
+            raise AssemblerError(f"Invalid VU mode suffix: .{mode_suffix}", line)
+        return VU_SUFFIX_TO_MODE[mode_upper], 0
+    # Infer from operands
+    non_vu = [op for op in operands if not isinstance(op, OpVuReg)]
+    has_gpr = any(isinstance(op, OpReg) for op in non_vu)
+    has_imm = any(isinstance(op, OpConst) for op in non_vu)
+    vu_count = sum(1 for op in operands if isinstance(op, OpVuReg))
+    if has_gpr:
+        return VU_MODE_VS, 0
+    if has_imm:
+        return VU_MODE_VI, 0
+    if vu_count <= 2:
+        return VU_MODE_R, 0
+    return VU_MODE_VV, 0
+
+
+def _resolve_vu_fmt(mnemonic: str, fmt_suffix: str | None, line: int) -> int:
+    """Validate and resolve VU format suffix to fmt code."""
+    if fmt_suffix is None:
+        raise AssemblerError(f"{mnemonic} requires a format suffix", line)
+    fmt_upper = fmt_suffix.upper()
+    if fmt_upper not in VU_SUFFIX_TO_FMT:
+        raise AssemblerError(f"Invalid VU format suffix: .{fmt_suffix}", line)
+    return VU_SUFFIX_TO_FMT[fmt_upper]
+
+
+def _encode_vu_regs_from_operands(operands: list[Operand], mnemonic: str, mode: int, line: int) -> int:
+    """Extract and validate VU pointer registers from operands, return encoded byte.
+
+    For mode=VS (GPR broadcast), src2 encodes the GPR code instead of VU register.
+    """
+    vu_regs = [op for op in operands if isinstance(op, OpVuReg)]
+    if not vu_regs:
+        raise AssemblerError(f"{mnemonic} requires VU register operands", line)
+    for r in vu_regs:
+        if r.code > 3:
+            raise AssemblerError("Async VU operands must be pointer registers (VA-VM)", line)
+    dc = vu_regs[0].code
+    s1c = vu_regs[1].code if len(vu_regs) > 1 else 0
+    if mode == VU_MODE_VS:
+        gpr_ops = [op for op in operands if isinstance(op, OpReg)]
+        if not gpr_ops:
+            raise AssemblerError(f"{mnemonic} broadcast requires a GPR operand (A-D)", line)
+        gpr_code = gpr_ops[0].code
+        if gpr_code > 3:
+            raise AssemblerError("Broadcast GPR must be A-D", line)
+        s2c = gpr_code
+    else:
+        s2c = vu_regs[2].code if len(vu_regs) > 2 else 0
+    return encode_vu_regs(dc, s1c, s2c)
+
+
+def _encode_vu_async(
+    mnemonic: str,
+    operands: list[Operand],
+    fmt_suffix: str | None,
+    mode_suffix: str | None,
+    line: int,
+) -> list[int]:
+    """Encode asynchronous VU instruction."""
+    opcode = _VU_MNEMONIC_TO_OP.get(mnemonic)
+    if opcode is None:
+        raise AssemblerError(f"Unknown VU async instruction: {mnemonic}", line)
+
+    fmt = _resolve_vu_fmt(mnemonic, fmt_suffix, line)
+    mode, cond = _resolve_vu_mode_cond(mnemonic, mode_suffix, operands, line)
+
+    # GPR broadcast restricted to byte formats
+    if mode == VU_MODE_VS and VU_FMT_ELEM_SIZE.get(fmt, 1) > 1:
+        raise AssemblerError(f"GPR broadcast only for byte formats (U/I/O3/O2), not .{fmt_suffix}", line)
+
+    regs_byte = _encode_vu_regs_from_operands(operands, mnemonic, mode, line)
+    result = [opcode, encode_vfm(fmt, mode, cond), regs_byte]
+
+    if mode == VU_MODE_VI:
+        imm_ops = [op for op in operands if isinstance(op, OpConst)]
+        if not imm_ops:
+            raise AssemblerError(f"{mnemonic} requires an immediate operand", line)
+        imm_val = imm_ops[0].value
+        elem_sz = VU_FMT_ELEM_SIZE.get(fmt, 1)
+        for i in range(elem_sz):
+            result.append((imm_val >> (8 * i)) & 0xFF)
+
+    return result
+
+
 # ── Instruction encoding ──────────────────────────────────────────
 
 
@@ -307,6 +515,9 @@ def _encode_instruction(
     """Encode one instruction into bytes."""
     if mnemonic == "DB":
         return _encode_db(operands, line)
+
+    if arch >= 3 and mnemonic in MNEMONICS_VU:
+        return _encode_vu_instruction(mnemonic, operands, dst_suffix, src_suffix, line)
 
     if arch >= 2 and mnemonic in MNEMONICS_FP:
         # FMOV immediate special case (bypasses _find_fp_insn)
@@ -416,8 +627,13 @@ def _pass1_collect_label_patches(
             fp_count = sum(1 for o in operands if isinstance(o, OpFpReg))
             non_fp_idx = sum(1 for o in operands[:i] if not isinstance(o, OpFpReg))
             patch_pos = pos + 1 + fp_count + non_fp_idx
+        elif mnemonic == "VSET":
+            # VSET encoding: [163, target, lo, hi]
+            # operands: [VuReg, {page}, offset] → page patches hi (pos+3), offset patches lo (pos+2)
+            patch_pos = pos + 3 if is_page_ref else pos + 2
         else:
             patch_pos = pos + 1 + i
+        # VSET label → 16-bit wide patch (lo=offset, hi=page)
         st.label_patches.append(LabelPatch(st.current_page, patch_pos, op.name, is_page_ref, is_jump, loc))
 
 
@@ -580,7 +796,7 @@ def assemble(
 
     Args:
         source: Assembly source text.
-        arch: Architecture version (1=integer-only, 2=with FPU). Default 1.
+        arch: Architecture version (1=integer-only, 2=with FPU, 3=FPU+VU). Default 1.
         base_path: Directory for resolving @include paths.
         include_paths: Additional search directories for @include (like -I in C).
 

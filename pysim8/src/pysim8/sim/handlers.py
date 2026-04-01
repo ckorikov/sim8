@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from pysim8.isa import BY_CODE_FP, Op, Reg, decode_regaddr
+from pysim8.isa import BY_CODE_FP, BY_CODE_VU, Op, Reg, decode_regaddr
 
 from .alu import ALU
 from .decoder import DecodedInstr
@@ -236,8 +236,9 @@ class HandlersMixin:
     def _check_dispatch_complete(d: dict[Op, Handler]) -> None:
         """Verify every non-HLT, non-FP Op has a handler."""
         _fp_ops: set[Op] = {Op(c) for c in BY_CODE_FP}
+        _vu_ops: set[Op] = {Op(c) for c in BY_CODE_VU}
         all_ops: set[Op] = {op for op in Op if op != Op.HLT}
-        missing = all_ops - _fp_ops - set(d)
+        missing = all_ops - _fp_ops - _vu_ops - set(d)
         if missing:
             names = ", ".join(sorted(op.name for op in missing))
             raise RuntimeError(f"Dispatch table missing handlers: {names}")

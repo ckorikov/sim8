@@ -42,7 +42,39 @@ __all__ = [
     "encode_fpm",
     "decode_fpm",
     "validate_fpm",
+    "MEMORY_SIZE",
+    "PAGE_SIZE",
+    "IO_START",
+    "SP_INIT",
+    "ISA_VU",
+    "BY_CODE_VU",
+    "BY_MNEMONIC_VU",
+    "MNEMONICS_VU",
+    "VU_REGISTERS",
+    "VU_SUFFIX_TO_FMT",
+    "VU_SUFFIX_TO_MODE",
+    "VU_CMP_SUFFIX",
+    "VU_FMT_ELEM_SIZE",
+    "VU_WINDOW_BYTES",
+    "VU_WINDOW_SIZE",
+    "VU_ASYNC_OPS",
+    "VU_ARITH_OPS",
+    "VU_UNARY_OPS",
+    "VU_INT_FMTS",
+    "VU_SYNC_MNEMONICS",
+    "VU_MODE_VV",
+    "VU_MODE_VS",
+    "VU_MODE_VI",
+    "VU_MODE_R",
+    "encode_vfm",
+    "decode_vfm",
+    "encode_vu_regs",
+    "decode_vu_regs",
+    "vu_instr_size",
 ]
+
+# ── Memory layout constants (canonical source: constants) ────────
+from pysim8.constants import IO_START, MEMORY_SIZE, PAGE_SIZE, SP_INIT  # noqa: E402
 
 
 class Op(IntEnum):
@@ -222,6 +254,31 @@ class Op(IntEnum):
     FMOV_FP_IMM8 = 161
     FMOV_FP_IMM16 = 162
 
+    # VU — Synchronous (163-169)
+    VSET_IMM16 = 163
+    VSET_GPR = 164
+    VSET_MEM = 165
+    VSET_MEMI = 166
+    VFSTAT = 167
+    VFCLR = 168
+    VWAIT = 169
+
+    # VU — Asynchronous (170-183)
+    VADD = 170
+    VSUB = 171
+    VMUL = 172
+    VDIV = 173
+    VMAX = 174
+    VMIN = 175
+    VDOT = 176
+    VSQRT = 177
+    VNEG = 178
+    VABS = 179
+    VCMP = 180
+    VSEL = 181
+    VMOV = 182
+    VFILL = 183
+
 
 class Reg(IntEnum):
     """Register codes."""
@@ -300,34 +357,18 @@ MNEMONIC_ALIASES: dict[str, str] = {
     "SAR": "SHR",
 }
 
-# ── FP format constants ──────────────────────────────────────────────
-FP_FMT_F = 0  # float32 (E8M23), 32-bit
-FP_FMT_H = 1  # float16 (E5M10), 16-bit
-FP_FMT_BF = 2  # bfloat16 (E8M7), 16-bit
-FP_FMT_O3 = 3  # OFP8 E4M3, 8-bit
-FP_FMT_O2 = 4  # OFP8 E5M2, 8-bit
-FP_FMT_N1 = 5  # 4-bit E2M1 (reserved in v2)
-FP_FMT_N2 = 6  # 4-bit E1M2 (reserved in v2)
-
-FP_FMT_WIDTH: dict[int, int] = {
-    FP_FMT_F: 32,
-    FP_FMT_H: 16,
-    FP_FMT_BF: 16,
-    FP_FMT_O3: 8,
-    FP_FMT_O2: 8,
-    FP_FMT_N1: 4,
-    FP_FMT_N2: 4,
-}
-
-FP_FMT_MAX_POS: dict[int, int] = {
-    FP_FMT_F: 0,
-    FP_FMT_H: 1,
-    FP_FMT_BF: 1,
-    FP_FMT_O3: 3,
-    FP_FMT_O2: 3,
-    FP_FMT_N1: 7,
-    FP_FMT_N2: 7,
-}
+# ── FP format constants (canonical source: constants) ────────────
+from pysim8.constants import (  # noqa: E402
+    FP_FMT_BF,
+    FP_FMT_F,
+    FP_FMT_H,
+    FP_FMT_MAX_POS,
+    FP_FMT_N1,
+    FP_FMT_N2,
+    FP_FMT_O2,
+    FP_FMT_O3,
+    FP_FMT_WIDTH,
+)
 
 # Short suffix -> fmt code (case-insensitive matching done by caller)
 FP_SUFFIX_TO_FMT: dict[str, int] = {
@@ -675,3 +716,196 @@ del (
     _MEM,
     _IADDR,
 )
+
+# ── VU constants ─────────────────────────────────────────────────
+
+# VU format codes (fmt field in VFM byte)
+VU_FMT_F = 0  # float32
+VU_FMT_H = 1  # float16
+VU_FMT_BF = 2  # bfloat16
+VU_FMT_O3 = 3  # OFP8 E4M3
+VU_FMT_O2 = 4  # OFP8 E5M2
+VU_FMT_U = 5  # UINT8
+VU_FMT_I = 6  # INT8
+
+# VU format → element size in bytes
+VU_FMT_ELEM_SIZE: dict[int, int] = {
+    VU_FMT_F: 4,
+    VU_FMT_H: 2,
+    VU_FMT_BF: 2,
+    VU_FMT_O3: 1,
+    VU_FMT_O2: 1,
+    VU_FMT_U: 1,
+    VU_FMT_I: 1,
+}
+
+# VU memory port: 16 bytes/tick → window = 16 / elem_size elements
+VU_WINDOW_BYTES: int = 16
+VU_WINDOW_SIZE: dict[int, int] = {1: 16, 2: 8, 4: 4}
+
+# VU mode codes
+VU_MODE_VV = 0
+VU_MODE_VS = 1
+VU_MODE_VI = 2
+VU_MODE_R = 3  # reduction
+
+# VU format suffix → fmt code
+VU_SUFFIX_TO_FMT: dict[str, int] = {
+    "F": VU_FMT_F,
+    "H": VU_FMT_H,
+    "BF": VU_FMT_BF,
+    "O3": VU_FMT_O3,
+    "O2": VU_FMT_O2,
+    "U": VU_FMT_U,
+    "I": VU_FMT_I,
+}
+
+# VU mode suffix → mode code
+VU_SUFFIX_TO_MODE: dict[str, int] = {
+    "VV": VU_MODE_VV,
+    "VS": VU_MODE_VS,
+    "VI": VU_MODE_VI,
+    "R": VU_MODE_R,
+}
+
+# VU register names → code
+VU_REGISTERS: dict[str, int] = {
+    "VA": 0,
+    "VB": 1,
+    "VC": 2,
+    "VM": 3,
+    "VL": 4,
+}
+
+# VU comparison condition codes (VCMP only)
+VU_CMP_EQ = 0
+VU_CMP_NE = 1
+VU_CMP_LT = 2
+VU_CMP_LE = 3
+VU_CMP_GT = 4
+VU_CMP_GE = 5
+
+VU_CMP_SUFFIX: dict[str, int] = {
+    "EQ": VU_CMP_EQ,
+    "NE": VU_CMP_NE,
+    "LT": VU_CMP_LT,
+    "LE": VU_CMP_LE,
+    "GT": VU_CMP_GT,
+    "GE": VU_CMP_GE,
+}
+
+# Async opcodes that support each mode set
+VU_ARITH_OPS: frozenset[int] = frozenset(
+    {
+        Op.VADD,
+        Op.VSUB,
+        Op.VMUL,
+        Op.VDIV,
+        Op.VMAX,
+        Op.VMIN,
+    }
+)
+VU_UNARY_OPS: frozenset[int] = frozenset({Op.VSQRT, Op.VNEG, Op.VABS})
+VU_ASYNC_OPS: frozenset[int] = frozenset(
+    {
+        Op.VADD,
+        Op.VSUB,
+        Op.VMUL,
+        Op.VDIV,
+        Op.VMAX,
+        Op.VMIN,
+        Op.VDOT,
+        Op.VSQRT,
+        Op.VNEG,
+        Op.VABS,
+        Op.VCMP,
+        Op.VSEL,
+        Op.VMOV,
+        Op.VFILL,
+    }
+)
+VU_INT_FMTS: frozenset[int] = frozenset({VU_FMT_U, VU_FMT_I})
+
+
+def encode_vfm(fmt: int, mode: int, cond: int = 0) -> int:
+    """Encode VFM byte: (cond << 5) | (mode << 3) | fmt."""
+    return (cond << 5) | (mode << 3) | fmt
+
+
+def decode_vfm(vfm: int) -> tuple[int, int, int]:
+    """Decode VFM byte → (fmt, mode, cond)."""
+    return vfm & 0x07, (vfm >> 3) & 0x03, (vfm >> 5) & 0x07
+
+
+def encode_vu_regs(dst: int, src1: int, src2: int) -> int:
+    """Encode register operand byte: (dst << 6) | (src1 << 4) | (src2 << 2)."""
+    return (dst << 6) | (src1 << 4) | (src2 << 2)
+
+
+def decode_vu_regs(regs: int) -> tuple[int, int, int]:
+    """Decode register operand byte → (dst, src1, src2)."""
+    return (regs >> 6) & 0x03, (regs >> 4) & 0x03, (regs >> 2) & 0x03
+
+
+def vu_instr_size(opcode: int, vfm: int) -> int:
+    """Compute instruction size for a VU opcode given VFM byte.
+
+    Sync opcodes: fixed size from ISA_VU.
+    Async opcodes: 3 for .vv/.vs/.r, 3 + elem_size for .vi.
+    """
+    if opcode not in VU_ASYNC_OPS:
+        defn = BY_CODE_VU.get(opcode)
+        return defn.size if defn is not None else 1
+    fmt, mode, _ = decode_vfm(vfm)
+    if mode == VU_MODE_VI:
+        return 3 + VU_FMT_ELEM_SIZE.get(fmt, 1)
+    return 3
+
+
+# ── VU ISA ────────────────────────────────────────────────────────
+
+# OpType.IMM = 1 byte operand, so VSET imm16 needs a special 4-byte override.
+# For sync: size is computed from sig. For async: size is variable (handled in decoder).
+# We define async entries with a dummy sig giving size=3 (base).
+
+_VU_IMM16 = OpType.FP_IMM16  # reuse: 2-byte operand
+
+ISA_VU: tuple[InstrDef, ...] = (
+    # VSET (163-166) — all cost 1
+    InstrDef(Op.VSET_IMM16, "VSET", (OpType.IMM, _VU_IMM16), cost=1),  # 4 bytes
+    InstrDef(Op.VSET_GPR, "VSET", (OpType.IMM, OpType.IMM), cost=1),  # 3 bytes
+    InstrDef(Op.VSET_MEM, "VSET", (OpType.IMM, OpType.IMM), cost=1),  # 3 bytes
+    InstrDef(Op.VSET_MEMI, "VSET", (OpType.IMM, OpType.IMM), cost=1),  # 3 bytes
+    # VFSTAT (167), VFCLR (168), VWAIT (169)
+    InstrDef(Op.VFSTAT, "VFSTAT", (OpType.IMM,), cost=1),  # 2 bytes
+    InstrDef(Op.VFCLR, "VFCLR", (), cost=1),  # 1 byte
+    InstrDef(Op.VWAIT, "VWAIT", (), cost=1),  # 1 byte
+    # Async (170-183) — base 3 bytes, cost 1 tick to issue
+    InstrDef(Op.VADD, "VADD", (OpType.IMM, OpType.IMM), cost=1),
+    InstrDef(Op.VSUB, "VSUB", (OpType.IMM, OpType.IMM), cost=1),
+    InstrDef(Op.VMUL, "VMUL", (OpType.IMM, OpType.IMM), cost=1),
+    InstrDef(Op.VDIV, "VDIV", (OpType.IMM, OpType.IMM), cost=1),
+    InstrDef(Op.VMAX, "VMAX", (OpType.IMM, OpType.IMM), cost=1),
+    InstrDef(Op.VMIN, "VMIN", (OpType.IMM, OpType.IMM), cost=1),
+    InstrDef(Op.VDOT, "VDOT", (OpType.IMM, OpType.IMM), cost=1),
+    InstrDef(Op.VSQRT, "VSQRT", (OpType.IMM, OpType.IMM), cost=1),
+    InstrDef(Op.VNEG, "VNEG", (OpType.IMM, OpType.IMM), cost=1),
+    InstrDef(Op.VABS, "VABS", (OpType.IMM, OpType.IMM), cost=1),
+    InstrDef(Op.VCMP, "VCMP", (OpType.IMM, OpType.IMM), cost=1),
+    InstrDef(Op.VSEL, "VSEL", (OpType.IMM, OpType.IMM), cost=1),
+    InstrDef(Op.VMOV, "VMOV", (OpType.IMM, OpType.IMM), cost=1),
+    InstrDef(Op.VFILL, "VFILL", (OpType.IMM, OpType.IMM), cost=1),
+)
+
+BY_CODE_VU: dict[int, InstrDef] = {int(instr.op): instr for instr in ISA_VU}
+
+_by_mn_vu: dict[str, list[InstrDef]] = {}
+for _instr_vu in ISA_VU:
+    _by_mn_vu.setdefault(_instr_vu.mnemonic, []).append(_instr_vu)
+BY_MNEMONIC_VU: dict[str, tuple[InstrDef, ...]] = {k: tuple(v) for k, v in _by_mn_vu.items()}
+
+MNEMONICS_VU: frozenset[str] = frozenset(BY_MNEMONIC_VU)
+
+VU_SYNC_MNEMONICS: frozenset[str] = frozenset({"VSET", "VFSTAT", "VFCLR", "VWAIT"})
+
+del _by_mn_vu, _instr_vu, _VU_IMM16

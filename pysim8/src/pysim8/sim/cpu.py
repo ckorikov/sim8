@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pysim8.isa import BY_CODE, BY_CODE_FP, FP_FMT_WIDTH, ISA, ISA_FP, InstrDef, Op
+from pysim8.isa import BY_CODE, BY_CODE_FP, BY_CODE_VU, FP_FMT_WIDTH, ISA, ISA_FP, ISA_VU, InstrDef, Op
 
 from .decoder import Decoder
 from .errors import CpuFault, ErrorCode
 from .handlers import HandlersMixin
 from .handlers_fp import HandlersFpMixin
+from .handlers_vu import HandlersVuMixin
 from .memory import IO_START, PAGE_SIZE, Memory
 from .registers import CpuState, RegisterFile
 from .tracing import TraceCallback, TraceEvent
@@ -26,7 +27,7 @@ __all__ = ["CPU"]
 _FP_FMT_MEM_COST: tuple[int, ...] = tuple(FP_FMT_WIDTH[fmt] // 8 for fmt in range(5))
 
 
-class CPU(HandlersMixin, HandlersFpMixin):
+class CPU(HandlersMixin, HandlersFpMixin, HandlersVuMixin):
     """8-bit CPU simulator (control unit)."""
 
     __slots__ = (
@@ -42,6 +43,7 @@ class CPU(HandlersMixin, HandlersFpMixin):
         "_arch",
         "_instr_def",
         "_peak_mem",
+        "_vu_queue",
     )
 
     def __init__(
@@ -58,14 +60,21 @@ class CPU(HandlersMixin, HandlersFpMixin):
         self._steps = 0
         self._cycles = 0
         self._peak_mem = 0
+        self._vwait_pending = False
+        self._vwait_size = 0
         self._arch = arch
         self._dispatch: dict[Op, Handler] = {}
         self._build_dispatch()
         if arch >= 2:
             self._build_fp_dispatch()
+        if arch >= 3:
+            self._build_vu_dispatch()
+            self._init_vu()
 
         overrides = costs or {}
         all_isa = ISA if arch < 2 else ISA + ISA_FP
+        if arch >= 3:
+            all_isa = all_isa + ISA_VU
         valid = {d.mnemonic for d in all_isa}
         unknown = overrides.keys() - valid
         if unknown:
@@ -91,6 +100,32 @@ class CPU(HandlersMixin, HandlersFpMixin):
         if self.state == CpuState.IDLE:
             self.state = CpuState.RUNNING
 
+        # VU ticks at start of step (main clock)
+        if self._arch >= 3:
+            self.vu_tick()
+            # Check VU fault (surfaced at VWAIT or next step)
+            if self._vu_queue.fault != 0 and self._vwait_pending:
+                code = self._vu_queue.fault
+                self._vu_queue.fault = 0
+                self._vwait_pending = False
+                self._enter_fault(ErrorCode(code))
+                return False
+
+        # VWAIT: CPU stalled, only VU ticks
+        if self._vwait_pending:
+            self._cycles += 1  # stall cost
+            if self._vu_queue.fault != 0:
+                code = self._vu_queue.fault
+                self._vu_queue.fault = 0
+                self._vwait_pending = False
+                self._enter_fault(ErrorCode(code))
+                return False
+            if self._vu_queue.is_empty:
+                self._vwait_pending = False
+                self.regs.ip += self._vwait_size
+                self._vwait_size = 0
+            return True
+
         ip_before = self.regs.ip
 
         try:
@@ -106,6 +141,8 @@ class CPU(HandlersMixin, HandlersFpMixin):
                 defn = BY_CODE.get(opcode)
                 if defn is None and self._arch >= 2:
                     defn = BY_CODE_FP.get(opcode)
+                if defn is None and self._arch >= 3:
+                    defn = BY_CODE_VU.get(opcode)
                 size = defn.size if defn is not None else 1
                 self._trace(ip_before, opcode, (), size, {"FF": True, "A": int(fault.code)}, is_fault=True)
             return False
@@ -162,6 +199,10 @@ class CPU(HandlersMixin, HandlersFpMixin):
         self._steps = 0
         self._cycles = 0
         self._peak_mem = 0
+        self._vwait_pending = False
+        self._vwait_size = 0
+        if self._arch >= 3:
+            self._vu_queue.reset()
 
     @property
     def tracer(self) -> TraceCallback | None:
@@ -304,6 +345,14 @@ class CPU(HandlersMixin, HandlersFpMixin):
             snap["FB"] = r.fpu.fb
             snap["FPCR"] = r.fpu.fpcr
             snap["FPSR"] = r.fpu.fpsr
+        if r.vu is not None:
+            vu = r.vu
+            snap["VA"] = vu.va
+            snap["VB"] = vu.vb
+            snap["VC"] = vu.vc
+            snap["VM"] = vu.vm
+            snap["VL"] = vu.vl
+            snap["VFPSR"] = vu.vfpsr
         return snap
 
     def _diff(self, before: dict[str, int | bool]) -> dict[str, int | bool]:

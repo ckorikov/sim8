@@ -5,9 +5,10 @@ from __future__ import annotations
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from pysim8.isa import FP_FMT_WIDTH as _FP_FMT_WIDTH
+from pysim8.constants import FP_FMT_WIDTH as _FP_FMT_WIDTH
 
 from .memory import SP_INIT
+from .vu import VuRegisters
 
 if TYPE_CHECKING:
     from pysim8.fp_formats import FpExceptions
@@ -48,6 +49,30 @@ class Flags:
         if self.f:
             parts.append("F")
         return "Flags(" + " ".join(parts) + ")" if parts else "Flags()"
+
+
+# FPSR bit positions
+FPSR_NV = 0x01  # invalid operation
+FPSR_DZ = 0x02  # division by zero
+FPSR_OF = 0x04  # overflow
+FPSR_UF = 0x08  # underflow
+FPSR_NX = 0x10  # inexact
+
+
+def exc_to_flags(exc: FpExceptions) -> int:
+    """Convert FpExceptions to FPSR/VFPSR flag bits."""
+    flags = 0
+    if exc.invalid:
+        flags |= FPSR_NV
+    if exc.div_zero:
+        flags |= FPSR_DZ
+    if exc.overflow:
+        flags |= FPSR_OF
+    if exc.underflow:
+        flags |= FPSR_UF
+    if exc.inexact:
+        flags |= FPSR_NX
+    return flags
 
 
 class FpuRegisters:
@@ -108,16 +133,7 @@ class FpuRegisters:
 
     def accumulate_exceptions(self, exc: FpExceptions) -> None:
         """OR exception flags into FPSR (sticky)."""
-        if exc.invalid:
-            self.fpsr |= self.FPSR_NV
-        if exc.div_zero:
-            self.fpsr |= self.FPSR_DZ
-        if exc.overflow:
-            self.fpsr |= self.FPSR_OF
-        if exc.underflow:
-            self.fpsr |= self.FPSR_UF
-        if exc.inexact:
-            self.fpsr |= self.FPSR_NX
+        self.fpsr |= exc_to_flags(exc)
 
     def reset(self) -> None:
         """Reset all FPU state to zero."""
@@ -132,13 +148,14 @@ class FpuRegisters:
 class RegisterFile:
     """CPU register file: A(0), B(1), C(2), D(3), SP(4), DP(5) + IP."""
 
-    __slots__ = ("_regs", "ip", "flags", "fpu")
+    __slots__ = ("_regs", "ip", "flags", "fpu", "vu")
 
     def __init__(self, arch: int = 1) -> None:
         self._regs: list[int] = [0, 0, 0, 0, SP_INIT, 0]
         self.ip: int = 0
         self.flags: Flags = Flags()
         self.fpu: FpuRegisters | None = FpuRegisters() if arch >= 2 else None
+        self.vu: VuRegisters | None = VuRegisters() if arch >= 3 else None
 
     def read(self, code: int) -> int:
         """Read register by code. Caller must validate code is in range."""
@@ -208,6 +225,13 @@ class RegisterFile:
                 self.fpu.reset()
         else:
             self.fpu = None
+        if arch >= 3:
+            if self.vu is None:
+                self.vu = VuRegisters()
+            else:
+                self.vu.reset()
+        else:
+            self.vu = None
 
     def __repr__(self) -> str:
         return (

@@ -153,7 +153,7 @@ class TestErrorHandling:
 
     def test_138_out_of_range(self) -> None:
         err = asm_error("MOV A, 256")
-        assert "value between 0-255" in err.message
+        assert "value between -128 and 255" in err.message
 
     def test_139_offset_too_large(self) -> None:
         err = asm_error("MOV A, [B+16]")
@@ -634,7 +634,15 @@ class TestDbEdgeCases:
 
     def test_db_256_error(self) -> None:
         err = asm_error("DB 256")
-        assert "value between 0-255" in err.message
+        assert "value between -128 and 255" in err.message
+
+    def test_db_negative_ok(self) -> None:
+        code = asm_bytes("DB -5, -128, -1\nHLT")
+        assert code[:3] == [251, 128, 255]
+
+    def test_db_negative_out_of_range(self) -> None:
+        err = asm_error("DB -129")
+        assert "value between -128 and 255" in err.message
 
     def test_db_float_e4m3_ok(self) -> None:
         # 1.5 is representable in E4M3 → 1 byte
@@ -833,10 +841,10 @@ class TestPropParser:
         st.sampled_from(
             [
                 "MOV A, 256",
-                "MOV A, -1",
+                "MOV A, -129",
                 "MOV A, 300",
                 "DB 256",
-                "DB -1",
+                "DB -129",
                 "DB 999",
             ]
         )
