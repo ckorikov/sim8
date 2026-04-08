@@ -228,6 +228,3 @@ node_modules/
 
 # Assembler build artifacts
 *.bin
-
-# TLC trace artifacts (generated on failed model checks)
-*_TTrace_*.tla

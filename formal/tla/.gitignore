@@ -1,0 +1,5 @@
+# TLC artifacts
+states/
+*_TTrace_*.tla
+*_new.tla
+*.dot

@@ -44,4 +44,5 @@ $(TESTS): _check
 clean:
 	@rm -rf states plans tests/states
 	@rm -f *_TTrace_*.tla *_new.tla tests/*_TTrace_*.tla tests/*.bin
+	@rm -f *.dot
 	@echo "Cleaned TLC artifacts"
