@@ -200,12 +200,12 @@ function _buildMarkers() {
     add(dpBase + cpu.c, 1, "marker-c", "C");
     add(dpBase + cpu.d, 1, "marker-d", "D");
 
-    // VU pointer windows: fixed 16-byte memory port width
+    // VU pointers: single-cell marker at the current address
     const vu = cpu.vu;
     if (vu && vu.regs.vl > 0) {
-        add(vu.regs.va, 16, "marker-va", "VA");
-        add(vu.regs.vb, 16, "marker-vb", "VB");
-        add(vu.regs.vc, 16, "marker-vc", "VC");
+        add(vu.regs.va, 1, "marker-va", "VA");
+        add(vu.regs.vb, 1, "marker-vb", "VB");
+        add(vu.regs.vc, 1, "marker-vc", "VC");
     }
 
     return markers;
