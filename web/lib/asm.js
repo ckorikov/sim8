@@ -287,6 +287,8 @@ function _encodeVuSync(mnemonic, operands, line) {
     throw new AsmError(`Unknown VU sync instruction: ${mnemonic}`, line);
 }
 
+const _VSET_BYTE_EXPR = new Set([TAG_CONST, TAG_LABEL, TAG_PAGE_LABEL, TAG_ADDR_LABEL]);
+
 function _encodeVset(operands, line) {
     if (operands.length < 2) {
         throw new AsmError("VSET requires at least 2 operands", line);
@@ -296,26 +298,7 @@ function _encodeVset(operands, line) {
     }
     const target = operands[0].code;
 
-    // VSET vreg, imm16 (opcode 163)
-    if (operands[1].tag === TAG_CONST && operands.length === 2) {
-        const val = operands[1].value;
-        if (val < 0 || val > 65535) {
-            throw new AsmError(`VSET immediate must be 0-65535, got ${val}`, line);
-        }
-        return [Op.VSET_IMM16, target, val & 0xff, (val >> 8) & 0xff];
-    }
-
-    // VSET vreg, {label}, label (opcode 163) — page + offset as two standard patches
-    if (
-        operands.length === 3 &&
-        operands[1].tag === TAG_PAGE_LABEL &&
-        (operands[2].tag === TAG_LABEL || operands[2].tag === TAG_CONST)
-    ) {
-        const loVal = operands[2].tag === TAG_CONST ? operands[2].value : 0;
-        return [Op.VSET_IMM16, target, loVal, 0];
-    }
-
-    // VSET vreg, rH, rL (opcode 164)
+    // VSET vreg, rH, rL (opcode 164) — GPR pair; must come before composite check
     if (operands.length === 3 && operands[1].tag === TAG_REG && operands[2].tag === TAG_REG) {
         const rH = operands[1].code;
         const rL = operands[2].code;
@@ -325,14 +308,42 @@ function _encodeVset(operands, line) {
         return [Op.VSET_GPR, target, (rH << 2) | rL];
     }
 
-    // VSET vreg, [addr] / [label] (opcode 165)
-    if (operands[1].tag === TAG_ADDR || operands[1].tag === TAG_ADDR_LABEL) {
+    // VSET vreg, hi, lo (opcode 163) — composite byte-expression pair
+    // Accepted: number, bare label, {page-label}, [label] (resolves to offset)
+    if (operands.length === 3 && _VSET_BYTE_EXPR.has(operands[1].tag) && _VSET_BYTE_EXPR.has(operands[2].tag)) {
+        const hiVal = operands[1].tag === TAG_CONST ? operands[1].value : 0;
+        const loVal = operands[2].tag === TAG_CONST ? operands[2].value : 0;
+        if (operands[1].tag === TAG_CONST && (hiVal < 0 || hiVal > 255)) {
+            throw new AsmError(`VSET composite hi operand out of range: ${hiVal}`, line);
+        }
+        if (operands[2].tag === TAG_CONST && (loVal < 0 || loVal > 255)) {
+            throw new AsmError(`VSET composite lo operand out of range: ${loVal}`, line);
+        }
+        return [Op.VSET_IMM16, target, loVal & 0xff, hiVal & 0xff];
+    }
+
+    // VSET vreg, imm16 (opcode 163) — single numeric immediate, 0–65535
+    if (operands.length === 2 && operands[1].tag === TAG_CONST) {
+        const val = operands[1].value;
+        if (val < 0 || val > 65535) {
+            throw new AsmError(`VSET immediate must be 0-65535, got ${val}`, line);
+        }
+        return [Op.VSET_IMM16, target, val & 0xff, (val >> 8) & 0xff];
+    }
+
+    // VSET vreg, label (opcode 163) — full 16-bit address: lo=offset(label), hi=page(label), two patches emitted in pass 1
+    if (operands.length === 2 && operands[1].tag === TAG_LABEL) {
+        return [Op.VSET_IMM16, target, 0, 0];
+    }
+
+    // VSET vreg, [addr] / [label] (opcode 165) — read 16-bit LE from DP×256+addr
+    if (operands.length === 2 && (operands[1].tag === TAG_ADDR || operands[1].tag === TAG_ADDR_LABEL)) {
         const addr = operands[1].tag === TAG_ADDR ? operands[1].value : 0;
         return [Op.VSET_MEM, target, addr];
     }
 
     // VSET vreg, [reg+-offset] (opcode 166)
-    if (operands[1].tag === TAG_REGADDR) {
+    if (operands.length === 2 && operands[1].tag === TAG_REGADDR) {
         return [Op.VSET_MEMI, target, encodeRegaddr(operands[1].regCode, operands[1].offset)];
     }
 
@@ -353,10 +364,10 @@ const _VU_MNEMONIC_TO_OP = {
     VCMP: Op.VCMP,
     VSEL: Op.VSEL,
     VMOV: Op.VMOV,
-    VFILL: Op.VFILL,
+    VFILL: Op.VMOV,
 };
 
-const _VU_SINGLE_MODE = new Set(["VDOT", "VSQRT", "VNEG", "VABS", "VSEL", "VMOV"]);
+const _VU_SINGLE_MODE = new Set(["VDOT", "VSQRT", "VNEG", "VABS", "VSEL"]);
 
 function _resolveVuModeCond(mnemonic, modeSuffix, operands, line) {
     if (mnemonic === "VCMP") {
@@ -448,7 +459,8 @@ function _encodeVuAsync(mnemonic, suffixes, operands, line) {
     }
 
     const regs = _encodeVuRegsFromOperands(operands, mnemonic, mode, line);
-    const result = [opcode, encodeVfm(fmt, mode, cond), regs];
+    const result = [opcode, encodeVfm(fmt, mode), regs];
+    if (mnemonic === "VCMP") result.push(cond);
 
     if (mode === VU_MODE_VI) {
         const immOps = operands.filter((op) => op.tag === TAG_CONST);
@@ -646,9 +658,32 @@ function _pass1(parsed, arch) {
                 const nonFpIdx = operands.slice(0, i).filter((o) => o.tag !== TAG_FP_REG).length;
                 patchPos = pos + 1 + fpCount + nonFpIdx;
             } else if (pline.mnemonic === "VSET") {
-                // VSET encoding: [163, target, lo, hi]
-                // {page} patches hi (pos+3), offset patches lo (pos+2)
-                patchPos = isPageRef ? pos + 3 : pos + 2;
+                // 3-op [163, target, lo, hi]: i==1 → hi at pos+3, i==2 → lo at pos+2
+                // 2-op bare label: auto-expand to full 16-bit — emit lo (pos+2) + hi (pos+3)
+                // 2-op [165, target, addr]: addr always at pos+2
+                if (operands.length === 3) {
+                    patchPos = i === 1 ? pos + 3 : pos + 2;
+                } else if (op.tag === TAG_LABEL) {
+                    labelPatches.push({
+                        page: st.currentPage,
+                        pos: pos + 2,
+                        name: op.name,
+                        isPageRef: false,
+                        isJump,
+                        lineNo: pline.lineNo,
+                    });
+                    labelPatches.push({
+                        page: st.currentPage,
+                        pos: pos + 3,
+                        name: op.name,
+                        isPageRef: true,
+                        isJump,
+                        lineNo: pline.lineNo,
+                    });
+                    continue;
+                } else {
+                    patchPos = pos + 2;
+                }
             } else {
                 patchPos = pos + 1 + i;
             }
