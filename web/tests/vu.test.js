@@ -73,6 +73,36 @@ describe("VSET", () => {
         loadAndStep(cpu, code, 3);
         expect(cpu.vu.regs.va).toBe(0x0150);
     });
+
+    it("VSET single GPR zero-extends 8-bit value", () => {
+        // MOV A, 42; VSET VL, A → VL = 42
+        const code = [
+            Op.MOV_REG_CONST,
+            0,
+            42, // MOV A, 42
+            Op.VSET_GPR,
+            4,
+            0x10, // VSET VL, A (bit 4 set, gpr=0)
+            Op.HLT,
+        ];
+        loadAndStep(cpu, code, 2);
+        expect(cpu.vu.regs.vl).toBe(42);
+    });
+
+    it("VSET single GPR with register B", () => {
+        // MOV B, 200; VSET VL, B → VL = 200
+        const code = [
+            Op.MOV_REG_CONST,
+            1,
+            200, // MOV B, 200
+            Op.VSET_GPR,
+            4,
+            0x11, // VSET VL, B (bit 4 set, gpr=1)
+            Op.HLT,
+        ];
+        loadAndStep(cpu, code, 2);
+        expect(cpu.vu.regs.vl).toBe(200);
+    });
 });
 
 // ── VFSTAT / VFCLR ───────────────────────────────────────────────────

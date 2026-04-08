@@ -1122,9 +1122,14 @@ export class CPU {
         const target = instr.operands[0];
         if (target > 4) throw new CpuFault(ErrorCode.INVALID_REG, this.regs.ip);
         const packed = instr.operands[1];
-        const rH = (packed >> 2) & 3;
-        const rL = packed & 3;
-        const val = (this.regs.read(rH) << 8) | this.regs.read(rL);
+        let val;
+        if (packed & 0x10) {
+            val = this.regs.read(packed & 3);
+        } else {
+            const rH = (packed >> 2) & 3;
+            const rL = packed & 3;
+            val = (this.regs.read(rH) << 8) | this.regs.read(rL);
+        }
         this.vu.regs.writeReg(target, val);
         this.regs.ip += instr.size;
     }

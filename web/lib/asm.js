@@ -308,6 +308,15 @@ function _encodeVset(operands, line) {
         return [Op.VSET_GPR, target, (rH << 2) | rL];
     }
 
+    // VSET vreg, gpr (opcode 164) — single GPR, zero-extended to 16-bit (bit 4 flag)
+    if (operands.length === 2 && operands[1].tag === TAG_REG) {
+        const gpr = operands[1].code;
+        if (gpr > 3) {
+            throw new AsmError("VSET single GPR requires A-D", line);
+        }
+        return [Op.VSET_GPR, target, 0x10 | gpr];
+    }
+
     // VSET vreg, hi, lo (opcode 163) — composite byte-expression pair
     // Accepted: number, bare label, {page-label}, [label] (resolves to offset)
     if (operands.length === 3 && _VSET_BYTE_EXPR.has(operands[1].tag) && _VSET_BYTE_EXPR.has(operands[2].tag)) {
