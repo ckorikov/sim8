@@ -104,7 +104,7 @@ _MNEMONIC_INFO: dict[str, str] = {
     "FCLR": "Clear all FPSR sticky flags",
     "FCLASS": "Classify FP value to 8-bit bitmask",
     "FMADD": "FP dst = src * mem + dst (fused)",
-    "VSET": "Set VU register (VA/VB/VC/VM/VL) from imm16, GPR pair, or memory",
+    "VSET": "Set VU register (VA/VB/VC/VM/VL) from imm16, GPR pair, single GPR, or memory",
     "VFSTAT": "Read VFPSR (vector FP exception flags) to GPR",
     "VFCLR": "Clear all VFPSR sticky flags",
     "VWAIT": "Wait for VU queue to drain; propagate VU faults to CPU",
@@ -171,6 +171,18 @@ _MNEMONIC_NOTES: dict[str, str] = {
 }
 
 
+_FORMS_OVERRIDE: dict[str, list[str]] = {
+    "VSET": [
+        "VSET ptr, imm16",
+        "VSET ptr, {label}, label",
+        "VSET ptr, rH, rL",
+        "VSET ptr, gpr",
+        "VSET ptr, [addr]",
+        "VSET ptr, [reg±offset]",
+    ],
+}
+
+
 def _build_instr_info(mnemonic: str) -> dict[str, Any] | None:
     """Build instruction info dict for a mnemonic."""
     canonical = MNEMONIC_ALIASES.get(mnemonic.upper(), mnemonic.upper())
@@ -179,16 +191,18 @@ def _build_instr_info(mnemonic: str) -> dict[str, Any] | None:
     if desc is None:
         return None
 
-    # Build syntax forms from ISA tables
-    forms: list[str] = []
-    seen: set[str] = set()
-    for table in (BY_MNEMONIC, BY_MNEMONIC_FP, BY_MNEMONIC_VU):
-        for instr_def in table.get(canonical, ()):
-            sig = ", ".join(_SIG_LABELS.get(ot.value, "?") for ot in instr_def.sig)
-            form = f"{instr_def.mnemonic} {sig}" if sig else instr_def.mnemonic
-            if form not in seen:
-                seen.add(form)
-                forms.append(form)
+    forms = _FORMS_OVERRIDE.get(canonical)
+    if forms is None:
+        # Build syntax forms from ISA tables
+        forms = []
+        seen: set[str] = set()
+        for table in (BY_MNEMONIC, BY_MNEMONIC_FP, BY_MNEMONIC_VU):
+            for instr_def in table.get(canonical, ()):
+                sig = ", ".join(_SIG_LABELS.get(ot.value, "?") for ot in instr_def.sig)
+                form = f"{instr_def.mnemonic} {sig}" if sig else instr_def.mnemonic
+                if form not in seen:
+                    seen.add(form)
+                    forms.append(form)
 
     result: dict[str, Any] = {
         "mnemonic": canonical,

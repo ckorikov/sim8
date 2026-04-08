@@ -1805,8 +1805,8 @@
       ],
       "cost": 1,
       "since": 3,
-      "asm": "VSET ptr, rH, rL",
-      "desc": "Load (GPR[rH]<<8)|GPR[rL] into VU pointer; byte 3 = (rH<<2)|rL",
+      "asm": "VSET ptr, rH, rL | VSET ptr, gpr",
+      "desc": "GPR pair: (GPR[rH]<<8)|GPR[rL]; single GPR (bit 4 set): zero-extend GPR to 16-bit",
       "sync": true
     },
     {
