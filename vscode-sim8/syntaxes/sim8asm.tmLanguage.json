@@ -4,49 +4,90 @@
   "scopeName": "source.sim8asm",
   "fileTypes": [],
   "patterns": [
-    { "include": "#comment" },
-    { "include": "#label-def" },
-    { "include": "#directive" },
-    { "include": "#vu-instruction" },
-    { "include": "#vu-sync" },
-    { "include": "#fp-instruction" },
-    { "include": "#fp-control" },
-    { "include": "#db-pseudo" },
-    { "include": "#mnemonic" },
-    { "include": "#register-vu" },
-    { "include": "#memory" },
-    { "include": "#page-expr" },
-    { "include": "#string" },
-    { "include": "#char-literal" },
-    { "include": "#float-literal" },
-    { "include": "#number" },
-    { "include": "#register" }
+    {
+      "include": "#comment"
+    },
+    {
+      "include": "#label-def"
+    },
+    {
+      "include": "#directive"
+    },
+    {
+      "include": "#vu-instruction"
+    },
+    {
+      "include": "#vu-sync"
+    },
+    {
+      "include": "#fp-instruction"
+    },
+    {
+      "include": "#fp-control"
+    },
+    {
+      "include": "#db-pseudo"
+    },
+    {
+      "include": "#mnemonic"
+    },
+    {
+      "include": "#register-vu"
+    },
+    {
+      "include": "#memory"
+    },
+    {
+      "include": "#page-expr"
+    },
+    {
+      "include": "#string"
+    },
+    {
+      "include": "#char-literal"
+    },
+    {
+      "include": "#float-literal"
+    },
+    {
+      "include": "#number"
+    },
+    {
+      "include": "#register"
+    }
   ],
   "repository": {
-
     "comment": {
       "name": "comment.line.semicolon.sim8",
       "match": ";.*$"
     },
-
     "label-def": {
       "comment": "Label definitions: start:  or  .loop:",
       "match": "^\\s*(\\.?[A-Za-z_][A-Za-z0-9_]*)\\s*(:)",
       "captures": {
-        "1": { "name": "entity.name.function.label.sim8" },
-        "2": { "name": "punctuation.separator.label.sim8" }
+        "1": {
+          "name": "entity.name.function.label.sim8"
+        },
+        "2": {
+          "name": "punctuation.separator.label.sim8"
+        }
       }
     },
-
     "directive": {
       "patterns": [
         {
           "comment": "@page N  or  @page N, M",
           "match": "(?i)(@page)\\s+(\\d+)(?:\\s*,\\s*(\\d+))?",
           "captures": {
-            "1": { "name": "keyword.control.directive.sim8" },
-            "2": { "name": "constant.numeric.integer.sim8" },
-            "3": { "name": "constant.numeric.integer.sim8" }
+            "1": {
+              "name": "keyword.control.directive.sim8"
+            },
+            "2": {
+              "name": "constant.numeric.integer.sim8"
+            },
+            "3": {
+              "name": "constant.numeric.integer.sim8"
+            }
           }
         },
         {
@@ -54,78 +95,93 @@
           "begin": "(?i)(@include)\\s+",
           "end": "$",
           "beginCaptures": {
-            "1": { "name": "keyword.control.directive.sim8" }
+            "1": {
+              "name": "keyword.control.directive.sim8"
+            }
           },
           "patterns": [
-            { "include": "#string" }
+            {
+              "include": "#string"
+            }
           ]
         }
       ]
     },
-
     "vu-instruction": {
       "comment": "VU async instructions with format/mode/cond suffixes: VADD.U  VMUL.F.VV  VCMP.U.EQ",
-      "match": "(?i)\\b(VADD|VSUB|VMUL|VDIV|VMAX|VMIN|VDOT|VSQRT|VNEG|VABS|VCMP|VSEL|VMOV|VFILL)((?:\\.(?:BF|O[23]|[FHUI]|VV|VS|VI|R|EQ|NE|LT|LE|GT|GE))+)\\b",
+      "match": "(?i)\\\\b(VADD|VSUB|VMUL|VDIV|VMAX|VMIN|VDOT|VSQRT|VNEG|VABS|VCMP|VSEL|VMOV|VFILL)((?:\\.(?:BF|O[23]|[FHUI]|VV|VS|VI|R|EQ|NE|LT|LE|GT|GE))+)\\\\b",
       "captures": {
-        "1": { "name": "keyword.mnemonic.vu.sim8" },
-        "2": { "name": "storage.type.vu-format.sim8" }
+        "1": {
+          "name": "keyword.mnemonic.vu.sim8"
+        },
+        "2": {
+          "name": "storage.type.vu-format.sim8"
+        }
       }
     },
-
     "vu-sync": {
       "comment": "VU synchronous instructions (no format suffix)",
-      "match": "(?i)\\b(VSET|VFSTAT|VFCLR|VWAIT)\\b",
+      "match": "(?i)\\\\b(VSET|VFSTAT|VFCLR|VWAIT)\\\\b",
       "name": "keyword.mnemonic.vu.sim8"
     },
-
     "register-vu": {
       "comment": "VU registers: VA, VB, VC (pointers), VM (mask), VL (length)",
       "match": "(?i)\\b(VA|VB|VC|VM|VL)\\b",
       "name": "support.type.register.vu.sim8"
     },
-
     "fp-instruction": {
       "comment": "FP instructions with format suffix(es): FADD.H  FCVT.F.H  FMOV.BF",
-      "match": "(?i)\\b(FMOV|FADD|FSUB|FMUL|FDIV|FCMP|FABS|FNEG|FSQRT|FCVT|FITOF|FFTOI|FCLASS|FMADD)((?:\\.(?:E\\d+M\\d+|BF|O[23]|N[12]|[FH]))+)\\b",
+      "match": "(?i)\\\\b(FMOV|FADD|FSUB|FMUL|FDIV|FCMP|FABS|FNEG|FSQRT|FCVT|FITOF|FFTOI|FCLASS|FMADD)((?:\\.(?:E\\d+M\\d+|BF|O[23]|N[12]|[FH]))+)\\\\b",
       "captures": {
-        "1": { "name": "keyword.mnemonic.fp.sim8" },
-        "2": { "name": "storage.type.fp-format.sim8" }
+        "1": {
+          "name": "keyword.mnemonic.fp.sim8"
+        },
+        "2": {
+          "name": "storage.type.fp-format.sim8"
+        }
       }
     },
-
     "fp-control": {
       "comment": "FP control/status instructions (no format suffix)",
-      "match": "(?i)\\b(FSTAT|FCFG|FSCFG|FCLR)\\b",
+      "match": "(?i)\\\\b(FSTAT|FCFG|FSCFG|FCLR)\\\\b",
       "name": "keyword.mnemonic.fp.sim8"
     },
-
     "db-pseudo": {
       "match": "(?i)\\bDB\\b",
       "name": "keyword.other.db.sim8"
     },
-
     "mnemonic": {
       "comment": "Integer instruction mnemonics and jump aliases",
-      "match": "(?i)\\b(HLT|MOV|ADD|SUB|INC|DEC|CMP|JMP|JC|JNC|JZ|JNZ|JA|JNA|JB|JNAE|JNB|JAE|JE|JNE|JNBE|JBE|PUSH|POP|CALL|RET|MUL|DIV|AND|OR|XOR|NOT|SHL|SAL|SHR|SAR)\\b",
+      "match": "(?i)\\\\b(HLT|MOV|ADD|SUB|INC|DEC|CMP|JMP|JC|JNC|JZ|JNZ|JA|JNA|PUSH|POP|CALL|RET|MUL|DIV|AND|OR|XOR|NOT|SHL|SHR)\\\\b",
       "name": "keyword.mnemonic.sim8"
     },
-
     "register": {
       "comment": "All registers: FP 4-bit (FOA-FOP), FP 8-bit (FQA-FQH), FP 16-bit (FHA-FHD), FP 32-bit (FA,FB), integer (A,B,C,D,SP,DP)",
       "match": "(?i)\\b(FO[A-Pa-p]|FQ[A-Ha-h]|FH[A-Da-d]|F[ABab]|SP|DP|[ABCD])\\b",
       "name": "support.type.register.sim8"
     },
-
     "memory": {
       "comment": "Memory addressing: [reg]  [reg+offset]  [addr]  [label]",
       "name": "meta.memory-access.sim8",
       "begin": "\\[",
       "end": "\\]",
-      "beginCaptures": { "0": { "name": "punctuation.section.brackets.begin.sim8" } },
-      "endCaptures": { "0": { "name": "punctuation.section.brackets.end.sim8" } },
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.section.brackets.begin.sim8"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.section.brackets.end.sim8"
+        }
+      },
       "patterns": [
-        { "include": "#register" },
-        { "include": "#number" },
+        {
+          "include": "#register"
+        },
+        {
+          "include": "#number"
+        },
         {
           "match": "[+\\-]",
           "name": "keyword.operator.arithmetic.sim8"
@@ -136,14 +192,21 @@
         }
       ]
     },
-
     "page-expr": {
       "comment": "Page label expression: {label} → resolves to page number",
       "name": "meta.page-expression.sim8",
       "begin": "\\{",
       "end": "\\}",
-      "beginCaptures": { "0": { "name": "punctuation.section.braces.begin.sim8" } },
-      "endCaptures": { "0": { "name": "punctuation.section.braces.end.sim8" } },
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.section.braces.begin.sim8"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.section.braces.end.sim8"
+        }
+      },
       "patterns": [
         {
           "match": "\\.?[A-Za-z_][A-Za-z0-9_]*",
@@ -151,7 +214,6 @@
         }
       ]
     },
-
     "string": {
       "name": "string.quoted.double.sim8",
       "begin": "\"",
@@ -163,13 +225,11 @@
         }
       ]
     },
-
     "char-literal": {
       "comment": "Single character literal: 'A'",
       "name": "string.quoted.single.sim8",
       "match": "'[^'\\\\]'"
     },
-
     "float-literal": {
       "patterns": [
         {
@@ -184,7 +244,6 @@
         }
       ]
     },
-
     "number": {
       "patterns": [
         {
@@ -209,6 +268,5 @@
         }
       ]
     }
-
   }
 }
