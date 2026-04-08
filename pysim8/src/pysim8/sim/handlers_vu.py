@@ -256,7 +256,7 @@ class HandlersVuMixin:
             raise CpuFault(ErrorCode.VU_FORMAT, self.regs.ip)
 
     _VV_ONLY_OPS: frozenset[int] = frozenset({Op.VDOT, Op.VCMP, Op.VSEL})
-    _MODE0_ONLY_OPS: frozenset[int] = frozenset({Op.VSQRT, Op.VNEG, Op.VABS, Op.VMOV})
+    _MODE0_ONLY_OPS: frozenset[int] = frozenset({Op.VSQRT, Op.VNEG, Op.VABS})
 
     @staticmethod
     def _valid_mode(opcode: int, mode: int) -> bool:
@@ -264,6 +264,8 @@ class HandlersVuMixin:
             return mode == 0
         if opcode in HandlersVuMixin._MODE0_ONLY_OPS:
             return mode == 0
+        if opcode == Op.VMOV:
+            return mode in (0, VU_MODE_VI)
         if opcode == Op.VFILL:
             return mode == VU_MODE_VI
         return True  # arithmetic: all modes valid

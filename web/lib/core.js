@@ -1257,7 +1257,8 @@ export class CPU {
 
     _vuValidMode(opcode, mode) {
         if (VU_VV_ONLY_OPS.has(opcode)) return mode === 0;
-        if (VU_UNARY_OPS.has(opcode) || opcode === Op.VMOV) return mode === 0;
+        if (VU_UNARY_OPS.has(opcode)) return mode === 0;
+        if (opcode === Op.VMOV) return mode === 0 || mode === VU_MODE_VI;
         if (opcode === Op.VFILL) return mode === VU_MODE_VI;
         return true;
     }
