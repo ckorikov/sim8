@@ -9,6 +9,7 @@ Parses each source line into a structured representation:
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from pysim8.isa import (
@@ -413,7 +414,7 @@ def _try_label(token: str, line: int) -> Operand | None:
 # register is a finite set, string is unambiguous ('"'), number has specific formats,
 # FP imm catches float literals (must come before label to grab inf/nan),
 # label is the fallback for any remaining identifier.
-_OPERAND_PARSERS = [
+_OPERAND_PARSERS: list[Callable[..., Operand | None]] = [
     _try_bracket,
     _try_page_label,
     _try_register,

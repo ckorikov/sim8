@@ -6,7 +6,6 @@ import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import NamedTuple
 
 from pysim8.asm.parser import (
     AsmError,
@@ -344,6 +343,9 @@ def _encode_vu_sync(mnemonic: str, operands: list[Operand], line: int) -> list[i
     raise AssemblerError(f"Unknown VU sync instruction: {mnemonic}", line)
 
 
+_VSET_BYTE_EXPR = (OpConst, OpLabel, OpPageLabel, OpAddrLabel)
+
+
 def _encode_vset(operands: list[Operand], line: int) -> list[int]:
     """Encode VSET instruction (4 forms: imm16, gpr-pair, mem, memi)."""
     if len(operands) < 2:
@@ -352,42 +354,51 @@ def _encode_vset(operands: list[Operand], line: int) -> list[int]:
         raise AssemblerError("VSET first operand must be a VU register", line)
     target = operands[0].code
 
-    # VSET reg, imm16 (opcode 163)
-    if isinstance(operands[1], OpConst) and len(operands) == 2:
-        val = operands[1].value
-        if val < 0 or val > 65535:
-            raise AssemblerError(f"VSET immediate must be 0-65535, got {val}", line)
-        return [int(Op.VSET_IMM16), target, val & 0xFF, (val >> 8) & 0xFF]
-
-    # VSET reg, {label}, label (opcode 163) — page + offset as two standard patches
-    if len(operands) == 3 and isinstance(operands[1], OpPageLabel) and isinstance(operands[2], (OpLabel, OpConst)):
-        # operands[1] = {label} → page (patched in pass 2)
-        lo = operands[2]  # label → offset (patched in pass 2)
-        lo_val = lo.value if isinstance(lo, OpConst) else 0
-        return [int(Op.VSET_IMM16), target, lo_val, 0]
-
-    # VSET reg, rH, rL (opcode 164)
+    # VSET reg, rH, rL (opcode 164) — GPR pair; must come before composite check
     if len(operands) == 3 and isinstance(operands[1], OpReg) and isinstance(operands[2], OpReg):
         rh, rl = operands[1].code, operands[2].code
         if rh > 3 or rl > 3:
             raise AssemblerError("VSET GPR pair requires A-D", line)
         return [int(Op.VSET_GPR), target, (rh << 2) | rl]
 
-    # VSET reg, [addr] / [label] (opcode 165)
-    if isinstance(operands[1], (OpAddr, OpAddrLabel)):
+    # VSET reg, hi, lo (opcode 163) — composite byte-expression pair
+    if len(operands) == 3 and isinstance(operands[1], _VSET_BYTE_EXPR) and isinstance(operands[2], _VSET_BYTE_EXPR):
+        hi_val = operands[1].value if isinstance(operands[1], OpConst) else 0
+        lo_val = operands[2].value if isinstance(operands[2], OpConst) else 0
+        if isinstance(operands[1], OpConst) and not 0 <= hi_val <= 255:
+            raise AssemblerError(f"VSET composite hi operand out of range: {hi_val}", line)
+        if isinstance(operands[2], OpConst) and not 0 <= lo_val <= 255:
+            raise AssemblerError(f"VSET composite lo operand out of range: {lo_val}", line)
+        return [int(Op.VSET_IMM16), target, lo_val & 0xFF, hi_val & 0xFF]
+
+    # VSET reg, imm16 (opcode 163) — single numeric immediate, 0–65535
+    if len(operands) == 2 and isinstance(operands[1], OpConst):
+        val = operands[1].value
+        if val < 0 or val > 65535:
+            raise AssemblerError(f"VSET immediate must be 0-65535, got {val}", line)
+        return [int(Op.VSET_IMM16), target, val & 0xFF, (val >> 8) & 0xFF]
+
+    # VSET reg, label (opcode 163) — full 16-bit address: lo=offset(label), hi=page(label), two patches emitted in pass 1
+    if len(operands) == 2 and isinstance(operands[1], OpLabel):
+        return [int(Op.VSET_IMM16), target, 0, 0]
+
+    # VSET reg, [addr] / [label] (opcode 165) — read 16-bit LE from DP×256+addr
+    if len(operands) == 2 and isinstance(operands[1], (OpAddr, OpAddrLabel)):
         addr = operands[1].value if isinstance(operands[1], OpAddr) else 0
         return [int(Op.VSET_MEM), target, addr]
 
     # VSET reg, [reg±offset] (opcode 166)
-    if isinstance(operands[1], OpRegAddr):
+    if len(operands) == 2 and isinstance(operands[1], OpRegAddr):
         return [int(Op.VSET_MEMI), target, encode_regaddr(operands[1].reg_code, operands[1].offset)]
 
     raise AssemblerError("VSET does not support this operand(s)", line)
 
 
 _VU_MNEMONIC_TO_OP: dict[str, int] = {d.mnemonic: int(d.op) for d in ISA_VU if d.mnemonic not in VU_SYNC_MNEMONICS}
+# VFILL is an alias for VMOV — emits opcode 182 (Op.VMOV) with forced vi mode
+_VU_MNEMONIC_TO_OP["VFILL"] = int(Op.VMOV)
 
-_VU_SINGLE_MODE: frozenset[str] = frozenset({"VDOT", "VSQRT", "VNEG", "VABS", "VSEL", "VMOV"})
+_VU_SINGLE_MODE: frozenset[str] = frozenset({"VDOT", "VSQRT", "VNEG", "VABS", "VSEL"})
 
 
 def _resolve_vu_mode_cond(
@@ -487,7 +498,10 @@ def _encode_vu_async(
         raise AssemblerError(f"GPR broadcast only for byte formats (U/I/O3/O2), not .{fmt_suffix}", line)
 
     regs_byte = _encode_vu_regs_from_operands(operands, mnemonic, mode, line)
-    result = [opcode, encode_vfm(fmt, mode, cond), regs_byte]
+    result = [opcode, encode_vfm(fmt, mode), regs_byte]
+
+    if mnemonic == "VCMP":
+        result.append(cond)
 
     if mode == VU_MODE_VI:
         imm_ops = [op for op in operands if isinstance(op, OpConst)]
@@ -541,7 +555,8 @@ _JUMP_MNEMONICS = frozenset({"JMP", "JC", "JNC", "JZ", "JNZ", "JA", "JNA", "CALL
 # ── Patch descriptor ─────────────────────────────────────────────
 
 
-class LabelPatch(NamedTuple):
+@dataclass(frozen=True, slots=True)
+class LabelPatch:
     """Describes a label reference that needs resolution in Pass 2."""
 
     page: int
@@ -628,12 +643,19 @@ def _pass1_collect_label_patches(
             non_fp_idx = sum(1 for o in operands[:i] if not isinstance(o, OpFpReg))
             patch_pos = pos + 1 + fp_count + non_fp_idx
         elif mnemonic == "VSET":
-            # VSET encoding: [163, target, lo, hi]
-            # operands: [VuReg, {page}, offset] → page patches hi (pos+3), offset patches lo (pos+2)
-            patch_pos = pos + 3 if is_page_ref else pos + 2
+            # 3-op [VSET_IMM16, target, lo, hi]: operand[1]=hi at pos+3, operand[2]=lo at pos+2
+            # 2-op bare label: auto-expand to full 16-bit — emit lo patch (pos+2) + hi patch (pos+3)
+            # 2-op [VSET_MEM, target, addr]: addr at pos+2
+            if len(operands) == 3:
+                patch_pos = pos + 3 if i == 1 else pos + 2
+            elif isinstance(op, OpLabel):
+                st.label_patches.append(LabelPatch(st.current_page, pos + 2, op.name, False, is_jump, loc))
+                st.label_patches.append(LabelPatch(st.current_page, pos + 3, op.name, True, is_jump, loc))
+                continue
+            else:
+                patch_pos = pos + 2
         else:
             patch_pos = pos + 1 + i
-        # VSET label → 16-bit wide patch (lo=offset, hi=page)
         st.label_patches.append(LabelPatch(st.current_page, patch_pos, op.name, is_page_ref, is_jump, loc))
 
 
