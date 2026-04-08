@@ -23,7 +23,6 @@
 | [7. Floating-Point Unit (FPU)](fp.md) | `fp.md` |
 | [8. FP Test Specification](tests-fp.md) | `tests-fp.md` |
 | [9. Vector Unit (VU)](vector.md) | `vector.md` |
-| [Appendix A: Complete Opcode Table](opcodes.md) | `opcodes.md` |
 | [Appendix B: Error Codes](errors.md) | `errors.md` |
 
 ---

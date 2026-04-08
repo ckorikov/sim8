@@ -1,0 +1,2059 @@
+{
+  "memory": {
+    "size": 65536,
+    "page_size": 256,
+    "sp_init": 231
+  },
+  "display": {
+    "io_start": 232,
+    "io_len": 24
+  },
+  "fp_formats": [
+    {
+      "code": 0,
+      "suffix": "F",
+      "encoding": "E8M23",
+      "desc": "float32",
+      "width": 32,
+      "max_pos": 0
+    },
+    {
+      "code": 1,
+      "suffix": "H",
+      "encoding": "E5M10",
+      "desc": "float16",
+      "width": 16,
+      "max_pos": 1
+    },
+    {
+      "code": 2,
+      "suffix": "BF",
+      "encoding": "E8M7",
+      "desc": "bfloat16",
+      "width": 16,
+      "max_pos": 1
+    },
+    {
+      "code": 3,
+      "suffix": "O3",
+      "encoding": "E4M3",
+      "desc": "OFP8 E4M3",
+      "width": 8,
+      "max_pos": 3
+    },
+    {
+      "code": 4,
+      "suffix": "O2",
+      "encoding": "E5M2",
+      "desc": "OFP8 E5M2",
+      "width": 8,
+      "max_pos": 3
+    },
+    {
+      "code": 5,
+      "suffix": "N1",
+      "encoding": "E2M1",
+      "desc": "4-bit E2M1",
+      "width": 4,
+      "max_pos": 7
+    },
+    {
+      "code": 6,
+      "suffix": "N2",
+      "encoding": "E1M2",
+      "desc": "4-bit E1M2",
+      "width": 4,
+      "max_pos": 7
+    }
+  ],
+  "fp_registers": [
+    {
+      "name": "FA",
+      "phys": 0,
+      "pos": 0,
+      "fmt": 0,
+      "width": 32
+    },
+    {
+      "name": "FHA",
+      "phys": 0,
+      "pos": 0,
+      "fmt": 1,
+      "width": 16
+    },
+    {
+      "name": "FHB",
+      "phys": 0,
+      "pos": 1,
+      "fmt": 1,
+      "width": 16
+    },
+    {
+      "name": "FQA",
+      "phys": 0,
+      "pos": 0,
+      "fmt": 3,
+      "width": 8
+    },
+    {
+      "name": "FQB",
+      "phys": 0,
+      "pos": 1,
+      "fmt": 3,
+      "width": 8
+    },
+    {
+      "name": "FQC",
+      "phys": 0,
+      "pos": 2,
+      "fmt": 3,
+      "width": 8
+    },
+    {
+      "name": "FQD",
+      "phys": 0,
+      "pos": 3,
+      "fmt": 3,
+      "width": 8
+    },
+    {
+      "name": "FOA",
+      "phys": 0,
+      "pos": 0,
+      "fmt": 5,
+      "width": 4
+    },
+    {
+      "name": "FOB",
+      "phys": 0,
+      "pos": 1,
+      "fmt": 5,
+      "width": 4
+    },
+    {
+      "name": "FOC",
+      "phys": 0,
+      "pos": 2,
+      "fmt": 5,
+      "width": 4
+    },
+    {
+      "name": "FOD",
+      "phys": 0,
+      "pos": 3,
+      "fmt": 5,
+      "width": 4
+    },
+    {
+      "name": "FOE",
+      "phys": 0,
+      "pos": 4,
+      "fmt": 5,
+      "width": 4
+    },
+    {
+      "name": "FOF",
+      "phys": 0,
+      "pos": 5,
+      "fmt": 5,
+      "width": 4
+    },
+    {
+      "name": "FOG",
+      "phys": 0,
+      "pos": 6,
+      "fmt": 5,
+      "width": 4
+    },
+    {
+      "name": "FOH",
+      "phys": 0,
+      "pos": 7,
+      "fmt": 5,
+      "width": 4
+    },
+    {
+      "name": "FB",
+      "phys": 1,
+      "pos": 0,
+      "fmt": 0,
+      "width": 32
+    },
+    {
+      "name": "FHC",
+      "phys": 1,
+      "pos": 0,
+      "fmt": 1,
+      "width": 16
+    },
+    {
+      "name": "FHD",
+      "phys": 1,
+      "pos": 1,
+      "fmt": 1,
+      "width": 16
+    },
+    {
+      "name": "FQE",
+      "phys": 1,
+      "pos": 0,
+      "fmt": 3,
+      "width": 8
+    },
+    {
+      "name": "FQF",
+      "phys": 1,
+      "pos": 1,
+      "fmt": 3,
+      "width": 8
+    },
+    {
+      "name": "FQG",
+      "phys": 1,
+      "pos": 2,
+      "fmt": 3,
+      "width": 8
+    },
+    {
+      "name": "FQH",
+      "phys": 1,
+      "pos": 3,
+      "fmt": 3,
+      "width": 8
+    },
+    {
+      "name": "FOI",
+      "phys": 1,
+      "pos": 0,
+      "fmt": 5,
+      "width": 4
+    },
+    {
+      "name": "FOJ",
+      "phys": 1,
+      "pos": 1,
+      "fmt": 5,
+      "width": 4
+    },
+    {
+      "name": "FOK",
+      "phys": 1,
+      "pos": 2,
+      "fmt": 5,
+      "width": 4
+    },
+    {
+      "name": "FOL",
+      "phys": 1,
+      "pos": 3,
+      "fmt": 5,
+      "width": 4
+    },
+    {
+      "name": "FOM",
+      "phys": 1,
+      "pos": 4,
+      "fmt": 5,
+      "width": 4
+    },
+    {
+      "name": "FON",
+      "phys": 1,
+      "pos": 5,
+      "fmt": 5,
+      "width": 4
+    },
+    {
+      "name": "FOO",
+      "phys": 1,
+      "pos": 6,
+      "fmt": 5,
+      "width": 4
+    },
+    {
+      "name": "FOP",
+      "phys": 1,
+      "pos": 7,
+      "fmt": 5,
+      "width": 4
+    }
+  ],
+  "vu_formats": [
+    {
+      "code": 0,
+      "suffix": "F",
+      "desc": "float32",
+      "elem_size": 4
+    },
+    {
+      "code": 1,
+      "suffix": "H",
+      "desc": "float16",
+      "elem_size": 2
+    },
+    {
+      "code": 2,
+      "suffix": "BF",
+      "desc": "bfloat16",
+      "elem_size": 2
+    },
+    {
+      "code": 3,
+      "suffix": "O3",
+      "desc": "OFP8 E4M3",
+      "elem_size": 1
+    },
+    {
+      "code": 4,
+      "suffix": "O2",
+      "desc": "OFP8 E5M2",
+      "elem_size": 1
+    },
+    {
+      "code": 5,
+      "suffix": "U",
+      "desc": "UINT8",
+      "elem_size": 1
+    },
+    {
+      "code": 6,
+      "suffix": "I",
+      "desc": "INT8",
+      "elem_size": 1
+    }
+  ],
+  "vu_modes": [
+    {
+      "code": 0,
+      "suffix": "VV",
+      "desc": "vector-vector: vdst[i] = vsrc1[i] op vsrc2[i]"
+    },
+    {
+      "code": 1,
+      "suffix": "VS",
+      "desc": "vector-scalar: vdst[i] = vsrc1[i] op GPR"
+    },
+    {
+      "code": 2,
+      "suffix": "VI",
+      "desc": "vector-immediate: vdst[i] = vsrc1[i] op imm"
+    },
+    {
+      "code": 3,
+      "suffix": "R",
+      "desc": "reduction: vdst[0] = vsrc1[0] op vsrc1[1] op ... (two-operand form)"
+    }
+  ],
+  "vu_conditions": [
+    {
+      "code": 0,
+      "suffix": "EQ",
+      "desc": "equal"
+    },
+    {
+      "code": 1,
+      "suffix": "NE",
+      "desc": "not equal"
+    },
+    {
+      "code": 2,
+      "suffix": "LT",
+      "desc": "less than"
+    },
+    {
+      "code": 3,
+      "suffix": "LE",
+      "desc": "less than or equal"
+    },
+    {
+      "code": 4,
+      "suffix": "GT",
+      "desc": "greater than"
+    },
+    {
+      "code": 5,
+      "suffix": "GE",
+      "desc": "greater than or equal"
+    }
+  ],
+  "mnemonic_aliases": {
+    "JB": "JC",
+    "JNAE": "JC",
+    "JNB": "JNC",
+    "JAE": "JNC",
+    "JE": "JZ",
+    "JNE": "JNZ",
+    "JNBE": "JA",
+    "JBE": "JNA",
+    "SAL": "SHL",
+    "SAR": "SHR"
+  },
+  "instructions": [
+    {
+      "op": "HLT",
+      "opcode": 0,
+      "mnemonic": "HLT",
+      "operands": [],
+      "cost": 0,
+      "since": 1,
+      "asm": "HLT",
+      "desc": "Halt execution"
+    },
+    {
+      "op": "MOV_REG_REG",
+      "opcode": 1,
+      "mnemonic": "MOV",
+      "operands": [
+        "reg",
+        "reg"
+      ],
+      "cost": 1,
+      "since": 1,
+      "asm": "MOV reg, reg",
+      "desc": "Copy register to register"
+    },
+    {
+      "op": "MOV_REG_ADDR",
+      "opcode": 2,
+      "mnemonic": "MOV",
+      "operands": [
+        "reg",
+        "mem"
+      ],
+      "cost": 2,
+      "since": 1,
+      "asm": "MOV reg, [addr]",
+      "desc": "Load byte from memory address into register"
+    },
+    {
+      "op": "MOV_REG_REGADDR",
+      "opcode": 3,
+      "mnemonic": "MOV",
+      "operands": [
+        "reg",
+        "regaddr"
+      ],
+      "cost": 2,
+      "since": 1,
+      "asm": "MOV reg, [reg±offset]",
+      "desc": "Load byte from register-relative address into register"
+    },
+    {
+      "op": "MOV_ADDR_REG",
+      "opcode": 4,
+      "mnemonic": "MOV",
+      "operands": [
+        "mem",
+        "reg"
+      ],
+      "cost": 2,
+      "since": 1,
+      "asm": "MOV [addr], reg",
+      "desc": "Store register to memory address"
+    },
+    {
+      "op": "MOV_REGADDR_REG",
+      "opcode": 5,
+      "mnemonic": "MOV",
+      "operands": [
+        "regaddr",
+        "reg"
+      ],
+      "cost": 2,
+      "since": 1,
+      "asm": "MOV [reg±offset], reg",
+      "desc": "Store register to register-relative address"
+    },
+    {
+      "op": "MOV_REG_CONST",
+      "opcode": 6,
+      "mnemonic": "MOV",
+      "operands": [
+        "reg",
+        "imm"
+      ],
+      "cost": 1,
+      "since": 1,
+      "asm": "MOV reg, imm",
+      "desc": "Load immediate byte into register"
+    },
+    {
+      "op": "MOV_ADDR_CONST",
+      "opcode": 7,
+      "mnemonic": "MOV",
+      "operands": [
+        "mem",
+        "imm"
+      ],
+      "cost": 2,
+      "since": 1,
+      "asm": "MOV [addr], imm",
+      "desc": "Store immediate byte to memory address"
+    },
+    {
+      "op": "MOV_REGADDR_CONST",
+      "opcode": 8,
+      "mnemonic": "MOV",
+      "operands": [
+        "regaddr",
+        "imm"
+      ],
+      "cost": 2,
+      "since": 1,
+      "asm": "MOV [reg±offset], imm",
+      "desc": "Store immediate byte to register-relative address"
+    },
+    {
+      "op": "ADD_REG_REG",
+      "opcode": 10,
+      "mnemonic": "ADD",
+      "operands": [
+        "reg_arith",
+        "reg_arith"
+      ],
+      "cost": 1,
+      "since": 1,
+      "asm": "ADD reg, reg",
+      "desc": "dst += src; sets C (carry/borrow), Z"
+    },
+    {
+      "op": "ADD_REG_REGADDR",
+      "opcode": 11,
+      "mnemonic": "ADD",
+      "operands": [
+        "reg_arith",
+        "regaddr"
+      ],
+      "cost": 3,
+      "since": 1,
+      "asm": "ADD reg, [reg±offset]",
+      "desc": "dst += [reg±offset]; sets C, Z"
+    },
+    {
+      "op": "ADD_REG_ADDR",
+      "opcode": 12,
+      "mnemonic": "ADD",
+      "operands": [
+        "reg_arith",
+        "mem"
+      ],
+      "cost": 3,
+      "since": 1,
+      "asm": "ADD reg, [addr]",
+      "desc": "dst += [addr]; sets C, Z"
+    },
+    {
+      "op": "ADD_REG_CONST",
+      "opcode": 13,
+      "mnemonic": "ADD",
+      "operands": [
+        "reg_arith",
+        "imm"
+      ],
+      "cost": 1,
+      "since": 1,
+      "asm": "ADD reg, imm",
+      "desc": "dst += imm; sets C, Z"
+    },
+    {
+      "op": "SUB_REG_REG",
+      "opcode": 14,
+      "mnemonic": "SUB",
+      "operands": [
+        "reg_arith",
+        "reg_arith"
+      ],
+      "cost": 1,
+      "since": 1,
+      "asm": "SUB reg, reg",
+      "desc": "dst -= src; sets C (borrow), Z"
+    },
+    {
+      "op": "SUB_REG_REGADDR",
+      "opcode": 15,
+      "mnemonic": "SUB",
+      "operands": [
+        "reg_arith",
+        "regaddr"
+      ],
+      "cost": 3,
+      "since": 1,
+      "asm": "SUB reg, [reg±offset]",
+      "desc": "dst -= [reg±offset]; sets C, Z"
+    },
+    {
+      "op": "SUB_REG_ADDR",
+      "opcode": 16,
+      "mnemonic": "SUB",
+      "operands": [
+        "reg_arith",
+        "mem"
+      ],
+      "cost": 3,
+      "since": 1,
+      "asm": "SUB reg, [addr]",
+      "desc": "dst -= [addr]; sets C, Z"
+    },
+    {
+      "op": "SUB_REG_CONST",
+      "opcode": 17,
+      "mnemonic": "SUB",
+      "operands": [
+        "reg_arith",
+        "imm"
+      ],
+      "cost": 1,
+      "since": 1,
+      "asm": "SUB reg, imm",
+      "desc": "dst -= imm; sets C, Z"
+    },
+    {
+      "op": "INC_REG",
+      "opcode": 18,
+      "mnemonic": "INC",
+      "operands": [
+        "reg_arith"
+      ],
+      "cost": 1,
+      "since": 1,
+      "asm": "INC reg",
+      "desc": "reg += 1; sets Z (C unchanged)"
+    },
+    {
+      "op": "DEC_REG",
+      "opcode": 19,
+      "mnemonic": "DEC",
+      "operands": [
+        "reg_arith"
+      ],
+      "cost": 1,
+      "since": 1,
+      "asm": "DEC reg",
+      "desc": "reg -= 1; sets Z (C unchanged)"
+    },
+    {
+      "op": "CMP_REG_REG",
+      "opcode": 20,
+      "mnemonic": "CMP",
+      "operands": [
+        "reg_arith",
+        "reg_arith"
+      ],
+      "cost": 1,
+      "since": 1,
+      "asm": "CMP reg, reg",
+      "desc": "Compare (subtract without storing result); sets C, Z"
+    },
+    {
+      "op": "CMP_REG_REGADDR",
+      "opcode": 21,
+      "mnemonic": "CMP",
+      "operands": [
+        "reg_arith",
+        "regaddr"
+      ],
+      "cost": 3,
+      "since": 1,
+      "asm": "CMP reg, [reg±offset]",
+      "desc": "Compare with [reg±offset]; sets C, Z"
+    },
+    {
+      "op": "CMP_REG_ADDR",
+      "opcode": 22,
+      "mnemonic": "CMP",
+      "operands": [
+        "reg_arith",
+        "mem"
+      ],
+      "cost": 3,
+      "since": 1,
+      "asm": "CMP reg, [addr]",
+      "desc": "Compare with [addr]; sets C, Z"
+    },
+    {
+      "op": "CMP_REG_CONST",
+      "opcode": 23,
+      "mnemonic": "CMP",
+      "operands": [
+        "reg_arith",
+        "imm"
+      ],
+      "cost": 1,
+      "since": 1,
+      "asm": "CMP reg, imm",
+      "desc": "Compare with immediate; sets C, Z"
+    },
+    {
+      "op": "JMP_REG",
+      "opcode": 30,
+      "mnemonic": "JMP",
+      "operands": [
+        "reg_gpr"
+      ],
+      "cost": 1,
+      "since": 1,
+      "asm": "JMP reg",
+      "desc": "Unconditional jump to address in register"
+    },
+    {
+      "op": "JMP_ADDR",
+      "opcode": 31,
+      "mnemonic": "JMP",
+      "operands": [
+        "imm"
+      ],
+      "cost": 1,
+      "since": 1,
+      "asm": "JMP addr",
+      "desc": "Unconditional jump to address"
+    },
+    {
+      "op": "JC_REG",
+      "opcode": 32,
+      "mnemonic": "JC",
+      "operands": [
+        "reg_gpr"
+      ],
+      "cost": 1,
+      "since": 1,
+      "asm": "JC reg",
+      "desc": "Jump if carry (C=1) to address in register"
+    },
+    {
+      "op": "JC_ADDR",
+      "opcode": 33,
+      "mnemonic": "JC",
+      "operands": [
+        "imm"
+      ],
+      "cost": 1,
+      "since": 1,
+      "asm": "JC addr",
+      "desc": "Jump if carry (C=1)"
+    },
+    {
+      "op": "JNC_REG",
+      "opcode": 34,
+      "mnemonic": "JNC",
+      "operands": [
+        "reg_gpr"
+      ],
+      "cost": 1,
+      "since": 1,
+      "asm": "JNC reg",
+      "desc": "Jump if no carry (C=0) to address in register"
+    },
+    {
+      "op": "JNC_ADDR",
+      "opcode": 35,
+      "mnemonic": "JNC",
+      "operands": [
+        "imm"
+      ],
+      "cost": 1,
+      "since": 1,
+      "asm": "JNC addr",
+      "desc": "Jump if no carry (C=0)"
+    },
+    {
+      "op": "JZ_REG",
+      "opcode": 36,
+      "mnemonic": "JZ",
+      "operands": [
+        "reg_gpr"
+      ],
+      "cost": 1,
+      "since": 1,
+      "asm": "JZ reg",
+      "desc": "Jump if zero (Z=1) to address in register"
+    },
+    {
+      "op": "JZ_ADDR",
+      "opcode": 37,
+      "mnemonic": "JZ",
+      "operands": [
+        "imm"
+      ],
+      "cost": 1,
+      "since": 1,
+      "asm": "JZ addr",
+      "desc": "Jump if zero (Z=1)"
+    },
+    {
+      "op": "JNZ_REG",
+      "opcode": 38,
+      "mnemonic": "JNZ",
+      "operands": [
+        "reg_gpr"
+      ],
+      "cost": 1,
+      "since": 1,
+      "asm": "JNZ reg",
+      "desc": "Jump if not zero (Z=0) to address in register"
+    },
+    {
+      "op": "JNZ_ADDR",
+      "opcode": 39,
+      "mnemonic": "JNZ",
+      "operands": [
+        "imm"
+      ],
+      "cost": 1,
+      "since": 1,
+      "asm": "JNZ addr",
+      "desc": "Jump if not zero (Z=0)"
+    },
+    {
+      "op": "JA_REG",
+      "opcode": 40,
+      "mnemonic": "JA",
+      "operands": [
+        "reg_gpr"
+      ],
+      "cost": 1,
+      "since": 1,
+      "asm": "JA reg",
+      "desc": "Jump if above (C=0 and Z=0) to address in register"
+    },
+    {
+      "op": "JA_ADDR",
+      "opcode": 41,
+      "mnemonic": "JA",
+      "operands": [
+        "imm"
+      ],
+      "cost": 1,
+      "since": 1,
+      "asm": "JA addr",
+      "desc": "Jump if above (C=0 and Z=0)"
+    },
+    {
+      "op": "JNA_REG",
+      "opcode": 42,
+      "mnemonic": "JNA",
+      "operands": [
+        "reg_gpr"
+      ],
+      "cost": 1,
+      "since": 1,
+      "asm": "JNA reg",
+      "desc": "Jump if not above (C=1 or Z=1) to address in register"
+    },
+    {
+      "op": "JNA_ADDR",
+      "opcode": 43,
+      "mnemonic": "JNA",
+      "operands": [
+        "imm"
+      ],
+      "cost": 1,
+      "since": 1,
+      "asm": "JNA addr",
+      "desc": "Jump if not above (C=1 or Z=1)"
+    },
+    {
+      "op": "PUSH_REG",
+      "opcode": 50,
+      "mnemonic": "PUSH",
+      "operands": [
+        "reg_stack"
+      ],
+      "cost": 2,
+      "since": 1,
+      "asm": "PUSH reg",
+      "desc": "Push register onto stack (SP--)"
+    },
+    {
+      "op": "PUSH_REGADDR",
+      "opcode": 51,
+      "mnemonic": "PUSH",
+      "operands": [
+        "regaddr"
+      ],
+      "cost": 4,
+      "since": 1,
+      "asm": "PUSH [reg±offset]",
+      "desc": "Push byte at [reg±offset] onto stack"
+    },
+    {
+      "op": "PUSH_ADDR",
+      "opcode": 52,
+      "mnemonic": "PUSH",
+      "operands": [
+        "mem"
+      ],
+      "cost": 4,
+      "since": 1,
+      "asm": "PUSH [addr]",
+      "desc": "Push byte at [addr] onto stack"
+    },
+    {
+      "op": "PUSH_CONST",
+      "opcode": 53,
+      "mnemonic": "PUSH",
+      "operands": [
+        "imm"
+      ],
+      "cost": 2,
+      "since": 1,
+      "asm": "PUSH imm",
+      "desc": "Push immediate byte onto stack"
+    },
+    {
+      "op": "POP_REG",
+      "opcode": 54,
+      "mnemonic": "POP",
+      "operands": [
+        "reg_stack"
+      ],
+      "cost": 2,
+      "since": 1,
+      "asm": "POP reg",
+      "desc": "Pop top of stack into register (SP++)"
+    },
+    {
+      "op": "CALL_REG",
+      "opcode": 55,
+      "mnemonic": "CALL",
+      "operands": [
+        "reg_gpr"
+      ],
+      "cost": 2,
+      "since": 1,
+      "asm": "CALL reg",
+      "desc": "Push return address, jump to address in register"
+    },
+    {
+      "op": "CALL_ADDR",
+      "opcode": 56,
+      "mnemonic": "CALL",
+      "operands": [
+        "imm"
+      ],
+      "cost": 2,
+      "since": 1,
+      "asm": "CALL addr",
+      "desc": "Push return address, jump to address"
+    },
+    {
+      "op": "RET",
+      "opcode": 57,
+      "mnemonic": "RET",
+      "operands": [],
+      "cost": 2,
+      "since": 1,
+      "asm": "RET",
+      "desc": "Pop return address and jump to it"
+    },
+    {
+      "op": "MUL_REG",
+      "opcode": 60,
+      "mnemonic": "MUL",
+      "operands": [
+        "reg_gpr"
+      ],
+      "cost": 2,
+      "since": 1,
+      "asm": "MUL reg",
+      "desc": "A = A × reg (unsigned 8-bit); C=1 on overflow, sets Z"
+    },
+    {
+      "op": "MUL_REGADDR",
+      "opcode": 61,
+      "mnemonic": "MUL",
+      "operands": [
+        "regaddr"
+      ],
+      "cost": 4,
+      "since": 1,
+      "asm": "MUL [reg±offset]",
+      "desc": "A = A × [reg±offset] (unsigned); C=1 on overflow, sets Z"
+    },
+    {
+      "op": "MUL_ADDR",
+      "opcode": 62,
+      "mnemonic": "MUL",
+      "operands": [
+        "mem"
+      ],
+      "cost": 4,
+      "since": 1,
+      "asm": "MUL [addr]",
+      "desc": "A = A × [addr] (unsigned); C=1 on overflow, sets Z"
+    },
+    {
+      "op": "MUL_CONST",
+      "opcode": 63,
+      "mnemonic": "MUL",
+      "operands": [
+        "imm"
+      ],
+      "cost": 2,
+      "since": 1,
+      "asm": "MUL imm",
+      "desc": "A = A × imm (unsigned); C=1 on overflow, sets Z"
+    },
+    {
+      "op": "DIV_REG",
+      "opcode": 64,
+      "mnemonic": "DIV",
+      "operands": [
+        "reg_gpr"
+      ],
+      "cost": 2,
+      "since": 1,
+      "asm": "DIV reg",
+      "desc": "A = A / reg, B = A mod reg (unsigned); FAULT(ERR_DIV_ZERO) if reg=0"
+    },
+    {
+      "op": "DIV_REGADDR",
+      "opcode": 65,
+      "mnemonic": "DIV",
+      "operands": [
+        "regaddr"
+      ],
+      "cost": 4,
+      "since": 1,
+      "asm": "DIV [reg±offset]",
+      "desc": "A = A / [reg±offset], B = A mod [reg±offset]; FAULT on zero"
+    },
+    {
+      "op": "DIV_ADDR",
+      "opcode": 66,
+      "mnemonic": "DIV",
+      "operands": [
+        "mem"
+      ],
+      "cost": 4,
+      "since": 1,
+      "asm": "DIV [addr]",
+      "desc": "A = A / [addr], B = A mod [addr]; FAULT on zero"
+    },
+    {
+      "op": "DIV_CONST",
+      "opcode": 67,
+      "mnemonic": "DIV",
+      "operands": [
+        "imm"
+      ],
+      "cost": 2,
+      "since": 1,
+      "asm": "DIV imm",
+      "desc": "A = A / imm, B = A mod imm; FAULT(ERR_DIV_ZERO) if imm=0"
+    },
+    {
+      "op": "AND_REG_REG",
+      "opcode": 70,
+      "mnemonic": "AND",
+      "operands": [
+        "reg_gpr",
+        "reg_gpr"
+      ],
+      "cost": 1,
+      "since": 1,
+      "asm": "AND reg, reg",
+      "desc": "Bitwise AND; sets Z, clears C"
+    },
+    {
+      "op": "AND_REG_REGADDR",
+      "opcode": 71,
+      "mnemonic": "AND",
+      "operands": [
+        "reg_gpr",
+        "regaddr"
+      ],
+      "cost": 3,
+      "since": 1,
+      "asm": "AND reg, [reg±offset]",
+      "desc": "Bitwise AND with [reg±offset]; sets Z, clears C"
+    },
+    {
+      "op": "AND_REG_ADDR",
+      "opcode": 72,
+      "mnemonic": "AND",
+      "operands": [
+        "reg_gpr",
+        "mem"
+      ],
+      "cost": 3,
+      "since": 1,
+      "asm": "AND reg, [addr]",
+      "desc": "Bitwise AND with [addr]; sets Z, clears C"
+    },
+    {
+      "op": "AND_REG_CONST",
+      "opcode": 73,
+      "mnemonic": "AND",
+      "operands": [
+        "reg_gpr",
+        "imm"
+      ],
+      "cost": 1,
+      "since": 1,
+      "asm": "AND reg, imm",
+      "desc": "Bitwise AND with immediate; sets Z, clears C"
+    },
+    {
+      "op": "OR_REG_REG",
+      "opcode": 74,
+      "mnemonic": "OR",
+      "operands": [
+        "reg_gpr",
+        "reg_gpr"
+      ],
+      "cost": 1,
+      "since": 1,
+      "asm": "OR reg, reg",
+      "desc": "Bitwise OR; sets Z, clears C"
+    },
+    {
+      "op": "OR_REG_REGADDR",
+      "opcode": 75,
+      "mnemonic": "OR",
+      "operands": [
+        "reg_gpr",
+        "regaddr"
+      ],
+      "cost": 3,
+      "since": 1,
+      "asm": "OR reg, [reg±offset]",
+      "desc": "Bitwise OR with [reg±offset]; sets Z, clears C"
+    },
+    {
+      "op": "OR_REG_ADDR",
+      "opcode": 76,
+      "mnemonic": "OR",
+      "operands": [
+        "reg_gpr",
+        "mem"
+      ],
+      "cost": 3,
+      "since": 1,
+      "asm": "OR reg, [addr]",
+      "desc": "Bitwise OR with [addr]; sets Z, clears C"
+    },
+    {
+      "op": "OR_REG_CONST",
+      "opcode": 77,
+      "mnemonic": "OR",
+      "operands": [
+        "reg_gpr",
+        "imm"
+      ],
+      "cost": 1,
+      "since": 1,
+      "asm": "OR reg, imm",
+      "desc": "Bitwise OR with immediate; sets Z, clears C"
+    },
+    {
+      "op": "XOR_REG_REG",
+      "opcode": 78,
+      "mnemonic": "XOR",
+      "operands": [
+        "reg_gpr",
+        "reg_gpr"
+      ],
+      "cost": 1,
+      "since": 1,
+      "asm": "XOR reg, reg",
+      "desc": "Bitwise XOR; sets Z, clears C"
+    },
+    {
+      "op": "XOR_REG_REGADDR",
+      "opcode": 79,
+      "mnemonic": "XOR",
+      "operands": [
+        "reg_gpr",
+        "regaddr"
+      ],
+      "cost": 3,
+      "since": 1,
+      "asm": "XOR reg, [reg±offset]",
+      "desc": "Bitwise XOR with [reg±offset]; sets Z, clears C"
+    },
+    {
+      "op": "XOR_REG_ADDR",
+      "opcode": 80,
+      "mnemonic": "XOR",
+      "operands": [
+        "reg_gpr",
+        "mem"
+      ],
+      "cost": 3,
+      "since": 1,
+      "asm": "XOR reg, [addr]",
+      "desc": "Bitwise XOR with [addr]; sets Z, clears C"
+    },
+    {
+      "op": "XOR_REG_CONST",
+      "opcode": 81,
+      "mnemonic": "XOR",
+      "operands": [
+        "reg_gpr",
+        "imm"
+      ],
+      "cost": 1,
+      "since": 1,
+      "asm": "XOR reg, imm",
+      "desc": "Bitwise XOR with immediate; sets Z, clears C"
+    },
+    {
+      "op": "NOT_REG",
+      "opcode": 82,
+      "mnemonic": "NOT",
+      "operands": [
+        "reg_gpr"
+      ],
+      "cost": 1,
+      "since": 1,
+      "asm": "NOT reg",
+      "desc": "Bitwise NOT (one's complement); sets Z, clears C"
+    },
+    {
+      "op": "SHL_REG_REG",
+      "opcode": 90,
+      "mnemonic": "SHL",
+      "operands": [
+        "reg_gpr",
+        "reg_gpr"
+      ],
+      "cost": 1,
+      "since": 1,
+      "asm": "SHL reg, reg",
+      "desc": "Logical shift left by reg bits; C = last bit shifted out, sets Z"
+    },
+    {
+      "op": "SHL_REG_REGADDR",
+      "opcode": 91,
+      "mnemonic": "SHL",
+      "operands": [
+        "reg_gpr",
+        "regaddr"
+      ],
+      "cost": 3,
+      "since": 1,
+      "asm": "SHL reg, [reg±offset]",
+      "desc": "Logical shift left by [reg±offset] bits; C = last bit shifted out, sets Z"
+    },
+    {
+      "op": "SHL_REG_ADDR",
+      "opcode": 92,
+      "mnemonic": "SHL",
+      "operands": [
+        "reg_gpr",
+        "mem"
+      ],
+      "cost": 3,
+      "since": 1,
+      "asm": "SHL reg, [addr]",
+      "desc": "Logical shift left by [addr] bits; C = last bit shifted out, sets Z"
+    },
+    {
+      "op": "SHL_REG_CONST",
+      "opcode": 93,
+      "mnemonic": "SHL",
+      "operands": [
+        "reg_gpr",
+        "imm"
+      ],
+      "cost": 1,
+      "since": 1,
+      "asm": "SHL reg, imm",
+      "desc": "Logical shift left by imm bits; C = last bit shifted out, sets Z"
+    },
+    {
+      "op": "SHR_REG_REG",
+      "opcode": 94,
+      "mnemonic": "SHR",
+      "operands": [
+        "reg_gpr",
+        "reg_gpr"
+      ],
+      "cost": 1,
+      "since": 1,
+      "asm": "SHR reg, reg",
+      "desc": "Logical shift right by reg bits; C = last bit shifted out, sets Z"
+    },
+    {
+      "op": "SHR_REG_REGADDR",
+      "opcode": 95,
+      "mnemonic": "SHR",
+      "operands": [
+        "reg_gpr",
+        "regaddr"
+      ],
+      "cost": 3,
+      "since": 1,
+      "asm": "SHR reg, [reg±offset]",
+      "desc": "Logical shift right by [reg±offset] bits; C = last bit shifted out, sets Z"
+    },
+    {
+      "op": "SHR_REG_ADDR",
+      "opcode": 96,
+      "mnemonic": "SHR",
+      "operands": [
+        "reg_gpr",
+        "mem"
+      ],
+      "cost": 3,
+      "since": 1,
+      "asm": "SHR reg, [addr]",
+      "desc": "Logical shift right by [addr] bits; C = last bit shifted out, sets Z"
+    },
+    {
+      "op": "SHR_REG_CONST",
+      "opcode": 97,
+      "mnemonic": "SHR",
+      "operands": [
+        "reg_gpr",
+        "imm"
+      ],
+      "cost": 1,
+      "since": 1,
+      "asm": "SHR reg, imm",
+      "desc": "Logical shift right by imm bits; C = last bit shifted out, sets Z"
+    }
+  ],
+  "instructions_fp": [
+    {
+      "op": "FMOV_FP_ADDR",
+      "opcode": 128,
+      "mnemonic": "FMOV",
+      "operands": [
+        "fp_reg",
+        "mem"
+      ],
+      "cost": 0,
+      "format_dep": true,
+      "since": 2,
+      "asm": "FMOV.fmt freg, [addr]",
+      "desc": "Load FP register from memory (format-sized read)"
+    },
+    {
+      "op": "FMOV_FP_REGADDR",
+      "opcode": 129,
+      "mnemonic": "FMOV",
+      "operands": [
+        "fp_reg",
+        "regaddr"
+      ],
+      "cost": 0,
+      "format_dep": true,
+      "since": 2,
+      "asm": "FMOV.fmt freg, [reg±offset]",
+      "desc": "Load FP register from register-relative address (format-sized read)"
+    },
+    {
+      "op": "FMOV_ADDR_FP",
+      "opcode": 130,
+      "mnemonic": "FMOV",
+      "operands": [
+        "mem",
+        "fp_reg"
+      ],
+      "cost": 0,
+      "format_dep": true,
+      "since": 2,
+      "asm": "FMOV.fmt [addr], freg",
+      "desc": "Store FP register to memory (format-sized write)"
+    },
+    {
+      "op": "FMOV_REGADDR_FP",
+      "opcode": 131,
+      "mnemonic": "FMOV",
+      "operands": [
+        "regaddr",
+        "fp_reg"
+      ],
+      "cost": 0,
+      "format_dep": true,
+      "since": 2,
+      "asm": "FMOV.fmt [reg±offset], freg",
+      "desc": "Store FP register to register-relative address (format-sized write)"
+    },
+    {
+      "op": "FADD_FP_ADDR",
+      "opcode": 132,
+      "mnemonic": "FADD",
+      "operands": [
+        "fp_reg",
+        "mem"
+      ],
+      "cost": 2,
+      "format_dep": true,
+      "since": 2,
+      "asm": "FADD.fmt freg, [addr]",
+      "desc": "freg += load_fmt([addr]); sets FP flags"
+    },
+    {
+      "op": "FADD_FP_REGADDR",
+      "opcode": 133,
+      "mnemonic": "FADD",
+      "operands": [
+        "fp_reg",
+        "regaddr"
+      ],
+      "cost": 2,
+      "format_dep": true,
+      "since": 2,
+      "asm": "FADD.fmt freg, [reg±offset]",
+      "desc": "freg += load_fmt([reg±offset]); sets FP flags"
+    },
+    {
+      "op": "FSUB_FP_ADDR",
+      "opcode": 134,
+      "mnemonic": "FSUB",
+      "operands": [
+        "fp_reg",
+        "mem"
+      ],
+      "cost": 2,
+      "format_dep": true,
+      "since": 2,
+      "asm": "FSUB.fmt freg, [addr]",
+      "desc": "freg -= load_fmt([addr]); sets FP flags"
+    },
+    {
+      "op": "FSUB_FP_REGADDR",
+      "opcode": 135,
+      "mnemonic": "FSUB",
+      "operands": [
+        "fp_reg",
+        "regaddr"
+      ],
+      "cost": 2,
+      "format_dep": true,
+      "since": 2,
+      "asm": "FSUB.fmt freg, [reg±offset]",
+      "desc": "freg -= load_fmt([reg±offset]); sets FP flags"
+    },
+    {
+      "op": "FMUL_FP_ADDR",
+      "opcode": 136,
+      "mnemonic": "FMUL",
+      "operands": [
+        "fp_reg",
+        "mem"
+      ],
+      "cost": 2,
+      "format_dep": true,
+      "since": 2,
+      "asm": "FMUL.fmt freg, [addr]",
+      "desc": "freg *= load_fmt([addr]); sets FP flags"
+    },
+    {
+      "op": "FMUL_FP_REGADDR",
+      "opcode": 137,
+      "mnemonic": "FMUL",
+      "operands": [
+        "fp_reg",
+        "regaddr"
+      ],
+      "cost": 2,
+      "format_dep": true,
+      "since": 2,
+      "asm": "FMUL.fmt freg, [reg±offset]",
+      "desc": "freg *= load_fmt([reg±offset]); sets FP flags"
+    },
+    {
+      "op": "FDIV_FP_ADDR",
+      "opcode": 138,
+      "mnemonic": "FDIV",
+      "operands": [
+        "fp_reg",
+        "mem"
+      ],
+      "cost": 3,
+      "format_dep": true,
+      "since": 2,
+      "asm": "FDIV.fmt freg, [addr]",
+      "desc": "freg /= load_fmt([addr]); sets FP flags"
+    },
+    {
+      "op": "FDIV_FP_REGADDR",
+      "opcode": 139,
+      "mnemonic": "FDIV",
+      "operands": [
+        "fp_reg",
+        "regaddr"
+      ],
+      "cost": 3,
+      "format_dep": true,
+      "since": 2,
+      "asm": "FDIV.fmt freg, [reg±offset]",
+      "desc": "freg /= load_fmt([reg±offset]); sets FP flags"
+    },
+    {
+      "op": "FCMP_FP_ADDR",
+      "opcode": 140,
+      "mnemonic": "FCMP",
+      "operands": [
+        "fp_reg",
+        "mem"
+      ],
+      "cost": 2,
+      "format_dep": true,
+      "since": 2,
+      "asm": "FCMP.fmt freg, [addr]",
+      "desc": "Compare freg vs load_fmt([addr]); sets C, Z"
+    },
+    {
+      "op": "FCMP_FP_REGADDR",
+      "opcode": 141,
+      "mnemonic": "FCMP",
+      "operands": [
+        "fp_reg",
+        "regaddr"
+      ],
+      "cost": 2,
+      "format_dep": true,
+      "since": 2,
+      "asm": "FCMP.fmt freg, [reg±offset]",
+      "desc": "Compare freg vs load_fmt([reg±offset]); sets C, Z"
+    },
+    {
+      "op": "FABS_FP",
+      "opcode": 142,
+      "mnemonic": "FABS",
+      "operands": [
+        "fp_reg"
+      ],
+      "cost": 2,
+      "since": 2,
+      "asm": "FABS freg",
+      "desc": "freg = |freg| (clear sign bit)"
+    },
+    {
+      "op": "FNEG_FP",
+      "opcode": 143,
+      "mnemonic": "FNEG",
+      "operands": [
+        "fp_reg"
+      ],
+      "cost": 2,
+      "since": 2,
+      "asm": "FNEG freg",
+      "desc": "freg = -freg (flip sign bit)"
+    },
+    {
+      "op": "FSQRT_FP",
+      "opcode": 144,
+      "mnemonic": "FSQRT",
+      "operands": [
+        "fp_reg"
+      ],
+      "cost": 3,
+      "since": 2,
+      "asm": "FSQRT freg",
+      "desc": "freg = sqrt(freg); sets FP flags"
+    },
+    {
+      "op": "FMOV_RR",
+      "opcode": 145,
+      "mnemonic": "FMOV",
+      "operands": [
+        "fp_reg",
+        "fp_reg"
+      ],
+      "cost": 1,
+      "since": 2,
+      "asm": "FMOV freg, freg",
+      "desc": "Copy FP register to FP register (format conversion if widths differ)"
+    },
+    {
+      "op": "FCVT_FP_FP",
+      "opcode": 146,
+      "mnemonic": "FCVT",
+      "operands": [
+        "fp_reg",
+        "fp_reg"
+      ],
+      "cost": 2,
+      "since": 2,
+      "asm": "FCVT freg, freg",
+      "desc": "Convert between FP formats: dst = convert(src)"
+    },
+    {
+      "op": "FITOF_FP_GPR",
+      "opcode": 147,
+      "mnemonic": "FITOF",
+      "operands": [
+        "fp_reg",
+        "reg_gpr"
+      ],
+      "cost": 2,
+      "since": 2,
+      "asm": "FITOF freg, reg",
+      "desc": "Integer to FP: freg = float(GPR) using freg's format"
+    },
+    {
+      "op": "FFTOI_GPR_FP",
+      "opcode": 148,
+      "mnemonic": "FFTOI",
+      "operands": [
+        "reg_gpr",
+        "fp_reg"
+      ],
+      "cost": 2,
+      "since": 2,
+      "asm": "FFTOI reg, freg",
+      "desc": "FP to integer: GPR = trunc(freg) (truncation toward zero)"
+    },
+    {
+      "op": "FSTAT_GPR",
+      "opcode": 149,
+      "mnemonic": "FSTAT",
+      "operands": [
+        "reg_gpr"
+      ],
+      "cost": 1,
+      "since": 2,
+      "asm": "FSTAT reg",
+      "desc": "Copy FPSR (FP status register) into GPR"
+    },
+    {
+      "op": "FCFG_GPR",
+      "opcode": 150,
+      "mnemonic": "FCFG",
+      "operands": [
+        "reg_gpr"
+      ],
+      "cost": 1,
+      "since": 2,
+      "asm": "FCFG reg",
+      "desc": "Copy FPCR (FP control register) into GPR"
+    },
+    {
+      "op": "FSCFG_GPR",
+      "opcode": 151,
+      "mnemonic": "FSCFG",
+      "operands": [
+        "reg_gpr"
+      ],
+      "cost": 1,
+      "since": 2,
+      "asm": "FSCFG reg",
+      "desc": "Write FPCR from GPR (configure rounding mode, exception masks)"
+    },
+    {
+      "op": "FCLR",
+      "opcode": 152,
+      "mnemonic": "FCLR",
+      "operands": [],
+      "cost": 1,
+      "since": 2,
+      "asm": "FCLR",
+      "desc": "Clear FPSR sticky exception flags"
+    },
+    {
+      "op": "FADD_RR",
+      "opcode": 153,
+      "mnemonic": "FADD",
+      "operands": [
+        "fp_reg",
+        "fp_reg"
+      ],
+      "cost": 2,
+      "since": 2,
+      "asm": "FADD freg, freg",
+      "desc": "dst_freg += src_freg; sets FP flags"
+    },
+    {
+      "op": "FSUB_RR",
+      "opcode": 154,
+      "mnemonic": "FSUB",
+      "operands": [
+        "fp_reg",
+        "fp_reg"
+      ],
+      "cost": 2,
+      "since": 2,
+      "asm": "FSUB freg, freg",
+      "desc": "dst_freg -= src_freg; sets FP flags"
+    },
+    {
+      "op": "FMUL_RR",
+      "opcode": 155,
+      "mnemonic": "FMUL",
+      "operands": [
+        "fp_reg",
+        "fp_reg"
+      ],
+      "cost": 2,
+      "since": 2,
+      "asm": "FMUL freg, freg",
+      "desc": "dst_freg *= src_freg; sets FP flags"
+    },
+    {
+      "op": "FDIV_RR",
+      "opcode": 156,
+      "mnemonic": "FDIV",
+      "operands": [
+        "fp_reg",
+        "fp_reg"
+      ],
+      "cost": 3,
+      "since": 2,
+      "asm": "FDIV freg, freg",
+      "desc": "dst_freg /= src_freg; sets FP flags"
+    },
+    {
+      "op": "FCMP_RR",
+      "opcode": 157,
+      "mnemonic": "FCMP",
+      "operands": [
+        "fp_reg",
+        "fp_reg"
+      ],
+      "cost": 2,
+      "since": 2,
+      "asm": "FCMP freg, freg",
+      "desc": "Compare dst_freg vs src_freg; sets C, Z"
+    },
+    {
+      "op": "FCLASS_GPR_FP",
+      "opcode": 158,
+      "mnemonic": "FCLASS",
+      "operands": [
+        "reg_gpr",
+        "fp_reg"
+      ],
+      "cost": 1,
+      "since": 2,
+      "asm": "FCLASS reg, freg",
+      "desc": "GPR = classify(freg): bitmask of NaN/inf/zero/subnormal/normal/sign"
+    },
+    {
+      "op": "FMADD_FP_FP_ADDR",
+      "opcode": 159,
+      "mnemonic": "FMADD",
+      "operands": [
+        "fp_reg",
+        "fp_reg",
+        "mem"
+      ],
+      "cost": 4,
+      "format_dep": true,
+      "since": 2,
+      "asm": "FMADD.fmt freg, freg, [addr]",
+      "desc": "Fused multiply-add: dst += src_freg × load_fmt([addr]); sets FP flags"
+    },
+    {
+      "op": "FMADD_FP_FP_REGADDR",
+      "opcode": 160,
+      "mnemonic": "FMADD",
+      "operands": [
+        "fp_reg",
+        "fp_reg",
+        "regaddr"
+      ],
+      "cost": 4,
+      "format_dep": true,
+      "since": 2,
+      "asm": "FMADD.fmt freg, freg, [reg±offset]",
+      "desc": "Fused multiply-add: dst += src_freg × load_fmt([reg±offset]); sets FP flags"
+    },
+    {
+      "op": "FMOV_FP_IMM8",
+      "opcode": 161,
+      "mnemonic": "FMOV",
+      "operands": [
+        "fp_reg",
+        "fp_imm8"
+      ],
+      "cost": 1,
+      "since": 2,
+      "asm": "FMOV freg, imm8",
+      "desc": "Load FP register from 8-bit encoded immediate (e-format mini-float)"
+    },
+    {
+      "op": "FMOV_FP_IMM16",
+      "opcode": 162,
+      "mnemonic": "FMOV",
+      "operands": [
+        "fp_reg",
+        "fp_imm16"
+      ],
+      "cost": 1,
+      "since": 2,
+      "asm": "FMOV freg, imm16",
+      "desc": "Load FP register from 16-bit immediate (raw bit pattern in target format)"
+    }
+  ],
+  "instructions_vu": [
+    {
+      "op": "VSET_IMM16",
+      "opcode": 163,
+      "mnemonic": "VSET",
+      "operands": [
+        "imm",
+        "fp_imm16"
+      ],
+      "cost": 1,
+      "since": 3,
+      "sync": true,
+      "asm": "VSET ptr, imm16",
+      "desc": "Load 16-bit immediate into VU pointer (VA/VB/VC/VM/VL); ptr code 0–4"
+    },
+    {
+      "op": "VSET_GPR",
+      "opcode": 164,
+      "mnemonic": "VSET",
+      "operands": [
+        "imm",
+        "imm"
+      ],
+      "cost": 1,
+      "since": 3,
+      "asm": "VSET ptr, rH, rL",
+      "desc": "Load (GPR[rH]<<8)|GPR[rL] into VU pointer; byte 3 = (rH<<2)|rL",
+      "sync": true
+    },
+    {
+      "op": "VSET_MEM",
+      "opcode": 165,
+      "mnemonic": "VSET",
+      "operands": [
+        "imm",
+        "imm"
+      ],
+      "cost": 1,
+      "since": 3,
+      "asm": "VSET ptr, [addr]",
+      "desc": "Load 16-bit value from memory address into VU pointer",
+      "sync": true
+    },
+    {
+      "op": "VSET_MEMI",
+      "opcode": 166,
+      "mnemonic": "VSET",
+      "operands": [
+        "imm",
+        "imm"
+      ],
+      "cost": 1,
+      "since": 3,
+      "asm": "VSET ptr, [reg±offset]",
+      "desc": "Load 16-bit value from register-relative address into VU pointer",
+      "sync": true
+    },
+    {
+      "op": "VFSTAT",
+      "opcode": 167,
+      "mnemonic": "VFSTAT",
+      "operands": [
+        "imm"
+      ],
+      "cost": 1,
+      "since": 3,
+      "asm": "VFSTAT reg",
+      "desc": "Copy VFPSR (VU status register) into GPR",
+      "sync": true
+    },
+    {
+      "op": "VFCLR",
+      "opcode": 168,
+      "mnemonic": "VFCLR",
+      "operands": [],
+      "cost": 1,
+      "since": 3,
+      "asm": "VFCLR",
+      "desc": "Clear VFPSR sticky exception flags",
+      "sync": true
+    },
+    {
+      "op": "VWAIT",
+      "opcode": 169,
+      "mnemonic": "VWAIT",
+      "operands": [],
+      "cost": 1,
+      "since": 3,
+      "asm": "VWAIT",
+      "desc": "Drain VU command queue; surface deferred faults into CPU FAULT state",
+      "sync": true
+    },
+    {
+      "op": "VADD",
+      "opcode": 170,
+      "mnemonic": "VADD",
+      "operands": [
+        "imm",
+        "imm"
+      ],
+      "cost": 1,
+      "since": 3,
+      "asm": "VADD.fmt vdst, vsrc1, vsrc2",
+      "desc": "Async element-wise add: vdst[i] = vsrc1[i] + vsrc2[i]; mode inferred from operand types"
+    },
+    {
+      "op": "VSUB",
+      "opcode": 171,
+      "mnemonic": "VSUB",
+      "operands": [
+        "imm",
+        "imm"
+      ],
+      "cost": 1,
+      "since": 3,
+      "asm": "VSUB.fmt vdst, vsrc1, vsrc2",
+      "desc": "Async element-wise subtract: vdst[i] = vsrc1[i] - vsrc2[i]; mode inferred"
+    },
+    {
+      "op": "VMUL",
+      "opcode": 172,
+      "mnemonic": "VMUL",
+      "operands": [
+        "imm",
+        "imm"
+      ],
+      "cost": 1,
+      "since": 3,
+      "asm": "VMUL.fmt vdst, vsrc1, vsrc2",
+      "desc": "Async element-wise multiply: vdst[i] = vsrc1[i] × vsrc2[i]; mode inferred"
+    },
+    {
+      "op": "VDIV",
+      "opcode": 173,
+      "mnemonic": "VDIV",
+      "operands": [
+        "imm",
+        "imm"
+      ],
+      "cost": 1,
+      "since": 3,
+      "asm": "VDIV.fmt vdst, vsrc1, vsrc2",
+      "desc": "Async element-wise divide: vdst[i] = vsrc1[i] / vsrc2[i]; FAULT(ERR_DIV_ZERO) via VWAIT"
+    },
+    {
+      "op": "VMAX",
+      "opcode": 174,
+      "mnemonic": "VMAX",
+      "operands": [
+        "imm",
+        "imm"
+      ],
+      "cost": 1,
+      "since": 3,
+      "asm": "VMAX.fmt vdst, vsrc1, vsrc2",
+      "desc": "Async element-wise max: vdst[i] = max(vsrc1[i], vsrc2[i]); FP: IEEE 754-2019 NaN semantics"
+    },
+    {
+      "op": "VMIN",
+      "opcode": 175,
+      "mnemonic": "VMIN",
+      "operands": [
+        "imm",
+        "imm"
+      ],
+      "cost": 1,
+      "since": 3,
+      "asm": "VMIN.fmt vdst, vsrc1, vsrc2",
+      "desc": "Async element-wise min: vdst[i] = min(vsrc1[i], vsrc2[i]); FP: IEEE 754-2019 NaN semantics"
+    },
+    {
+      "op": "VDOT",
+      "opcode": 176,
+      "mnemonic": "VDOT",
+      "operands": [
+        "imm",
+        "imm"
+      ],
+      "cost": 1,
+      "since": 3,
+      "asm": "VDOT.fmt vdst, vsrc1, vsrc2",
+      "desc": "Async dot product: vdst[0] = Σ vsrc1[i]×vsrc2[i]; VV mode only; FP only (INT → FAULT)"
+    },
+    {
+      "op": "VSQRT",
+      "opcode": 177,
+      "mnemonic": "VSQRT",
+      "operands": [
+        "imm",
+        "imm"
+      ],
+      "cost": 1,
+      "since": 3,
+      "asm": "VSQRT.fmt vdst, vsrc",
+      "desc": "Async square root: vdst[i] = sqrt(vsrc[i]); FP only (INT → FAULT)"
+    },
+    {
+      "op": "VNEG",
+      "opcode": 178,
+      "mnemonic": "VNEG",
+      "operands": [
+        "imm",
+        "imm"
+      ],
+      "cost": 1,
+      "since": 3,
+      "asm": "VNEG.fmt vdst, vsrc",
+      "desc": "Async negate: vdst[i] = -vsrc[i]; unary (src2 must be 0)"
+    },
+    {
+      "op": "VABS",
+      "opcode": 179,
+      "mnemonic": "VABS",
+      "operands": [
+        "imm",
+        "imm"
+      ],
+      "cost": 1,
+      "since": 3,
+      "asm": "VABS.fmt vdst, vsrc",
+      "desc": "Async absolute value: vdst[i] = |vsrc[i]|; unary (src2 must be 0)"
+    },
+    {
+      "op": "VCMP",
+      "opcode": 180,
+      "mnemonic": "VCMP",
+      "operands": [
+        "imm",
+        "imm",
+        "imm"
+      ],
+      "cost": 1,
+      "since": 3,
+      "asm": "VCMP.fmt.cond vmask, vsrc1, vsrc2",
+      "desc": "Async compare: vmask[i] = vsrc1[i] cond vsrc2[i]; VV mode only; 4-byte encoding (cond in byte 3)"
+    },
+    {
+      "op": "VSEL",
+      "opcode": 181,
+      "mnemonic": "VSEL",
+      "operands": [
+        "imm",
+        "imm"
+      ],
+      "cost": 1,
+      "since": 3,
+      "asm": "VSEL.fmt vdst, vsrc1, vsrc2",
+      "desc": "Async select: vdst[i] = VM[i] ? vsrc1[i] : vsrc2[i]; VV mode only; reads VM"
+    },
+    {
+      "op": "VMOV",
+      "opcode": 182,
+      "mnemonic": "VMOV",
+      "operands": [
+        "imm",
+        "imm"
+      ],
+      "cost": 1,
+      "since": 3,
+      "asm": "VMOV.fmt vdst, vsrc",
+      "desc": "Async copy: vdst[i] = vsrc[i]; VI mode with immediate broadcasts a fill (VFILL alias)"
+    },
+    {
+      "op": "VFILL",
+      "opcode": 183,
+      "mnemonic": "VFILL",
+      "operands": [
+        "imm",
+        "imm"
+      ],
+      "cost": 1,
+      "since": 3,
+      "asm": "VFILL.fmt vdst, imm",
+      "desc": "Alias for VMOV.VI: vdst[i] = imm (broadcast fill); opcode 183 reserved"
+    }
+  ]
+}

@@ -129,7 +129,7 @@ FUNCTION decodeMovReg(reg_code):
 
 ## 4.4 Instruction Handlers
 
-**Note:** This section shows reference handlers for representative instruction forms to demonstrate the interpreter execution model. The complete instruction set (all opcode variants) is defined in [ISA](isa.md) and the opcode table in [Opcodes](opcodes.md). Any instruction form not listed here follows the same decode/validate conventions and uses the same effective-address and flag rules described above.
+**Note:** This section shows reference handlers for representative instruction forms to demonstrate the interpreter execution model. The complete instruction set (all opcode variants) is defined in [ISA](isa.md). Any instruction form not listed here follows the same decode/validate conventions and uses the same effective-address and flag rules described above.
 
 ### Data Movement
 

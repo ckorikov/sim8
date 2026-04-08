@@ -1,6 +1,6 @@
 # 1. Instruction Set Architecture (ISA)
 
-> Architecture v3 | Part of [Technical Specification](spec.md) | See also: [Memory Model & Addressing](mem.md), [CPU Architecture](cpu.md), [Microarchitecture](uarch.md), [Assembler](asm.md), [Opcode Table](opcodes.md), [FPU](fp.md), [Vector Unit](vector.md)
+> Architecture v3 | Part of [Technical Specification](spec.md) | See also: [Memory Model & Addressing](mem.md), [CPU Architecture](cpu.md), [Microarchitecture](uarch.md), [Assembler](asm.md), [FPU](fp.md), [Vector Unit](vector.md)
 
 ## 1.1 Overview
 
@@ -434,7 +434,7 @@ For label rules, comment syntax, and error handling, see [Assembler Specificatio
 
 Integer and FP instructions are encoded as 1–4 bytes; vector instructions may be up to 7 bytes (see [Vector Unit](vector.md)). Operand bytes follow syntactic operand order (see [FP encoding exceptions](#19-floating-point-instructions-opcodes-128-162) for FFTOI and FCLASS).
 
-For the complete opcode mapping, see [Opcode Table](opcodes.md).
+Opcodes are defined in `spec/isa.json`.
 
 ### Operand Byte Types
 

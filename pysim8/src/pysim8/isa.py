@@ -2,7 +2,38 @@
 
 from dataclasses import dataclass
 from enum import Enum, IntEnum
-from typing import NamedTuple
+
+from pysim8._isa_tables import (
+    FP_REG_DATA as _FP_REG_DATA,
+)
+from pysim8._isa_tables import (
+    ISA_DATA as _ISA_DATA,
+)
+from pysim8._isa_tables import (
+    ISA_FP_DATA as _ISA_FP_DATA,
+)
+from pysim8._isa_tables import (
+    ISA_VU_DATA as _ISA_VU_DATA,
+)
+from pysim8._isa_tables import (
+    MNEMONIC_ALIASES,
+    Op,
+)
+from pysim8.constants import (
+    FP_FMT_BF,
+    FP_FMT_F,
+    FP_FMT_H,
+    FP_FMT_MAX_POS,
+    FP_FMT_N1,
+    FP_FMT_N2,
+    FP_FMT_O2,
+    FP_FMT_O3,
+    FP_FMT_WIDTH,
+    IO_START,
+    MEMORY_SIZE,
+    PAGE_SIZE,
+    SP_INIT,
+)
 
 __all__ = [
     "Op",
@@ -60,6 +91,7 @@ __all__ = [
     "VU_ASYNC_OPS",
     "VU_ARITH_OPS",
     "VU_UNARY_OPS",
+    "VU_VV_ONLY_OPS",
     "VU_INT_FMTS",
     "VU_SYNC_MNEMONICS",
     "VU_MODE_VV",
@@ -72,212 +104,6 @@ __all__ = [
     "decode_vu_regs",
     "vu_instr_size",
 ]
-
-# ── Memory layout constants (canonical source: constants) ────────
-from pysim8.constants import IO_START, MEMORY_SIZE, PAGE_SIZE, SP_INIT  # noqa: E402
-
-
-class Op(IntEnum):
-    """CPU opcodes (decimal values from spec/opcodes.md)."""
-
-    HLT = 0
-
-    # MOV — Data Movement (1-8)
-    MOV_REG_REG = 1
-    MOV_REG_ADDR = 2
-    MOV_REG_REGADDR = 3
-    MOV_ADDR_REG = 4
-    MOV_REGADDR_REG = 5
-    MOV_REG_CONST = 6
-    MOV_ADDR_CONST = 7
-    MOV_REGADDR_CONST = 8
-
-    # ADD (10-13)
-    ADD_REG_REG = 10
-    ADD_REG_REGADDR = 11
-    ADD_REG_ADDR = 12
-    ADD_REG_CONST = 13
-
-    # SUB (14-17)
-    SUB_REG_REG = 14
-    SUB_REG_REGADDR = 15
-    SUB_REG_ADDR = 16
-    SUB_REG_CONST = 17
-
-    # INC / DEC (18-19)
-    INC_REG = 18
-    DEC_REG = 19
-
-    # CMP (20-23)
-    CMP_REG_REG = 20
-    CMP_REG_REGADDR = 21
-    CMP_REG_ADDR = 22
-    CMP_REG_CONST = 23
-
-    # JMP (30-31)
-    JMP_REG = 30
-    JMP_ADDR = 31
-
-    # JC (32-33)
-    JC_REG = 32
-    JC_ADDR = 33
-
-    # JNC (34-35)
-    JNC_REG = 34
-    JNC_ADDR = 35
-
-    # JZ (36-37)
-    JZ_REG = 36
-    JZ_ADDR = 37
-
-    # JNZ (38-39)
-    JNZ_REG = 38
-    JNZ_ADDR = 39
-
-    # JA (40-41)
-    JA_REG = 40
-    JA_ADDR = 41
-
-    # JNA (42-43)
-    JNA_REG = 42
-    JNA_ADDR = 43
-
-    # PUSH (50-53)
-    PUSH_REG = 50
-    PUSH_REGADDR = 51
-    PUSH_ADDR = 52
-    PUSH_CONST = 53
-
-    # POP (54)
-    POP_REG = 54
-
-    # CALL (55-56)
-    CALL_REG = 55
-    CALL_ADDR = 56
-
-    # RET (57)
-    RET = 57
-
-    # MUL (60-63)
-    MUL_REG = 60
-    MUL_REGADDR = 61
-    MUL_ADDR = 62
-    MUL_CONST = 63
-
-    # DIV (64-67)
-    DIV_REG = 64
-    DIV_REGADDR = 65
-    DIV_ADDR = 66
-    DIV_CONST = 67
-
-    # AND (70-73)
-    AND_REG_REG = 70
-    AND_REG_REGADDR = 71
-    AND_REG_ADDR = 72
-    AND_REG_CONST = 73
-
-    # OR (74-77)
-    OR_REG_REG = 74
-    OR_REG_REGADDR = 75
-    OR_REG_ADDR = 76
-    OR_REG_CONST = 77
-
-    # XOR (78-81)
-    XOR_REG_REG = 78
-    XOR_REG_REGADDR = 79
-    XOR_REG_ADDR = 80
-    XOR_REG_CONST = 81
-
-    # NOT (82)
-    NOT_REG = 82
-
-    # SHL (90-93)
-    SHL_REG_REG = 90
-    SHL_REG_REGADDR = 91
-    SHL_REG_ADDR = 92
-    SHL_REG_CONST = 93
-
-    # SHR (94-97)
-    SHR_REG_REG = 94
-    SHR_REG_REGADDR = 95
-    SHR_REG_ADDR = 96
-    SHR_REG_CONST = 97
-
-    # FP -- FMOV (128-131)
-    FMOV_FP_ADDR = 128
-    FMOV_FP_REGADDR = 129
-    FMOV_ADDR_FP = 130
-    FMOV_REGADDR_FP = 131
-    # FP -- FADD (132-133)
-    FADD_FP_ADDR = 132
-    FADD_FP_REGADDR = 133
-    # FP -- FSUB (134-135)
-    FSUB_FP_ADDR = 134
-    FSUB_FP_REGADDR = 135
-    # FP -- FMUL (136-137)
-    FMUL_FP_ADDR = 136
-    FMUL_FP_REGADDR = 137
-    # FP -- FDIV (138-139)
-    FDIV_FP_ADDR = 138
-    FDIV_FP_REGADDR = 139
-    # FP -- FCMP (140-141)
-    FCMP_FP_ADDR = 140
-    FCMP_FP_REGADDR = 141
-    # FP -- FABS/FNEG/FSQRT (142-144)
-    FABS_FP = 142
-    FNEG_FP = 143
-    FSQRT_FP = 144
-    # FP -- FMOV reg-reg (145)
-    FMOV_RR = 145
-    # FP -- FCVT (146)
-    FCVT_FP_FP = 146
-    # FP -- FITOF/FFTOI (147-148)
-    FITOF_FP_GPR = 147
-    FFTOI_GPR_FP = 148
-    # FP -- Control (149-152)
-    FSTAT_GPR = 149
-    FCFG_GPR = 150
-    FSCFG_GPR = 151
-    FCLR = 152
-    # FP -- Reg-Reg arithmetic (153-157)
-    FADD_RR = 153
-    FSUB_RR = 154
-    FMUL_RR = 155
-    FDIV_RR = 156
-    FCMP_RR = 157
-    # FP -- FCLASS (158)
-    FCLASS_GPR_FP = 158
-    # FP -- FMADD (159-160)
-    FMADD_FP_FP_ADDR = 159
-    FMADD_FP_FP_REGADDR = 160
-    # FP -- FMOV immediate (161-162)
-    FMOV_FP_IMM8 = 161
-    FMOV_FP_IMM16 = 162
-
-    # VU — Synchronous (163-169)
-    VSET_IMM16 = 163
-    VSET_GPR = 164
-    VSET_MEM = 165
-    VSET_MEMI = 166
-    VFSTAT = 167
-    VFCLR = 168
-    VWAIT = 169
-
-    # VU — Asynchronous (170-183)
-    VADD = 170
-    VSUB = 171
-    VMUL = 172
-    VDIV = 173
-    VMAX = 174
-    VMIN = 175
-    VDOT = 176
-    VSQRT = 177
-    VNEG = 178
-    VABS = 179
-    VCMP = 180
-    VSEL = 181
-    VMOV = 182
-    VFILL = 183
 
 
 class Reg(IntEnum):
@@ -342,34 +168,6 @@ def decode_regaddr(encoded: int) -> tuple[int, int]:
     return reg_code, offset
 
 
-# Mnemonic aliases → canonical mnemonic
-MNEMONIC_ALIASES: dict[str, str] = {
-    "JB": "JC",
-    "JNAE": "JC",
-    "JNB": "JNC",
-    "JAE": "JNC",
-    "JE": "JZ",
-    "JNE": "JNZ",
-    "JNBE": "JA",
-    "JBE": "JNA",
-    # SAL/SAR → SHL/SHR
-    "SAL": "SHL",
-    "SAR": "SHR",
-}
-
-# ── FP format constants (canonical source: constants) ────────────
-from pysim8.constants import (  # noqa: E402
-    FP_FMT_BF,
-    FP_FMT_F,
-    FP_FMT_H,
-    FP_FMT_MAX_POS,
-    FP_FMT_N1,
-    FP_FMT_N2,
-    FP_FMT_O2,
-    FP_FMT_O3,
-    FP_FMT_WIDTH,
-)
-
 # Short suffix -> fmt code (case-insensitive matching done by caller)
 FP_SUFFIX_TO_FMT: dict[str, int] = {
     "F": FP_FMT_F,
@@ -389,51 +187,15 @@ FP_SUFFIX_TO_FMT: dict[str, int] = {
 }
 
 
-class FpRegInfo(NamedTuple):
+@dataclass(frozen=True, slots=True)
+class FpRegInfo:
     phys: int
     pos: int
     fmt: int
     width: int
 
 
-def _fpreg(phys: int, pos: int, fmt: int, width: int) -> FpRegInfo:
-    return FpRegInfo(phys=phys, pos=pos, fmt=fmt, width=width)
-
-
-FP_REGISTERS: dict[str, FpRegInfo] = {
-    # Physical register 0 (FA family)
-    "FA": _fpreg(0, 0, FP_FMT_F, 32),
-    "FHA": _fpreg(0, 0, FP_FMT_H, 16),
-    "FHB": _fpreg(0, 1, FP_FMT_H, 16),
-    "FQA": _fpreg(0, 0, FP_FMT_O3, 8),
-    "FQB": _fpreg(0, 1, FP_FMT_O3, 8),
-    "FQC": _fpreg(0, 2, FP_FMT_O3, 8),
-    "FQD": _fpreg(0, 3, FP_FMT_O3, 8),
-    "FOA": _fpreg(0, 0, FP_FMT_N1, 4),
-    "FOB": _fpreg(0, 1, FP_FMT_N1, 4),
-    "FOC": _fpreg(0, 2, FP_FMT_N1, 4),
-    "FOD": _fpreg(0, 3, FP_FMT_N1, 4),
-    "FOE": _fpreg(0, 4, FP_FMT_N1, 4),
-    "FOF": _fpreg(0, 5, FP_FMT_N1, 4),
-    "FOG": _fpreg(0, 6, FP_FMT_N1, 4),
-    "FOH": _fpreg(0, 7, FP_FMT_N1, 4),
-    # Physical register 1 (FB family)
-    "FB": _fpreg(1, 0, FP_FMT_F, 32),
-    "FHC": _fpreg(1, 0, FP_FMT_H, 16),
-    "FHD": _fpreg(1, 1, FP_FMT_H, 16),
-    "FQE": _fpreg(1, 0, FP_FMT_O3, 8),
-    "FQF": _fpreg(1, 1, FP_FMT_O3, 8),
-    "FQG": _fpreg(1, 2, FP_FMT_O3, 8),
-    "FQH": _fpreg(1, 3, FP_FMT_O3, 8),
-    "FOI": _fpreg(1, 0, FP_FMT_N1, 4),
-    "FOJ": _fpreg(1, 1, FP_FMT_N1, 4),
-    "FOK": _fpreg(1, 2, FP_FMT_N1, 4),
-    "FOL": _fpreg(1, 3, FP_FMT_N1, 4),
-    "FOM": _fpreg(1, 4, FP_FMT_N1, 4),
-    "FON": _fpreg(1, 5, FP_FMT_N1, 4),
-    "FOO": _fpreg(1, 6, FP_FMT_N1, 4),
-    "FOP": _fpreg(1, 7, FP_FMT_N1, 4),
-}
+FP_REGISTERS: dict[str, FpRegInfo] = {name: FpRegInfo(*info) for name, info in _FP_REG_DATA.items()}
 
 # Width class -> allowed FP register names
 FP_WIDTH_REGS: dict[int, frozenset[str]] = {
@@ -517,205 +279,32 @@ class InstrDef:
         return 1 + sum(_OPTYPE_BYTES.get(ot.value, 1) for ot in self.sig)
 
 
-_REG, _ARI, _GPR, _STK = OpType.REG, OpType.REG_ARITH, OpType.REG_GPR, OpType.REG_STACK
-_IMM, _MEM, _IADDR = OpType.IMM, OpType.MEM, OpType.REGADDR
+_OPTYPE_MAP: dict[str, OpType] = {ot.value: ot for ot in OpType}
 
-ISA: tuple[InstrDef, ...] = (
-    # HLT (0)
-    InstrDef(Op.HLT, "HLT", (), cost=0),
-    # MOV (1-8)
-    InstrDef(Op.MOV_REG_REG, "MOV", (_REG, _REG)),
-    InstrDef(Op.MOV_REG_ADDR, "MOV", (_REG, _MEM), cost=2),
-    InstrDef(Op.MOV_REG_REGADDR, "MOV", (_REG, _IADDR), cost=2),
-    InstrDef(Op.MOV_ADDR_REG, "MOV", (_MEM, _REG), cost=2),
-    InstrDef(Op.MOV_REGADDR_REG, "MOV", (_IADDR, _REG), cost=2),
-    InstrDef(Op.MOV_REG_CONST, "MOV", (_REG, _IMM)),
-    InstrDef(Op.MOV_ADDR_CONST, "MOV", (_MEM, _IMM), cost=2),
-    InstrDef(Op.MOV_REGADDR_CONST, "MOV", (_IADDR, _IMM), cost=2),
-    # ADD (10-13)
-    InstrDef(Op.ADD_REG_REG, "ADD", (_ARI, _ARI)),
-    InstrDef(Op.ADD_REG_REGADDR, "ADD", (_ARI, _IADDR), cost=3),
-    InstrDef(Op.ADD_REG_ADDR, "ADD", (_ARI, _MEM), cost=3),
-    InstrDef(Op.ADD_REG_CONST, "ADD", (_ARI, _IMM)),
-    # SUB (14-17)
-    InstrDef(Op.SUB_REG_REG, "SUB", (_ARI, _ARI)),
-    InstrDef(Op.SUB_REG_REGADDR, "SUB", (_ARI, _IADDR), cost=3),
-    InstrDef(Op.SUB_REG_ADDR, "SUB", (_ARI, _MEM), cost=3),
-    InstrDef(Op.SUB_REG_CONST, "SUB", (_ARI, _IMM)),
-    # INC / DEC (18-19)
-    InstrDef(Op.INC_REG, "INC", (_ARI,)),
-    InstrDef(Op.DEC_REG, "DEC", (_ARI,)),
-    # CMP (20-23)
-    InstrDef(Op.CMP_REG_REG, "CMP", (_ARI, _ARI)),
-    InstrDef(Op.CMP_REG_REGADDR, "CMP", (_ARI, _IADDR), cost=3),
-    InstrDef(Op.CMP_REG_ADDR, "CMP", (_ARI, _MEM), cost=3),
-    InstrDef(Op.CMP_REG_CONST, "CMP", (_ARI, _IMM)),
-    # JMP (30-31)
-    InstrDef(Op.JMP_REG, "JMP", (_GPR,)),
-    InstrDef(Op.JMP_ADDR, "JMP", (_IMM,)),
-    # JC (32-33)
-    InstrDef(Op.JC_REG, "JC", (_GPR,)),
-    InstrDef(Op.JC_ADDR, "JC", (_IMM,)),
-    # JNC (34-35)
-    InstrDef(Op.JNC_REG, "JNC", (_GPR,)),
-    InstrDef(Op.JNC_ADDR, "JNC", (_IMM,)),
-    # JZ (36-37)
-    InstrDef(Op.JZ_REG, "JZ", (_GPR,)),
-    InstrDef(Op.JZ_ADDR, "JZ", (_IMM,)),
-    # JNZ (38-39)
-    InstrDef(Op.JNZ_REG, "JNZ", (_GPR,)),
-    InstrDef(Op.JNZ_ADDR, "JNZ", (_IMM,)),
-    # JA (40-41)
-    InstrDef(Op.JA_REG, "JA", (_GPR,)),
-    InstrDef(Op.JA_ADDR, "JA", (_IMM,)),
-    # JNA (42-43)
-    InstrDef(Op.JNA_REG, "JNA", (_GPR,)),
-    InstrDef(Op.JNA_ADDR, "JNA", (_IMM,)),
-    # PUSH (50-53)
-    InstrDef(Op.PUSH_REG, "PUSH", (_STK,), cost=2),
-    InstrDef(Op.PUSH_REGADDR, "PUSH", (_IADDR,), cost=4),
-    InstrDef(Op.PUSH_ADDR, "PUSH", (_MEM,), cost=4),
-    InstrDef(Op.PUSH_CONST, "PUSH", (_IMM,), cost=2),
-    # POP (54)
-    InstrDef(Op.POP_REG, "POP", (_STK,), cost=2),
-    # CALL (55-56)
-    InstrDef(Op.CALL_REG, "CALL", (_GPR,), cost=2),
-    InstrDef(Op.CALL_ADDR, "CALL", (_IMM,), cost=2),
-    # RET (57)
-    InstrDef(Op.RET, "RET", (), cost=2),
-    # MUL (60-63)
-    InstrDef(Op.MUL_REG, "MUL", (_GPR,), cost=2),
-    InstrDef(Op.MUL_REGADDR, "MUL", (_IADDR,), cost=4),
-    InstrDef(Op.MUL_ADDR, "MUL", (_MEM,), cost=4),
-    InstrDef(Op.MUL_CONST, "MUL", (_IMM,), cost=2),
-    # DIV (64-67)
-    InstrDef(Op.DIV_REG, "DIV", (_GPR,), cost=2),
-    InstrDef(Op.DIV_REGADDR, "DIV", (_IADDR,), cost=4),
-    InstrDef(Op.DIV_ADDR, "DIV", (_MEM,), cost=4),
-    InstrDef(Op.DIV_CONST, "DIV", (_IMM,), cost=2),
-    # AND (70-73)
-    InstrDef(Op.AND_REG_REG, "AND", (_GPR, _GPR)),
-    InstrDef(Op.AND_REG_REGADDR, "AND", (_GPR, _IADDR), cost=3),
-    InstrDef(Op.AND_REG_ADDR, "AND", (_GPR, _MEM), cost=3),
-    InstrDef(Op.AND_REG_CONST, "AND", (_GPR, _IMM)),
-    # OR (74-77)
-    InstrDef(Op.OR_REG_REG, "OR", (_GPR, _GPR)),
-    InstrDef(Op.OR_REG_REGADDR, "OR", (_GPR, _IADDR), cost=3),
-    InstrDef(Op.OR_REG_ADDR, "OR", (_GPR, _MEM), cost=3),
-    InstrDef(Op.OR_REG_CONST, "OR", (_GPR, _IMM)),
-    # XOR (78-81)
-    InstrDef(Op.XOR_REG_REG, "XOR", (_GPR, _GPR)),
-    InstrDef(Op.XOR_REG_REGADDR, "XOR", (_GPR, _IADDR), cost=3),
-    InstrDef(Op.XOR_REG_ADDR, "XOR", (_GPR, _MEM), cost=3),
-    InstrDef(Op.XOR_REG_CONST, "XOR", (_GPR, _IMM)),
-    # NOT (82)
-    InstrDef(Op.NOT_REG, "NOT", (_GPR,)),
-    # SHL (90-93)
-    InstrDef(Op.SHL_REG_REG, "SHL", (_GPR, _GPR)),
-    InstrDef(Op.SHL_REG_REGADDR, "SHL", (_GPR, _IADDR), cost=3),
-    InstrDef(Op.SHL_REG_ADDR, "SHL", (_GPR, _MEM), cost=3),
-    InstrDef(Op.SHL_REG_CONST, "SHL", (_GPR, _IMM)),
-    # SHR (94-97)
-    InstrDef(Op.SHR_REG_REG, "SHR", (_GPR, _GPR)),
-    InstrDef(Op.SHR_REG_REGADDR, "SHR", (_GPR, _IADDR), cost=3),
-    InstrDef(Op.SHR_REG_ADDR, "SHR", (_GPR, _MEM), cost=3),
-    InstrDef(Op.SHR_REG_CONST, "SHR", (_GPR, _IMM)),
-)
 
-# ── Derived lookups ────────────────────────────────────────────────
+def _build_isa(data: list[tuple[str, int, str, list[str], int, bool]]) -> tuple[InstrDef, ...]:
+    return tuple(InstrDef(Op(row[1]), row[2], tuple(_OPTYPE_MAP[t] for t in row[3]), row[4], row[5]) for row in data)
 
+
+def _by_mnemonic(instrs: tuple[InstrDef, ...]) -> dict[str, tuple[InstrDef, ...]]:
+    result: dict[str, list[InstrDef]] = {}
+    for instr in instrs:
+        result.setdefault(instr.mnemonic, []).append(instr)
+    return {k: tuple(v) for k, v in result.items()}
+
+
+ISA: tuple[InstrDef, ...] = _build_isa(_ISA_DATA)
 BY_CODE: dict[int, InstrDef] = {int(instr.op): instr for instr in ISA}
-
-_by_mn: dict[str, list[InstrDef]] = {}
-for _instr in ISA:
-    _by_mn.setdefault(_instr.mnemonic, []).append(_instr)
-BY_MNEMONIC: dict[str, tuple[InstrDef, ...]] = {k: tuple(v) for k, v in _by_mn.items()}
-del _by_mn, _instr
-
+BY_MNEMONIC: dict[str, tuple[InstrDef, ...]] = _by_mnemonic(ISA)
 MNEMONICS: frozenset[str] = frozenset(BY_MNEMONIC) | {"DB"}
 
 # ── FP ISA ────────────────────────────────────────────────────────
 
-_FP = OpType.FP_REG
-
-ISA_FP: tuple[InstrDef, ...] = (
-    # FMOV (128-131) — format-dependent: mem(fmt) + overhead(0)
-    InstrDef(Op.FMOV_FP_ADDR, "FMOV", (_FP, _MEM), cost=0, format_dep=True),
-    InstrDef(Op.FMOV_FP_REGADDR, "FMOV", (_FP, _IADDR), cost=0, format_dep=True),
-    InstrDef(Op.FMOV_ADDR_FP, "FMOV", (_MEM, _FP), cost=0, format_dep=True),
-    InstrDef(Op.FMOV_REGADDR_FP, "FMOV", (_IADDR, _FP), cost=0, format_dep=True),
-    # FADD (132-133) — format-dependent: mem(fmt) + overhead(2)
-    InstrDef(Op.FADD_FP_ADDR, "FADD", (_FP, _MEM), cost=2, format_dep=True),
-    InstrDef(Op.FADD_FP_REGADDR, "FADD", (_FP, _IADDR), cost=2, format_dep=True),
-    # FSUB (134-135) — format-dependent: mem(fmt) + overhead(2)
-    InstrDef(Op.FSUB_FP_ADDR, "FSUB", (_FP, _MEM), cost=2, format_dep=True),
-    InstrDef(Op.FSUB_FP_REGADDR, "FSUB", (_FP, _IADDR), cost=2, format_dep=True),
-    # FMUL (136-137) — format-dependent: mem(fmt) + overhead(2)
-    InstrDef(Op.FMUL_FP_ADDR, "FMUL", (_FP, _MEM), cost=2, format_dep=True),
-    InstrDef(Op.FMUL_FP_REGADDR, "FMUL", (_FP, _IADDR), cost=2, format_dep=True),
-    # FDIV (138-139) — format-dependent: mem(fmt) + overhead(3)
-    InstrDef(Op.FDIV_FP_ADDR, "FDIV", (_FP, _MEM), cost=3, format_dep=True),
-    InstrDef(Op.FDIV_FP_REGADDR, "FDIV", (_FP, _IADDR), cost=3, format_dep=True),
-    # FCMP (140-141) — format-dependent: mem(fmt) + overhead(2)
-    InstrDef(Op.FCMP_FP_ADDR, "FCMP", (_FP, _MEM), cost=2, format_dep=True),
-    InstrDef(Op.FCMP_FP_REGADDR, "FCMP", (_FP, _IADDR), cost=2, format_dep=True),
-    # Unary (142-144) — fpu(2), fpu(2), fpu_d(3)
-    InstrDef(Op.FABS_FP, "FABS", (_FP,), cost=2),
-    InstrDef(Op.FNEG_FP, "FNEG", (_FP,), cost=2),
-    InstrDef(Op.FSQRT_FP, "FSQRT", (_FP,), cost=3),
-    # FMOV reg-reg (145) — trivial
-    InstrDef(Op.FMOV_RR, "FMOV", (_FP, _FP), cost=1),
-    # FCVT (146), FITOF (147), FFTOI (148) — fpu(2)
-    InstrDef(Op.FCVT_FP_FP, "FCVT", (_FP, _FP), cost=2),
-    InstrDef(Op.FITOF_FP_GPR, "FITOF", (_FP, _GPR), cost=2),
-    InstrDef(Op.FFTOI_GPR_FP, "FFTOI", (_GPR, _FP), cost=2),
-    # Control (149-152) — trivial
-    InstrDef(Op.FSTAT_GPR, "FSTAT", (_GPR,), cost=1),
-    InstrDef(Op.FCFG_GPR, "FCFG", (_GPR,), cost=1),
-    InstrDef(Op.FSCFG_GPR, "FSCFG", (_GPR,), cost=1),
-    InstrDef(Op.FCLR, "FCLR", (), cost=1),
-    # Reg-reg arith (153-157) — fpu(2) except FDIV: fpu_d(3)
-    InstrDef(Op.FADD_RR, "FADD", (_FP, _FP), cost=2),
-    InstrDef(Op.FSUB_RR, "FSUB", (_FP, _FP), cost=2),
-    InstrDef(Op.FMUL_RR, "FMUL", (_FP, _FP), cost=2),
-    InstrDef(Op.FDIV_RR, "FDIV", (_FP, _FP), cost=3),
-    InstrDef(Op.FCMP_RR, "FCMP", (_FP, _FP), cost=2),
-    # FCLASS (158) — trivial
-    InstrDef(Op.FCLASS_GPR_FP, "FCLASS", (_GPR, _FP), cost=1),
-    # FMADD (159-160) — format-dependent: mem(fmt) + overhead(4)
-    InstrDef(Op.FMADD_FP_FP_ADDR, "FMADD", (_FP, _FP, _MEM), cost=4, format_dep=True),
-    InstrDef(Op.FMADD_FP_FP_REGADDR, "FMADD", (_FP, _FP, _IADDR), cost=4, format_dep=True),
-    # FMOV immediate (161-162) — trivial
-    InstrDef(Op.FMOV_FP_IMM8, "FMOV", (_FP, OpType.FP_IMM8), cost=1),
-    InstrDef(Op.FMOV_FP_IMM16, "FMOV", (_FP, OpType.FP_IMM16), cost=1),
-)
-
-# ── FP derived lookups ────────────────────────────────────────────
-
+ISA_FP: tuple[InstrDef, ...] = _build_isa(_ISA_FP_DATA)
 BY_CODE_FP: dict[int, InstrDef] = {int(instr.op): instr for instr in ISA_FP}
-
-_by_mn_fp: dict[str, list[InstrDef]] = {}
-for _instr_fp in ISA_FP:
-    _by_mn_fp.setdefault(_instr_fp.mnemonic, []).append(_instr_fp)
-BY_MNEMONIC_FP: dict[str, tuple[InstrDef, ...]] = {k: tuple(v) for k, v in _by_mn_fp.items()}
-
+BY_MNEMONIC_FP: dict[str, tuple[InstrDef, ...]] = _by_mnemonic(ISA_FP)
 MNEMONICS_FP: frozenset[str] = frozenset(BY_MNEMONIC_FP)
-
-# FP control mnemonics (no format suffix needed)
 FP_CONTROL_MNEMONICS: frozenset[str] = frozenset({"FSTAT", "FCFG", "FSCFG", "FCLR"})
-
-del (
-    _by_mn_fp,
-    _instr_fp,
-    _FP,
-    _REG,
-    _ARI,
-    _STK,
-    _GPR,
-    _IMM,
-    _MEM,
-    _IADDR,
-)
 
 # ── VU constants ─────────────────────────────────────────────────
 
@@ -821,20 +410,20 @@ VU_ASYNC_OPS: frozenset[int] = frozenset(
         Op.VCMP,
         Op.VSEL,
         Op.VMOV,
-        Op.VFILL,
     }
 )
+VU_VV_ONLY_OPS: frozenset[int] = frozenset({Op.VDOT, Op.VCMP, Op.VSEL})
 VU_INT_FMTS: frozenset[int] = frozenset({VU_FMT_U, VU_FMT_I})
 
 
-def encode_vfm(fmt: int, mode: int, cond: int = 0) -> int:
-    """Encode VFM byte: (cond << 5) | (mode << 3) | fmt."""
-    return (cond << 5) | (mode << 3) | fmt
+def encode_vfm(fmt: int, mode: int) -> int:
+    """Encode VFM byte: (mode << 3) | fmt."""
+    return (mode << 3) | fmt
 
 
 def decode_vfm(vfm: int) -> tuple[int, int, int]:
-    """Decode VFM byte → (fmt, mode, cond)."""
-    return vfm & 0x07, (vfm >> 3) & 0x03, (vfm >> 5) & 0x07
+    """Decode VFM byte → (fmt, mode, cond). cond is always 0 in VFM (encoded as 4th byte for VCMP)."""
+    return vfm & 0x07, (vfm >> 3) & 0x03, 0
 
 
 def encode_vu_regs(dst: int, src1: int, src2: int) -> int:
@@ -852,7 +441,10 @@ def vu_instr_size(opcode: int, vfm: int) -> int:
 
     Sync opcodes: fixed size from ISA_VU.
     Async opcodes: 3 for .vv/.vs/.r, 3 + elem_size for .vi.
+    VCMP is always 4 bytes (opcode + VFM + regs + cond).
     """
+    if opcode == Op.VCMP:
+        return 4
     if opcode not in VU_ASYNC_OPS:
         defn = BY_CODE_VU.get(opcode)
         return defn.size if defn is not None else 1
@@ -864,48 +456,8 @@ def vu_instr_size(opcode: int, vfm: int) -> int:
 
 # ── VU ISA ────────────────────────────────────────────────────────
 
-# OpType.IMM = 1 byte operand, so VSET imm16 needs a special 4-byte override.
-# For sync: size is computed from sig. For async: size is variable (handled in decoder).
-# We define async entries with a dummy sig giving size=3 (base).
-
-_VU_IMM16 = OpType.FP_IMM16  # reuse: 2-byte operand
-
-ISA_VU: tuple[InstrDef, ...] = (
-    # VSET (163-166) — all cost 1
-    InstrDef(Op.VSET_IMM16, "VSET", (OpType.IMM, _VU_IMM16), cost=1),  # 4 bytes
-    InstrDef(Op.VSET_GPR, "VSET", (OpType.IMM, OpType.IMM), cost=1),  # 3 bytes
-    InstrDef(Op.VSET_MEM, "VSET", (OpType.IMM, OpType.IMM), cost=1),  # 3 bytes
-    InstrDef(Op.VSET_MEMI, "VSET", (OpType.IMM, OpType.IMM), cost=1),  # 3 bytes
-    # VFSTAT (167), VFCLR (168), VWAIT (169)
-    InstrDef(Op.VFSTAT, "VFSTAT", (OpType.IMM,), cost=1),  # 2 bytes
-    InstrDef(Op.VFCLR, "VFCLR", (), cost=1),  # 1 byte
-    InstrDef(Op.VWAIT, "VWAIT", (), cost=1),  # 1 byte
-    # Async (170-183) — base 3 bytes, cost 1 tick to issue
-    InstrDef(Op.VADD, "VADD", (OpType.IMM, OpType.IMM), cost=1),
-    InstrDef(Op.VSUB, "VSUB", (OpType.IMM, OpType.IMM), cost=1),
-    InstrDef(Op.VMUL, "VMUL", (OpType.IMM, OpType.IMM), cost=1),
-    InstrDef(Op.VDIV, "VDIV", (OpType.IMM, OpType.IMM), cost=1),
-    InstrDef(Op.VMAX, "VMAX", (OpType.IMM, OpType.IMM), cost=1),
-    InstrDef(Op.VMIN, "VMIN", (OpType.IMM, OpType.IMM), cost=1),
-    InstrDef(Op.VDOT, "VDOT", (OpType.IMM, OpType.IMM), cost=1),
-    InstrDef(Op.VSQRT, "VSQRT", (OpType.IMM, OpType.IMM), cost=1),
-    InstrDef(Op.VNEG, "VNEG", (OpType.IMM, OpType.IMM), cost=1),
-    InstrDef(Op.VABS, "VABS", (OpType.IMM, OpType.IMM), cost=1),
-    InstrDef(Op.VCMP, "VCMP", (OpType.IMM, OpType.IMM), cost=1),
-    InstrDef(Op.VSEL, "VSEL", (OpType.IMM, OpType.IMM), cost=1),
-    InstrDef(Op.VMOV, "VMOV", (OpType.IMM, OpType.IMM), cost=1),
-    InstrDef(Op.VFILL, "VFILL", (OpType.IMM, OpType.IMM), cost=1),
-)
-
+ISA_VU: tuple[InstrDef, ...] = _build_isa(_ISA_VU_DATA)
 BY_CODE_VU: dict[int, InstrDef] = {int(instr.op): instr for instr in ISA_VU}
-
-_by_mn_vu: dict[str, list[InstrDef]] = {}
-for _instr_vu in ISA_VU:
-    _by_mn_vu.setdefault(_instr_vu.mnemonic, []).append(_instr_vu)
-BY_MNEMONIC_VU: dict[str, tuple[InstrDef, ...]] = {k: tuple(v) for k, v in _by_mn_vu.items()}
-
+BY_MNEMONIC_VU: dict[str, tuple[InstrDef, ...]] = _by_mnemonic(ISA_VU)
 MNEMONICS_VU: frozenset[str] = frozenset(BY_MNEMONIC_VU)
-
 VU_SYNC_MNEMONICS: frozenset[str] = frozenset({"VSET", "VFSTAT", "VFCLR", "VWAIT"})
-
-del _by_mn_vu, _instr_vu, _VU_IMM16

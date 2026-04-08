@@ -1,6 +1,6 @@
 # 7. Floating-Point Unit (FPU)
 
-> Architecture v3 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Memory Model](mem.md), [CPU Architecture](cpu.md), [Microarchitecture](uarch.md), [Opcodes](opcodes.md), [Error Codes](errors.md), [Assembler](asm.md), [Vector Unit](vector.md)
+> Architecture v3 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Memory Model](mem.md), [CPU Architecture](cpu.md), [Microarchitecture](uarch.md), [Error Codes](errors.md), [Assembler](asm.md), [Vector Unit](vector.md)
 
 ## 7.1 Overview
 
@@ -258,7 +258,7 @@ phys = (FPM >> 6) & 0x03
 
 ## 7.6 Instruction Reference
 
-All FP instructions use opcodes 128-162. For the master opcode table, see [Opcodes](opcodes.md).
+All FP instructions use opcodes 128-162. Opcodes are defined in `spec/isa.json`.
 
 ### Instruction Encoding
 
