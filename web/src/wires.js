@@ -2,7 +2,7 @@
  * X6 wire diagram: initialization, flash animation, theme sync.
  */
 
-import { colors } from "./state.js";
+import { colors, pad } from "./state.js";
 
 const WIRE_FLASH_MS = 350;
 export const WIRE_DATA = 0;
@@ -11,6 +11,7 @@ export const WIRE_IO = 2;
 export const WIRE_VU_CMD = 3;
 export const WIRE_VU_A = 4;
 export const WIRE_VU_B = 5;
+export const WIRE_PAD = 6;
 
 export function flashWire(idx) {
     const edge = document.querySelectorAll("#wire-canvas .x6-edge")[idx];
@@ -28,6 +29,7 @@ export function updateWireColors() {
         [WIRE_VU_CMD]: colors.yl,
         [WIRE_VU_A]: colors.yl,
         [WIRE_VU_B]: colors.yl,
+        [WIRE_PAD]: colors.pu,
     };
     document.querySelectorAll("#wire-canvas .x6-edge").forEach((edge, i) => {
         const c = wireColors[i];
@@ -53,6 +55,7 @@ export function initWires() {
     const container = document.getElementById("diagram-container");
     const cRect = container.getBoundingClientRect();
     const canvas = document.getElementById("wire-canvas");
+    canvas.innerHTML = "";
     const cW = container.offsetWidth;
     const cH = container.offsetHeight;
     canvas.style.width = cW + "px";
@@ -196,5 +199,18 @@ export function initWires() {
         // ── vu bus: Memory right → VU left (horizontal, aligned ports) ──
         addWire("port-mem-right-a", "port-vu-left-a", colors.yl, "vu bus", { vertices: [], labelOffset: -12 });
         addWire("port-mem-right-b", "port-vu-left-b", colors.yl, "", { vertices: [] });
+    }
+
+    // ── pad bus: Memory right → Pad left, routed through vertical corridor ──
+    if (pad.visible && document.getElementById("port-pad-left")) {
+        const memPad = portPos("port-mem-right-pad");
+        const padLeft = portPos("port-pad-left");
+        const midX = Math.round((memPad.x + padLeft.x) / 2);
+        addWire("port-mem-right-pad", "port-pad-left", colors.pu, "pad", {
+            vertices: [
+                { x: midX, y: memPad.y },
+                { x: midX, y: padLeft.y },
+            ],
+        });
     }
 }
