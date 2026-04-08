@@ -303,7 +303,9 @@ Escape sequences in the path are not supported.
 
 **Error reporting:** All errors include a source location as `filename:line` (1-based). `filename` is the path of each file normalized to be relative to the root file's directory (or an absolute path if the file is outside that directory tree). For the root file, `filename` is its own name (or `<stdin>`). This format is used consistently regardless of whether any `@include` directives are present.
 
-**Binary files:** If the included file is not valid UTF-8, it is treated as a raw binary blob. Its bytes are embedded at the include point as if the source contained `DB b0, b1, ..., bn` (a single data directive with all byte values). Empty binary files are silently skipped. The source-location entry in the line map for the emitted data refers to the `@include` directive's own file and line. Binary files are not scanned for nested `@include` directives.
+**Binary files:** If the included file is not valid UTF-8, it is treated as a raw binary blob. Its bytes are embedded at the include point as DB directives. Empty binary files are silently skipped. The source-location entry in the line map for the emitted data refers to the `@include` directive's own file and line. Binary files are not scanned for nested `@include` directives.
+
+**Cross-page binary:** If a binary file is ≤ 256 bytes, it is emitted as a single `DB b0, b1, ..., bn` directive on the current page. If it exceeds 256 bytes, the preprocessor auto-splits it into 256-byte chunks across consecutive pages: the first chunk stays on the current page, and each subsequent chunk is preceded by an `@page N+1` directive (where N is determined by scanning backwards for the most recent `@page` directive; default 0 if none). It is an error if the resulting pages exceed page 255.
 
 **URL includes:** The path in an `@include` directive may be an absolute HTTP or HTTPS URL (must start with `http://` or `https://`). URL includes are fetched at assemble time before the two-pass assembly begins. The same binary detection rule applies: if the response body is not valid UTF-8, it is embedded as `DB` bytes. Relative paths inside a URL-fetched file are not supported (only absolute URLs or, in CLI mode, absolute filesystem paths). Circular URL detection uses the URL string directly. The error `@include: fetch failed: X` is raised if the fetch fails for any reason (network error, non-2xx status, etc.).
 
@@ -413,6 +415,7 @@ All errors include a source location in `filename:line` format (1-based line num
 | `@page: missing page number` | `@page` without an argument |
 | `@page: invalid syntax` | Malformed `@page` directive (non-numeric, extra tokens) |
 | `@page: invalid offset` | Offset is not a valid number |
+| `@include: binary file spans beyond page 255` | Cross-page binary include would exceed page 255 |
 
 | `Page N overflow: X bytes exceeds 256` | Page content exceeds 256 bytes |
 | `jump target 'X' is on page N, but IP executes only on page 0` | JMP/CALL from page 0 to a label on page > 0 |
