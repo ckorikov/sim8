@@ -111,9 +111,12 @@ class HandlersVuMixin:
         packed = instr.operands[1]
         if target > 4:
             raise CpuFault(ErrorCode.INVALID_REG, self.regs.ip)
-        rh = (packed >> 2) & 0x03
-        rl = packed & 0x03
-        val = (self.regs.read(rh) << 8) | self.regs.read(rl)
+        if packed & 0x10:
+            val = self.regs.read(packed & 0x03)
+        else:
+            rh = (packed >> 2) & 0x03
+            rl = packed & 0x03
+            val = (self.regs.read(rh) << 8) | self.regs.read(rl)
         vu.write_reg(target, val)
         self.regs.ip += instr.size
 

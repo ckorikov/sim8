@@ -361,6 +361,13 @@ def _encode_vset(operands: list[Operand], line: int) -> list[int]:
             raise AssemblerError("VSET GPR pair requires A-D", line)
         return [int(Op.VSET_GPR), target, (rh << 2) | rl]
 
+    # VSET reg, gpr (opcode 164) — single GPR, zero-extended to 16-bit (bit 4 flag)
+    if len(operands) == 2 and isinstance(operands[1], OpReg):
+        gpr = operands[1].code
+        if gpr > 3:
+            raise AssemblerError("VSET single GPR requires A-D", line)
+        return [int(Op.VSET_GPR), target, 0x10 | gpr]
+
     # VSET reg, hi, lo (opcode 163) — composite byte-expression pair
     if len(operands) == 3 and isinstance(operands[1], _VSET_BYTE_EXPR) and isinstance(operands[2], _VSET_BYTE_EXPR):
         hi_val = operands[1].value if isinstance(operands[1], OpConst) else 0

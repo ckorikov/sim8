@@ -183,6 +183,20 @@ class TestVSET:
         load_run(cpu, code)
         assert cpu.regs.vu.va == 0x0150
 
+    def test_vset_single_gpr(self) -> None:
+        cpu = cpu3()
+        # MOV A, 42; VSET VL, A; HLT
+        code = [6, 0, 42, 164, 4, 0x10, 0]
+        load_run(cpu, code)
+        assert cpu.regs.vu.vl == 42
+
+    def test_vset_single_gpr_b(self) -> None:
+        cpu = cpu3()
+        # MOV B, 200; VSET VL, B; HLT
+        code = [6, 1, 200, 164, 4, 0x11, 0]
+        load_run(cpu, code)
+        assert cpu.regs.vu.vl == 200
+
 
 # ── 4. VFSTAT / VFCLR / VWAIT ───────────────────────────────────
 
