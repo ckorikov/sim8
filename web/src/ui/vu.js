@@ -45,9 +45,10 @@ export function renderVU(vu) {
     elPtrs.innerHTML = ri("VA", va, colors.gr, 4) + ri("VB", vb, colors.bl, 4) + ri("VC", vc, colors.or, 4);
     elML.innerHTML = ri("VM", vm, colors.rd, 4) + ri("VL", vl, colors.mid, 4);
 
-    elFlags.innerHTML = FPSR_FLAGS.map(
-        (f) => `<span class="fb ${(vfpsr >> f.bit) & 1 ? "fb-on" : "fb-off"}" style="font-size:8px;">${f.n}</span>`,
-    ).join("");
+    elFlags.innerHTML = FPSR_FLAGS.map((f) => {
+        const on = (vfpsr >> f.bit) & 1;
+        return `<span class="fb" style="font-size:8px;border-color:${on ? colors.or : "var(--t-border)"};color:${on ? colors.or : colors.dim};">${f.n}</span>`;
+    }).join("");
 
     elQueueDepth.textContent = `${queueItems.length}/${VU_QUEUE_DEPTH}`;
 
