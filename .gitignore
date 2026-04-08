@@ -226,5 +226,8 @@ __marimo__/
 # Node
 node_modules/
 
+# Directories
+reference/
+
 # Assembler build artifacts
 *.bin
