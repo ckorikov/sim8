@@ -497,6 +497,60 @@ class TestBinaryInclude:
         assert len(code) > 1
 
 
+# ── §5.8 Cross-page binary include ───────────────────────────────────
+
+
+class TestCrossPageBinaryInclude:
+    """Binary files > 256 bytes are auto-split across consecutive pages (spec §5.8)."""
+
+    @staticmethod
+    def _bindata(size: int, seed: int = 0) -> bytes:
+        """Generate binary data with null bytes to ensure binary mode detection."""
+        return bytes([(seed + i) & 0xFF for i in range(size)])
+
+    def test_two_pages(self, tmp_path: Path) -> None:
+        data = self._bindata(512)  # contains null bytes → binary mode
+        (tmp_path / "big.bin").write_bytes(data)
+        code = asm_inc('@page 1\n@include "big.bin"', tmp_path)
+        assert code[256:512] == list(data[:256])  # page 1
+        assert code[512:768] == list(data[256:])  # page 2
+
+    def test_partial_last_page(self, tmp_path: Path) -> None:
+        data = self._bindata(266)
+        (tmp_path / "blob.bin").write_bytes(data)
+        code = asm_inc('@page 3\n@include "blob.bin"', tmp_path)
+        assert code[3 * 256 : 4 * 256] == list(data[:256])  # page 3
+        assert code[4 * 256 : 4 * 256 + 10] == list(data[256:])  # page 4
+
+    def test_many_pages(self, tmp_path: Path) -> None:
+        data = self._bindata(768)  # 3 full pages
+        (tmp_path / "big.bin").write_bytes(data)
+        code = asm_inc('@page 10\n@include "big.bin"', tmp_path)
+        for p in range(3):
+            start = (10 + p) * 256
+            assert code[start : start + 256] == list(data[p * 256 : (p + 1) * 256]), f"page {10 + p}"
+
+    def test_label_before_binary(self, tmp_path: Path) -> None:
+        data = self._bindata(300)  # spans 2 pages
+        (tmp_path / "weights.bin").write_bytes(data)
+        result = assemble('@page 5\nweights:\n@include "weights.bin"', base_path=tmp_path)
+        assert result.labels["weights"] == 5 * 256  # label at page 5, offset 0
+        assert result.code[5 * 256] == data[0]
+        assert result.code[6 * 256] == data[256]  # data continues on page 6
+
+    def test_page_255_overflow_error(self, tmp_path: Path) -> None:
+        data = self._bindata(512)  # needs 2 pages
+        (tmp_path / "huge.bin").write_bytes(data)
+        err = asm_inc_error('@page 255\n@include "huge.bin"', tmp_path)
+        assert "page 255" in err.message
+
+    def test_small_binary_still_single_page(self, tmp_path: Path) -> None:
+        data = bytes([0x00, 0x01, 0x02])
+        (tmp_path / "small.bin").write_bytes(data)
+        code = asm_inc('@page 1\n@include "small.bin"', tmp_path)
+        assert code[256:259] == [0, 1, 2]
+
+
 # ── §5.8 URL includes ────────────────────────────────────────────────
 
 

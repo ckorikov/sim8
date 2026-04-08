@@ -102,6 +102,32 @@ def _collect(
             line_map[flat_lineno] = (filename, lineno)
 
 
+_RE_PAGE_NUM = re.compile(r"^\s*@page\s+(\d+)", re.IGNORECASE)
+
+_PAGE_SIZE = 256
+
+
+def _find_current_page(out_lines: list[str]) -> int:
+    """Scan backwards through emitted lines to find the most recent @page number."""
+    for line in reversed(out_lines):
+        m = _RE_PAGE_NUM.match(line)
+        if m:
+            return int(m.group(1))
+    return 0
+
+
+def _emit_line(
+    text: str,
+    out_lines: list[str],
+    line_map: dict[int, SourceLoc],
+    filename: str | None,
+    lineno: int,
+) -> None:
+    flat_lineno = len(out_lines) + 1
+    out_lines.append(text)
+    line_map[flat_lineno] = (filename, lineno)
+
+
 def _embed_binary(
     data: bytes,
     out_lines: list[str],
@@ -109,20 +135,26 @@ def _embed_binary(
     filename: str | None,
     lineno: int,
 ) -> None:
-    """Emit raw bytes as a DB directive into the flat output (binary include)."""
+    """Emit raw bytes as DB directives, auto-splitting across pages if needed."""
     if not data:
         return
-    if len(data) > 256:
-        n_parts = (len(data) + 255) // 256
-        raise PreprocessError(
-            f"@include: binary file is {len(data)} bytes — exceeds page size (256). "
-            f"Split the file into {n_parts} parts (≤256 bytes each) and @include them on separate pages.",
-            lineno,
-            filename=filename,
-        )
-    flat_lineno = len(out_lines) + 1
-    out_lines.append("DB " + ", ".join(str(b) for b in data))
-    line_map[flat_lineno] = (filename, lineno)
+    if len(data) <= _PAGE_SIZE:
+        _emit_line("DB " + ", ".join(str(b) for b in data), out_lines, line_map, filename, lineno)
+        return
+    page = _find_current_page(out_lines)
+    for i in range(0, len(data), _PAGE_SIZE):
+        if i > 0:
+            page += 1
+            if page > 255:
+                raise PreprocessError(
+                    f"@include: binary file spans beyond page 255 "
+                    f"({len(data)} bytes from page {page - (i // _PAGE_SIZE)})",
+                    lineno,
+                    filename=filename,
+                )
+            _emit_line(f"@page {page}", out_lines, line_map, filename, lineno)
+        chunk = data[i : i + _PAGE_SIZE]
+        _emit_line("DB " + ", ".join(str(b) for b in chunk), out_lines, line_map, filename, lineno)
 
 
 def _decode_source(data: bytes) -> str | None:
