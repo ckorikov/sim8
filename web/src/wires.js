@@ -130,20 +130,70 @@ export function initWires() {
         });
     }
 
+    // ── Compute safe wire corridors between block rows ──
+    function blockBottom(id) {
+        const r = document.getElementById(id).getBoundingClientRect();
+        return Math.round(r.bottom - cRect.top);
+    }
+    function blockTop(id) {
+        const r = document.getElementById(id).getBoundingClientRect();
+        return Math.round(r.top - cRect.top);
+    }
+    function blockRight(id) {
+        const r = document.getElementById(id).getBoundingClientRect();
+        return Math.round(r.right - cRect.left);
+    }
+
+    const hasVu = !!document.getElementById("port-vu-top");
+
+    // Align VU before computing corridors (so its position is final)
+    if (hasVu) {
+        const memPortA = document.getElementById("port-mem-right-a").getBoundingClientRect();
+        const vuPortA = document.getElementById("port-vu-left-a").getBoundingClientRect();
+        const vuBlock = document.getElementById("blk-vu");
+        const dy = Math.round(memPortA.top - vuPortA.top);
+        if (dy !== 0) vuBlock.style.top = parseFloat(vuBlock.style.top) + dy + "px";
+    }
+
+    // Horizontal corridor between row 1 (CPU/FPU) and row 2 (Memory/VU)
+    const row1Bot = Math.max(blockBottom("blk-cpu"), blockBottom("blk-fpu"));
+    const row2Top = blockTop("blk-mem");
+    const corridorY = Math.round((row1Bot + row2Top) / 2);
+
+    // Vertical corridor between Memory and VU
+    const memRight = blockRight("blk-mem");
+    const vuLeft = hasVu ? Math.round(document.getElementById("blk-vu").getBoundingClientRect().left - cRect.left) : 0;
+    const corridorX = hasVu ? Math.round((memRight + vuLeft) / 2) : 0;
+
+    // ── data bus: CPU bottom → Memory top (stays in CPU/Mem column) ──
     const cpuBot = portPos("port-cpu-bottom");
     const memTop = portPos("port-mem-top");
-    const dataBusY = memTop.y - 20;
     addWire("port-cpu-bottom", "port-mem-top", colors.yl, "data bus", {
         vertices: [
-            { x: cpuBot.x, y: dataBusY },
-            { x: memTop.x, y: dataBusY },
+            { x: cpuBot.x, y: corridorY },
+            { x: memTop.x, y: corridorY },
         ],
     });
+
+    // ── fp bus: CPU right → FPU left (horizontal, same row) ──
     addWire("port-cpu-right", "port-fpu-left", colors.or, "fp bus", { labelOffset: -12 });
+
+    // ── i/o: Memory bottom → Display top (vertical, same column) ──
     addWire("port-mem-bottom", "port-disp-top", colors.gr, "i/o", { bidir: false, labelOffset: 20 });
 
-    if (document.getElementById("port-vu-top")) {
-        addWire("port-cpu-vu", "port-vu-top", colors.yl, "cmd bus", { labelOffset: 14 });
+    if (hasVu) {
+        // ── cmd bus: CPU → VU, routed through both corridors ──
+        const cpuVu = portPos("port-cpu-vu");
+        const vuTop = portPos("port-vu-top");
+        addWire("port-cpu-vu", "port-vu-top", colors.yl, "cmd bus", {
+            vertices: [
+                { x: cpuVu.x, y: corridorY },
+                { x: vuTop.x, y: corridorY },
+            ],
+            labelOffset: -14,
+        });
+
+        // ── vu bus: Memory right → VU left (horizontal, aligned ports) ──
         addWire("port-mem-right-a", "port-vu-left-a", colors.yl, "vu bus", { vertices: [], labelOffset: -12 });
         addWire("port-mem-right-b", "port-vu-left-b", colors.yl, "", { vertices: [] });
     }
