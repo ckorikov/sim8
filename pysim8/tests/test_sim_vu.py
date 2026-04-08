@@ -10,6 +10,7 @@ import pytest
 
 from pysim8.isa import (
     Op,
+    VU_CMP_SUFFIX,
     VU_FMT_ELEM_SIZE,
     VU_FMT_U,
     VU_MODE_VV,
@@ -47,8 +48,11 @@ def vset_imm16(target: int, val: int) -> list[int]:
 
 
 def vasync(op: int, fmt: int, mode: int, dst: int, s1: int, s2: int, cond: int = 0) -> list[int]:
-    """Encode async VU instruction (base 3 bytes, no immediate)."""
-    return [op, encode_vfm(fmt, mode, cond), encode_vu_regs(dst, s1, s2)]
+    """Encode async VU instruction (base 3 bytes; VCMP appends cond as 4th byte)."""
+    result = [op, encode_vfm(fmt, mode), encode_vu_regs(dst, s1, s2)]
+    if op == int(Op.VCMP):
+        result.append(cond)
+    return result
 
 
 # ── 1. VuRegisters unit tests ───────────────────────────────────
@@ -384,13 +388,13 @@ class TestVuFaults:
         assert cpu.regs.a == ErrorCode.VU_FORMAT
 
     def test_invalid_mode_for_vfill_faults(self) -> None:
-        """VFILL only supports .vi (mode=2). Mode=0 (.vv) should FAULT."""
+        """Op.VFILL (183) is reserved. Executing it faults with INVALID_OPCODE."""
         cpu = cpu3()
-        vfm = encode_vfm(VU_FMT_U, VU_MODE_VV)  # .vv — invalid for VFILL
+        vfm = encode_vfm(VU_FMT_U, VU_MODE_VV)
         code = vset_imm16(4, 4) + [int(Op.VFILL), vfm, 0, 0]
         load_run(cpu, code)
         assert cpu.state == CpuState.FAULT
-        assert cpu.regs.a == ErrorCode.VU_FORMAT
+        assert cpu.regs.a == ErrorCode.INVALID_OPCODE
 
     def test_reserved_regs_bits_fault(self) -> None:
         cpu = cpu3()
@@ -410,6 +414,17 @@ class TestVuAssembler:
         code = asm_bytes("VSET VA, 0x0100\nHLT", arch=3)
         assert code == [163, 0, 0, 1, 0]
 
+    def test_vset_composite_bytes(self) -> None:
+        # VSET VA, hi, lo → [VSET_IMM16, 0, lo, hi]
+        code = asm_bytes("VSET VA, 0x01, 0x20\nHLT", arch=3)
+        assert code == [163, 0, 0x20, 0x01, 0]
+
+    def test_vset_composite_hi_out_of_range(self) -> None:
+        asm_error("VSET VA, 256, 0\nHLT", arch=3)
+
+    def test_vset_composite_lo_out_of_range(self) -> None:
+        asm_error("VSET VA, 0, 256\nHLT", arch=3)
+
     def test_vadd_encoding(self) -> None:
         code = asm_bytes("VADD.U.vv VC, VA, VB\nHLT", arch=3)
         vfm = encode_vfm(VU_FMT_U, VU_MODE_VV)
@@ -426,9 +441,10 @@ class TestVuAssembler:
 
     def test_vcmp_condition_suffix(self) -> None:
         code = asm_bytes("VCMP.U.LT VM, VA, VB\nHLT", arch=3)
-        vfm = encode_vfm(VU_FMT_U, 0, 2)  # mode=0(vv), cond=2(LT)
+        vfm = encode_vfm(VU_FMT_U, 0)  # mode=0(vv), cond now in 4th byte
         regs = encode_vu_regs(3, 0, 1)  # dst=VM, s1=VA, s2=VB
-        assert code == [int(Op.VCMP), vfm, regs, 0]
+        cond = VU_CMP_SUFFIX["LT"]  # cond=2
+        assert code == [int(Op.VCMP), vfm, regs, cond, 0]
 
     def test_vu_regs_not_labels_in_arch2(self) -> None:
         # VA should not be recognized as VU register in arch=2
@@ -441,6 +457,23 @@ class TestVuAssembler:
             arch=3,
         )
         assert cpu.regs.vu.va == 0x0200  # page 2, offset 0
+
+    def test_vset_label_full_address(self) -> None:
+        # VSET VA, label → full 16-bit: hi=page(label), lo=offset(label)
+        cpu = run(
+            "@page 2\ndata: DB 1, 2, 3\n@page 0\nVSET VA, data\nHLT",
+            arch=3,
+        )
+        assert cpu.regs.vu.va == 0x0200  # page 2, offset 0
+
+    def test_vset_label_page0_address(self) -> None:
+        cpu = run("JMP start\ndata: DB 1, 2, 3\nstart: VSET VA, data\nHLT", arch=3)
+        assert cpu.regs.vu.va == 2  # page 0, offset 2
+
+    def test_vset_label_encoding(self) -> None:
+        code = asm_bytes("data: DB 0\nVSET VA, data\nHLT", arch=3)
+        # [163, 0(VA), lo=0(offset), hi=0(page)]
+        assert code[1:5] == [163, 0, 0, 0]
 
     def test_vset_invalid_format_suffix_fails(self) -> None:
         asm_error("VADD.X.vv VC, VA, VB\nHLT", arch=3)

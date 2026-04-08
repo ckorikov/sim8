@@ -278,30 +278,33 @@ class TestBuildFpmToReg:
     def test_shorter_name_wins(self) -> None:
         """When two names share a key, the shorter one wins."""
         from pysim8.disasm.core import _build_fpm_to_reg
+        from pysim8.isa import FpRegInfo
 
         regs = {
-            "LONGER": (0, 0, 0, 32),
-            "SH": (0, 0, 0, 32),
+            "LONGER": FpRegInfo(0, 0, 0, 32),
+            "SH": FpRegInfo(0, 0, 0, 32),
         }
         result = _build_fpm_to_reg(regs)
         assert result[(0, 0, 0)] == "SH"
 
     def test_first_seen_kept_if_same_length(self) -> None:
         from pysim8.disasm.core import _build_fpm_to_reg
+        from pysim8.isa import FpRegInfo
 
         regs = {
-            "AA": (0, 0, 1, 16),
-            "BB": (0, 0, 1, 16),
+            "AA": FpRegInfo(0, 0, 1, 16),
+            "BB": FpRegInfo(0, 0, 1, 16),
         }
         result = _build_fpm_to_reg(regs)
         assert result[(0, 0, 1)] == "AA"
 
     def test_unique_keys(self) -> None:
         from pysim8.disasm.core import _build_fpm_to_reg
+        from pysim8.isa import FpRegInfo
 
         regs = {
-            "X": (0, 0, 0, 8),
-            "Y": (1, 0, 0, 8),
+            "X": FpRegInfo(0, 0, 0, 8),
+            "Y": FpRegInfo(1, 0, 0, 8),
         }
         result = _build_fpm_to_reg(regs)
         assert result[(0, 0, 0)] == "X"
