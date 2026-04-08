@@ -6,6 +6,7 @@ import {
     cpu,
     colors,
     asm,
+    pad,
     hex,
     printableChar,
     escapeHtml,
@@ -161,6 +162,8 @@ function cellClass(addr, val, showInstr) {
         cl += " io";
     } else if (page === 0 && addr >= STACK_BASE) {
         cl += " stack";
+    } else if (pad.visible && absAddr >= pad.start && absAddr < pad.end) {
+        cl += " pad-region";
     } else if (showInstr && absAddr < asm.codeLen && val) {
         cl += " instr";
     }
@@ -243,16 +246,16 @@ export function renderMemory() {
         );
     }
 
-    const legend = [
+    const legendItems = [
         [colors.mid, "data"],
         [colors.yl, "stack"],
         [colors.gr, "i/o"],
         [colors.or, "ip"],
         [colors.yl, "sp"],
         [colors.bl, "label"],
-    ]
-        .map(([c, l]) => `<span><b style="color:${c};">&#9632;</b> ${l}</span>`)
-        .join("");
+    ];
+    if (pad.visible) legendItems.splice(3, 0, [colors.pu, "pad"]);
+    const legend = legendItems.map(([c, l]) => `<span><b style="color:${c};">&#9632;</b> ${l}</span>`).join("");
 
     document.getElementById("mem-grid").innerHTML =
         `<div style="line-height:0;display:inline-block;">${rows.join("")}</div>` +

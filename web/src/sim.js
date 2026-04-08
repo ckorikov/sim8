@@ -6,12 +6,13 @@
 import { assembleAsync, AsmError } from "../lib/asm.js";
 import { CpuState } from "../lib/core.js";
 import { BY_CODE_FP, BY_CODE_VU } from "../lib/isa.js";
-import { cpu, asm, refreshColors, IO_BASE, PAGE_SIZE } from "./state.js";
+import { cpu, asm, pad, refreshColors, IO_BASE, PAGE_SIZE } from "./state.js";
 import { renderCPU } from "./ui/cpu.js";
 import { renderFPU } from "./ui/fpu.js";
 import { renderVU } from "./ui/vu.js";
 import { renderMemory } from "./ui/mem.js";
 import { renderDisplay } from "./ui/display.js";
+import { renderPad, initPad } from "./ui/pad.js";
 import { renderLabels } from "./ui/labels.js";
 import { onToggle } from "./ui/marker-toggle.js";
 import { setupControls, stopRun, isRunning, updateRunBtnColor } from "./controls.js";
@@ -28,6 +29,7 @@ import {
     WIRE_VU_CMD,
     WIRE_VU_A,
     WIRE_VU_B,
+    WIRE_PAD,
 } from "./wires.js";
 import { fitDiagram, setupSplitHandle, adjustBlockPositions } from "./layout.js";
 
@@ -54,6 +56,7 @@ function renderAll() {
     renderVU(cpu.vu);
     renderMemory();
     renderDisplay();
+    renderPad();
     showExecLine();
 }
 
@@ -113,6 +116,24 @@ function ioChanged() {
     return _ioSnap.some((v, i) => cpu.mem.get(IO_BASE + i) !== v);
 }
 
+let _padChecksum = 0;
+
+function padChecksum() {
+    let s = 0;
+    const len = pad.end - pad.start;
+    for (let i = 0; i < len; i++) s += cpu.mem.get(pad.start + i);
+    return s;
+}
+
+function padChanged() {
+    const cs = padChecksum();
+    if (cs !== _padChecksum) {
+        _padChecksum = cs;
+        return true;
+    }
+    return false;
+}
+
 function _activeWires(cpuDid, vuDid, opcode) {
     const wires = [];
     if (vuDid) wires.push(WIRE_VU_A, WIRE_VU_B);
@@ -126,6 +147,7 @@ function _activeWires(cpuDid, vuDid, opcode) {
         }
     }
     if (ioChanged()) wires.push(WIRE_IO);
+    if (pad.visible && padChanged()) wires.push(WIRE_PAD);
     return wires;
 }
 
@@ -133,6 +155,7 @@ function stepCPU() {
     if (cpu.state === CpuState.FAULT) return 0;
 
     for (let i = 0; i < _ioSnap.length; i++) _ioSnap[i] = cpu.mem.get(IO_BASE + i);
+    if (pad.visible) _padChecksum = padChecksum();
 
     const opcode = cpu.mem.get(cpu.ip);
 
@@ -200,6 +223,11 @@ document.getElementById("btn-theme").addEventListener("click", () => {
 // ── Initialization ─────────────────────────────────────────────
 
 renderAll();
+
+initPad(
+    () => adjustBlockPositions(initWires),
+    () => renderMemory(),
+);
 
 requestAnimationFrame(() => {
     adjustBlockPositions(initWires);
