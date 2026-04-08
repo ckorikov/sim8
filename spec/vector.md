@@ -1,6 +1,6 @@
 # 9. Vector Unit (VU)
 
-> Architecture v3 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Opcodes](opcodes.md), [Error Codes](errors.md), [FPU](fp.md)
+> Architecture v3 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Error Codes](errors.md), [FPU](fp.md)
 
 ## 9.1 Overview
 
@@ -10,19 +10,19 @@ Asynchronous coprocessor for bulk SIMD operations on contiguous memory. The CPU 
 |----------|-------|
 | Queue | FIFO, in-order (see [uarch §4.6b](uarch.md#46b-vu-pipeline) for depth) |
 | Sync instructions | VSET (163–166), VFSTAT (167), VFCLR (168), VWAIT (169) |
-| Async commands | VADD–VFILL (170–183) — see [Opcodes](opcodes.md) |
+| Async commands | VADD–VMOV (170–182) — see `spec/isa.json` |
 | Memory | Shared 64 KB, absolute addressing (DP ignored), no coherence |
 
 ## 9.2 Registers
 
 All registers are **VU state**, not CPU state.
 
-| Register | Code | Width | Description |
-|----------|------|-------|-------------|
-| VA–VC | 0–2 | 16-bit | Address pointers |
-| VM | 3 | 16-bit | Mask pointer |
-| VL | 4 | 16-bit | Element count (byte footprint = VL × elem_size) |
-| VFPSR | — | 8-bit | Sticky exception flags (same bit layout as [FPSR](fp.md#74-control-registers)) |
+| Register | Width | Description |
+|----------|-------|-------------|
+| VA, VB, VC | 16-bit | Address pointers |
+| VM | 16-bit | Mask pointer |
+| VL | 16-bit | Element count (byte footprint = VL × elem_size) |
+| VFPSR | 8-bit | Sticky exception flags (same bit layout as [FPSR](fp.md#74-control-registers)) |
 
 VL = 0 → all commands are no-ops. Exception flags OR-ed across elements per command. Exceptions never cause FAULT (except integer division by zero) — see [Error Codes](errors.md).
 
@@ -61,7 +61,7 @@ Integer VDIV truncates toward zero. Integer division by zero → FAULT(`ERR_DIV_
 
 **Mode inference:** The assembler infers the mode from operand types. Explicit mode suffixes (`.vv`, `.vs`, `.vi`, `.r`) are accepted for backward compatibility but not required.
 
-**GPR broadcast (mode 1):** The CPU reads the GPR value (8-bit) at issue time and stores it in the command entry. The VU broadcasts this value to all lanes. Restricted to byte formats (O3, O2, U, I); multi-byte FP formats (F, H, BF) → FAULT(`ERR_VU_FORMAT`). Use VFILL for FP scalar broadcast. The register byte src2 field encodes the GPR code (A=0, B=1, C=2, D=3) when mode=1.
+**GPR broadcast (mode 1):** The CPU reads the GPR value (8-bit) at issue time and stores it in the command entry. The VU broadcasts this value to all lanes. Restricted to byte formats (O3, O2, U, I); multi-byte FP formats (F, H, BF) → FAULT(`ERR_VU_FORMAT`). Use VMOV vi mode for FP scalar broadcast. The register byte src2 field encodes the GPR code (A=0, B=1, C=2, D=3) when mode=1.
 
 ## 9.5 Auto-Increment
 
@@ -75,7 +75,7 @@ $S = \text{VL} \times \text{elem\_size}$, $s = \text{elem\_size}$.
 | src1 | $+S$ | $+S$ | $+S$ | $+S$ |
 | src2 | $+S$ | — | — | — |
 
-**Overrides:** VDOT dst $+s$. VCMP dst $+\text{VL}$. VSEL mask no advance. VMOV/VFILL — dst and src only.
+**Overrides:** VDOT dst $+s$. VCMP dst $+\text{VL}$. VSEL mask no advance. VMOV unary — dst and src1 only. VMOV vi — dst only.
 
 **Deduplication:** Same register in multiple roles → advance **once** by the largest stride. VL = 0 → no advance.
 
@@ -120,11 +120,22 @@ This cost is internal to the VU and does not appear in the CPU `cycles` counter 
 ```
   7   6   5   4   3   2   1   0
 ┌───┬───┬───┬───┬───┬───┬───┬───┐
-│   cond    │  mode │    fmt    │
+│  reserved │  mode │    fmt    │
 └───┴───┴───┴───┴───┴───┴───┴───┘
 ```
 
-cond (VCMP only, else 000): EQ=0, NE=1, LT=2, LE=3, GT=4, GE=5. Values 6–7 → FAULT.
+Bits [7:5] must be 000; non-zero → FAULT(`ERR_VU_FORMAT`).
+
+### VCMP Cond Byte (4th byte, VCMP only)
+
+```
+  7   6   5   4   3   2   1   0
+┌───┬───┬───┬───┬───┬───┬───┬───┐
+│        reserved       │  cond │
+└───┴───┴───┴───┴───┴───┴───┴───┘
+```
+
+Bits [7:3] must be 0. cond: EQ=0, NE=1, LT=2, LE=3, GT=4, GE=5. Values 6–7 → FAULT(`ERR_VU_FORMAT`).
 
 ### Register Byte
 
@@ -135,24 +146,25 @@ cond (VCMP only, else 000): EQ=0, NE=1, LT=2, LE=3, GT=4, GE=5. Values 6–7 →
 └───┴───┴───┴───┴───┴───┴───┴───┘
 ```
 
-2-bit codes: VA=0, VB=1, VC=2, VM=3. Bits [1:0] reserved (must be 0). Unused fields must be 0.
+2-bit register codes: VA=0, VB=1, VC=2, VM=3. Bits [1:0] reserved (must be 0). Unused fields must be 0.
 
 ### Valid Modes per Instruction
 
-| Category | Instructions | Valid modes |
-|----------|-------------|-------------|
-| Arithmetic | VADD, VSUB, VMUL, VDIV, VMAX, VMIN | vv, vs, vi, r |
-| Dot product | VDOT | vv only |
-| Unary | VSQRT, VNEG, VABS | mode=0 |
-| Mask | VCMP, VSEL | vv only |
-| Memory | VMOV | mode=0 |
-| Fill | VFILL | vi only |
+| Category | Instructions | Valid modes | Valid formats | Notes |
+|----------|-------------|-------------|---------------|-------|
+| Arithmetic | VADD–VMIN | vv, vs, vi, r | all | vs: byte formats only (O3/O2/U/I) |
+| Dot product | VDOT | vv | FP only | Integer → FAULT(`ERR_VU_FORMAT`) |
+| Unary | VSQRT | vv (unary) | FP only | Integer → FAULT(`ERR_VU_FORMAT`) |
+| Unary | VNEG, VABS | vv (unary) | all | src2 must be 0 |
+| Compare | VCMP | vv | all | 4 bytes (cond in byte 3; see above) |
+| Select | VSEL | vv | all | Reads mask from VM |
+| Memory | VMOV | vv (unary), vi | all | vi mode: `VFILL` is an assembler alias |
 
-Invalid mode for instruction → FAULT(`ERR_VU_FORMAT`).
+Invalid mode or format combination → FAULT(`ERR_VU_FORMAT`).
 
 ## 9.8 Sync Instructions
 
-**VSET** (163–166): Load 16-bit value into VA/VB/VC/VM/VL. Four forms: imm16, gpr-pair, [addr], [reg]. Target codes 0–4. See [Opcodes](opcodes.md).
+**VSET** (163–166): Load 16-bit value into VA/VB/VC/VM/VL. Four forms: imm16, gpr-pair, [addr], [reg]. Target codes 0–4.
 
 **VSET gpr-pair encoding (Opcode 164):** The 3rd byte packs two GPR codes as `(rH << 2) | rL`, where rH and rL are 2-bit GPR codes (A=0, B=1, C=2, D=3). The resulting 16-bit value is `(GPR[rH] << 8) | GPR[rL]`. Example: `VSET VL, A, D` encodes the 3rd byte as `(0 << 2) | 3 = 0x03`.
 
@@ -165,9 +177,9 @@ Invalid mode for instruction → FAULT(`ERR_VU_FORMAT`).
 - **VDOT:** FP only. Intermediate precision ≥ source format.
 - **VNEG:** FP flips sign; integer: two's complement negate (wrapping).
 - **VABS:** FP clears sign; .U: identity; .I: wrapping (-128 → -128).
-- **VCMP:** Byte mask (0xFF/0x00). FP NaN → false (except NE). Integer: `.U` unsigned comparison; `.I` signed comparison.
-- **VSEL:** `dst[i] = mask[i] ? dst[i] : alt[i]`. Overlap dst/alt undefined.
-- **VMOV:** Raw byte copy, no conversion. Overlap undefined.
+- **VCMP:** Byte mask (0xFF/0x00). FP NaN → false (except NE). Integer: `.U` unsigned; `.I` signed. 4-byte encoding (cond in byte 3, see §9.7).
+- **VSEL:** `dst[i] = mask[i] ? dst[i] : alt[i]`. Overlap undefined.
+- **VMOV:** Unary: raw byte copy, no conversion. vi mode: `dst[i] = imm` broadcast; `VFILL` is an assembler alias. Overlap undefined.
 
 ## 9.10 Assembly
 
@@ -181,8 +193,10 @@ VADD.U VC, VA, A              ; GPR → scalar broadcast (mode 1)
 VADD.U VC, VA, 42             ; number → immediate broadcast (mode 2)
 VADD.U VC, VA                 ; 2 operands → reduction (mode 3)
 VDOT.F VC, VA, VB             ; single-mode (always vv)
-VCMP.U.LT VM, VA, VB          ; condition suffix (always vv)
-VFILL.U VC, 0                 ; fill (always vi)
+VCMP.U.LT VM, VA, VB          ; condition suffix (always vv), 4 bytes
+VMOV.U VC, VA                 ; unary: raw byte copy
+VMOV.U VC, 0                  ; vi mode: broadcast fill (VFILL alias)
+VFILL.U VC, 0                 ; same as above
 VWAIT                          ; sync
 ```
 
