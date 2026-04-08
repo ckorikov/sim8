@@ -66,6 +66,23 @@ export const MNEMONIC_INFO = Object.freeze({
     FCLR: "Clear all FPSR sticky flags",
     FCLASS: "Classify FP value to 8-bit bitmask",
     FMADD: "FP dst = src * mem + dst (fused)",
+    VSET: "Set VU register (VA/VB/VC/VM/VL) from imm16, GPR pair, single GPR, or memory",
+    VFSTAT: "Read VFPSR (vector FP exception flags) to GPR",
+    VFCLR: "Clear all VFPSR sticky flags",
+    VWAIT: "Wait for VU queue to drain; propagate VU faults to CPU",
+    VADD: "Vector dst = src1 + src2 (element-wise)",
+    VSUB: "Vector dst = src1 - src2 (element-wise)",
+    VMUL: "Vector dst = src1 * src2 (element-wise)",
+    VDIV: "Vector dst = src1 / src2 (element-wise)",
+    VMAX: "Vector dst = max(src1, src2) (element-wise)",
+    VMIN: "Vector dst = min(src1, src2) (element-wise)",
+    VDOT: "Vector dot product: dst += sum(src1 * src2)",
+    VSQRT: "Vector dst = sqrt(src1) (element-wise)",
+    VNEG: "Vector dst = -src1 (element-wise)",
+    VABS: "Vector dst = |src1| (element-wise)",
+    VCMP: "Vector compare → byte mask at [VM]",
+    VSEL: "Vector select: dst[i] = mask[i] ? dst[i] : alt[i]",
+    VMOV: "Vector memory copy or broadcast fill (vi mode / VFILL alias)",
 });
 
 // ── Integer flag effects ──────────────────────────────────────────────────────
@@ -116,6 +133,20 @@ export const MNEMONIC_NOTES = Object.freeze({
     FSTAT: "FPSR bits: [0]=NV, [1]=DZ, [2]=OF, [3]=UF, [4]=NX.",
     FCFG: "FPCR bits [1:0]: 00=RNE, 01=RTZ, 10=RDN, 11=RUP.",
     FSCFG: "Only bits [1:0] are writable; reserved bits [7:2] are cleared.",
+    VDOT: "FP-only (no .U/.I). dst gets scalar result (elem_size bytes).",
+});
+
+// ── Syntax form overrides (when ISA table signatures aren't descriptive enough) ─
+
+export const MNEMONIC_FORMS_OVERRIDE = Object.freeze({
+    VSET: [
+        "VSET ptr, imm16",
+        "VSET ptr, {label}, label",
+        "VSET ptr, rH, rL",
+        "VSET ptr, gpr",
+        "VSET ptr, [addr]",
+        "VSET ptr, [reg±offset]",
+    ],
 });
 
 // ── Operand type → human-readable label ──────────────────────────────────────
