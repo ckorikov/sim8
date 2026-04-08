@@ -168,6 +168,8 @@ Invalid mode or format combination → FAULT(`ERR_VU_FORMAT`).
 
 **VSET gpr-pair encoding (Opcode 164):** The 3rd byte packs two GPR codes as `(rH << 2) | rL`, where rH and rL are 2-bit GPR codes (A=0, B=1, C=2, D=3). The resulting 16-bit value is `(GPR[rH] << 8) | GPR[rL]`. Example: `VSET VL, A, D` encodes the 3rd byte as `(0 << 2) | 3 = 0x03`.
 
+**VSET single-GPR encoding (Opcode 164):** When bit 4 of the 3rd byte is set, the instruction reads a single GPR (bits 1:0) and zero-extends the 8-bit value to 16-bit. The 3rd byte is `0x10 | gpr_code`. Example: `VSET VL, A` encodes the 3rd byte as `0x10` and sets VL to the value of A (0–255).
+
 **VFSTAT** (167): Copy VFPSR → GPR. **VFCLR** (168): Clear VFPSR. **VWAIT** (169): Drain queue + surface faults.
 
 ## 9.9 Instruction Notes
@@ -188,6 +190,7 @@ VSET VA, {data}, data          ; {label}=page, label=offset → 16-bit address
 VSET VA, 0x0100               ; bare 16-bit immediate
 VSET VB, [0x50]               ; read 16-bit from memory
 VSET VL, A, D                 ; gpr-pair: (A << 8) | D
+VSET VL, A                    ; single GPR: zero-extend A to 16-bit
 VADD.F VC, VA, VB             ; 3 VU regs → vector-vector (mode 0)
 VADD.U VC, VA, A              ; GPR → scalar broadcast (mode 1)
 VADD.U VC, VA, 42             ; number → immediate broadcast (mode 2)
