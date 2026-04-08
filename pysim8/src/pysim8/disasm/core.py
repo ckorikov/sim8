@@ -27,6 +27,7 @@ from pysim8.isa import (
     VU_REGISTERS,
     VU_SUFFIX_TO_FMT,
     VU_SUFFIX_TO_MODE,
+    FpRegInfo,
     Op,
     OpType,
     Reg,
@@ -43,12 +44,12 @@ _REG_NAMES: dict[int, str] = {r.value: r.name for r in Reg}
 
 
 def _build_fpm_to_reg(
-    regs: Mapping[str, tuple[int, int, int, int]],
+    regs: Mapping[str, FpRegInfo],
 ) -> dict[tuple[int, int, int], str]:
     """Build reverse lookup: (phys, pos, fmt) → shortest register name."""
     result: dict[tuple[int, int, int], str] = {}
-    for name, (phys, pos, fmt, _w) in regs.items():
-        key = (phys, pos, fmt)
+    for name, r in regs.items():
+        key = (r.phys, r.pos, r.fmt)
         if key not in result or len(name) < len(result[key]):
             result[key] = name
     return result

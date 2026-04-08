@@ -43,12 +43,29 @@ from .vu_ops import (
 
 if TYPE_CHECKING:
     from .decoder import DecodedInstr
+    from .handlers import Handler
+    from .memory import Memory
+    from .registers import RegisterFile
 
 __all__ = ["HandlersVuMixin"]
 
 
 class HandlersVuMixin:
-    """VU instruction handlers — mixed into CPU."""
+    """VU instruction handlers — mixed into CPU.
+
+    Expects: self.mem (Memory), self.regs (RegisterFile), self._dispatch,
+    self._direct_addr, self._indirect_addr.
+    """
+
+    mem: Memory
+    regs: RegisterFile
+    _dispatch: dict[Op, Handler]
+
+    def _direct_addr(self, offset: int) -> int:
+        raise NotImplementedError
+
+    def _indirect_addr(self, encoded: int) -> int:
+        raise NotImplementedError
 
     def _build_vu_dispatch(self) -> None:
         d = self._dispatch
@@ -62,6 +79,8 @@ class HandlersVuMixin:
         # All async ops share one handler
         for op_val in VU_ASYNC_OPS:
             d[Op(op_val)] = self._h_vasync
+        # Op.VFILL (183) is reserved; executing it faults with INVALID_OPCODE
+        d[Op.VFILL] = self._h_vfill_reserved
 
     def _init_vu(self) -> None:
         """Initialize VU queue. Called from CPU.__init__."""
@@ -150,6 +169,10 @@ class HandlersVuMixin:
             self._vwait_size = instr.size
         else:
             self.regs.ip += instr.size
+
+    def _h_vfill_reserved(self, instr: DecodedInstr) -> None:
+        """Op.VFILL (183) is reserved. Always faults with INVALID_OPCODE."""
+        raise CpuFault(ErrorCode.INVALID_OPCODE, self.regs.ip)
 
     # ── Async command issue ──────────────────────────────────────
 
