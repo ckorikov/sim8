@@ -257,8 +257,8 @@ export const VU_CMP_SUFFIX = Object.freeze({ EQ: 0, NE: 1, LT: 2, LE: 3, GT: 4, 
 
 // ── VU window sizes ──────────────────────────────────────────────
 
-// VU memory port: 16 bytes/tick → window size = 16 / elem_size elements
-export const VU_WINDOW_SIZE = Object.freeze({ 1: 16, 2: 8, 4: 4 });
+// VU memory port: 8 bytes/tick → window size = 8 / elem_size elements
+export const VU_WINDOW_SIZE = Object.freeze({ 1: 8, 2: 4, 4: 2 });
 
 // ── VFM encoding/decoding ────────────────────────────────────────
 

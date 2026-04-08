@@ -155,7 +155,7 @@ Asynchronous Vector Unit (VU) coprocessor for bulk data operations. Designed for
 
 - CPU decodes vector instructions, resolves addresses, pushes fully-resolved commands to VU FIFO queue
 - VU executes commands in-order, independently of CPU (true parallelism)
-- Fixed queue depth (implementation-defined, minimum 8), CPU stalls on overflow (back-pressure)
+- Fixed queue depth (implementation-defined, minimum 4), CPU stalls on overflow (back-pressure)
 - VWAIT instruction drains queue; VU faults propagate to CPU at VWAIT
 
 **Two interfaces — synchronous and asynchronous:**

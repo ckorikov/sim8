@@ -121,7 +121,7 @@ class TestVuQueue:
 
     def test_full_raises(self) -> None:
         q = VuQueue()
-        for _ in range(8):
+        for _ in range(4):
             q.enqueue(self._cmd())
         assert q.is_full
         with pytest.raises(RuntimeError):

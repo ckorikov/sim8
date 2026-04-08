@@ -24,7 +24,7 @@ import {
     ErrorCode,
 } from "./core-types.js";
 
-export const VU_QUEUE_DEPTH = 8;
+export const VU_QUEUE_DEPTH = 4;
 
 const MEMORY_SIZE = 65536;
 

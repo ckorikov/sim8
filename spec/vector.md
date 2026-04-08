@@ -93,22 +93,22 @@ $S = \text{VL} \times \text{elem\_size}$, $s = \text{elem\_size}$.
 
 ## 9.6a Window Execution Model
 
-The VU reads memory through a **16-byte port**. Each VU tick processes one 16-byte window. The number of elements per tick depends on element size:
+The VU reads memory through an **8-byte port**. Each VU tick processes one 8-byte window. The number of elements per tick depends on element size:
 
 | Element size | Formats | Bytes/tick | Elements/tick |
 |-------------|---------|-----------|--------------|
-| 1 byte | O3, O2, U, I | 16 | 16 |
-| 2 bytes | H, BF | 16 | 8 |
-| 4 bytes | F | 16 | 4 |
+| 1 byte | O3, O2, U, I | 8 | 8 |
+| 2 bytes | H, BF | 8 | 4 |
+| 4 bytes | F | 8 | 2 |
 
 **VU execution cost** = ceil(VL / elements_per_tick) ticks.
 
-The VU processes windows sequentially: each tick consumes the next 16 bytes of data (or fewer for the final partial window). VU ticks run in parallel with CPU ticks at 1:1 rate. Auto-increment pointers (§9.5) are snapshotted at issue time — the window merely indexes into the already-determined memory region.
+The VU processes windows sequentially: each tick consumes the next 8 bytes of data (or fewer for the final partial window). VU ticks run in parallel with CPU ticks at 1:1 rate. Auto-increment pointers (§9.5) are snapshotted at issue time — the window merely indexes into the already-determined memory region.
 
 **Examples:**
-- VL=64, format `.U` (1 B) → ceil(64/16) = 4 VU ticks.
-- VL=64, format `.F` (4 B) → ceil(64/4) = 16 VU ticks.
-- VL=48, format `.H` (2 B) → ceil(48/8) = 6 VU ticks.
+- VL=64, format `.U` (1 B) → ceil(64/8) = 8 VU ticks.
+- VL=64, format `.F` (4 B) → ceil(64/2) = 32 VU ticks.
+- VL=48, format `.H` (2 B) → ceil(48/4) = 12 VU ticks.
 - VL=0 → 0 ticks (no-op).
 
 This cost is internal to the VU and does not appear in the CPU `cycles` counter (see [uarch §4.6b](uarch.md#46b-vu-pipeline)).

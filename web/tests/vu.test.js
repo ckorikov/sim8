@@ -122,17 +122,17 @@ describe("VU queue", () => {
         expect(cpu.vu.queueItems[0].label).toBe("VADD.U");
     });
 
-    it("queue depth is 8", () => {
+    it("queue depth is 4", () => {
         const code = [...vsetVL(4), ...vsetPtr(0, 256), ...vsetPtr(1, 260), ...vsetPtr(2, 264)];
-        // 8 VADD instructions
-        for (let i = 0; i < 8; i++) {
+        // 4 VADD instructions
+        for (let i = 0; i < 4; i++) {
             code.push(...vuAsync(Op.VADD, 5, 0, 2, 0, 1));
         }
         code.push(Op.HLT);
         cpu.load(new Uint8Array(code));
-        // Execute 4 VSET + 8 VADD = 12 CPU steps, no VU ticks
-        for (let i = 0; i < 12; i++) cpu.step();
-        expect(cpu.vu.queueDepth).toBe(8);
+        // Execute 4 VSET + 4 VADD = 8 CPU steps, no VU ticks
+        for (let i = 0; i < 8; i++) cpu.step();
+        expect(cpu.vu.queueDepth).toBe(4);
         expect(cpu.vu.isFull).toBe(true);
     });
 
@@ -148,7 +148,7 @@ describe("VU queue", () => {
         for (let i = 0; i < 4; i++) cpu.step(); // VSET x3 + VMOV issue
         expect(cpu.vu.queueDepth).toBe(1);
         cpu.vuTick(); // process window
-        expect(cpu.vu.queueDepth).toBe(0); // VL=4, window=16 → done in 1 tick
+        expect(cpu.vu.queueDepth).toBe(0); // VL=4, window=8 → done in 1 tick
     });
 });
 
@@ -321,7 +321,7 @@ describe("VWAIT", () => {
         expect(cpu.vuWaiting).toBe(true);
         expect(cpu.step()).toBe(false); // CPU stalled
 
-        cpu.vuTick(); // drain (VL=4, window=16 → 1 tick)
+        cpu.vuTick(); // drain (VL=4, window=8 → 1 tick)
         expect(cpu.vuWaiting).toBe(false);
         // Next step hits HLT → HALTED
         expect(cpu.step()).toBe(false);
@@ -330,7 +330,7 @@ describe("VWAIT", () => {
 
     it("IP stays on VWAIT until queue empty", () => {
         const code = [
-            ...vsetVL(64), // 64 elements, window=16 → 4 VU ticks
+            ...vsetVL(64), // 64 elements, window=8 → 8 VU ticks
             ...vsetPtr(0, 256),
             ...vsetPtr(2, 512),
             ...vuAsync(Op.VMOV, 5, 0, 2, 0, 0),
@@ -342,12 +342,10 @@ describe("VWAIT", () => {
         for (let i = 0; i < 5; i++) cpu.step(); // issue all + VWAIT
         expect(cpu.ip).toBe(vwaitAddr); // IP on VWAIT
 
-        cpu.vuTick(); // tick 1/4
+        cpu.vuTick(); // tick 1/8
         expect(cpu.ip).toBe(vwaitAddr); // still on VWAIT
 
-        cpu.vuTick();
-        cpu.vuTick();
-        cpu.vuTick(); // ticks 2-4
+        for (let i = 0; i < 7; i++) cpu.vuTick(); // ticks 2-8
         expect(cpu.ip).toBe(vwaitAddr + 1); // IP advanced past VWAIT
     });
 });
@@ -404,7 +402,7 @@ describe("Window execution", () => {
         cpu = makeCPU();
     });
 
-    it("VL=32 U-format takes 2 VU ticks (window=16)", () => {
+    it("VL=32 U-format takes 4 VU ticks (window=8)", () => {
         const code = [
             ...vsetVL(32),
             ...vsetPtr(0, 256),
@@ -416,10 +414,16 @@ describe("Window execution", () => {
         for (let i = 0; i < 4; i++) cpu.step();
         expect(cpu.vu.queueDepth).toBe(1);
 
-        cpu.vuTick(); // tick 1: elements 0-15
+        cpu.vuTick(); // tick 1: elements 0-7
         expect(cpu.vu.queueDepth).toBe(1); // not done yet
 
-        cpu.vuTick(); // tick 2: elements 16-31
+        cpu.vuTick(); // tick 2: elements 8-15
+        expect(cpu.vu.queueDepth).toBe(1); // not done yet
+
+        cpu.vuTick(); // tick 3: elements 16-23
+        expect(cpu.vu.queueDepth).toBe(1); // not done yet
+
+        cpu.vuTick(); // tick 4: elements 24-31
         expect(cpu.vu.queueDepth).toBe(0); // done
     });
 
@@ -431,6 +435,30 @@ describe("Window execution", () => {
 
         cpu.vuTick();
         expect(cpu.vu.queueDepth).toBe(0);
+    });
+
+    it("back-to-back issue accumulates queue depth 2 (window=8)", () => {
+        // Two VMOV.U with VL=16 back-to-back using auto-increment.
+        // Each needs ceil(16/8)=2 VU ticks.
+        // At issue of #2, #1 has only had 1 VU tick (half done) → depth=2.
+        const code = [
+            ...vsetVL(16),
+            ...vsetPtr(0, 256), // VA = src
+            ...vsetPtr(2, 512), // VB = dst
+            ...vuAsync(Op.VMOV, 5, 0, 2, 0, 0), // issue #1 (auto-inc VA,VB)
+            ...vuAsync(Op.VMOV, 5, 0, 2, 0, 0), // issue #2
+            Op.VWAIT,
+            Op.HLT,
+        ];
+        cpu.load(new Uint8Array(code));
+
+        // Execute 3 VSETs + issue #1
+        for (let i = 0; i < 4; i++) cpu.step();
+        expect(cpu.vu.queueDepth).toBe(1); // VMOV#1 queued
+
+        cpu.vuTick(); // VU processes VMOV#1 window 0..7 (still half done)
+        cpu.step(); // CPU issues VMOV#2
+        expect(cpu.vu.queueDepth).toBe(2); // both in queue
     });
 });
 

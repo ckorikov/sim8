@@ -618,7 +618,7 @@ All VU instructions cost **1 tick** to issue, regardless of format or vector len
 | Status access | 1 | reg(1) | `VFSTAT A`, `VFCLR` |
 | Sync barrier | 1 | reg(1) | `VWAIT` |
 | Async issue (all) | 1 | reg(1) | `VADD.F VC, VA, VB`, `VMUL.U VC, VA, VB` |
-| Queue stall | +1/slot freed | stall | CPU blocks when queue is full (depth = 8) |
+| Queue stall | +1/slot freed | stall | CPU blocks when queue is full (depth = 4) |
 
 **Scheduling rule:** VU issue is a single `reg(1)` stage — no memory or ALU pipeline interaction. The CPU decodes, snapshots VU registers, auto-increments pointers, and pushes the command to the queue — all in 1 tick.
 
@@ -626,15 +626,15 @@ All VU instructions cost **1 tick** to issue, regardless of format or vector len
 
 The VU processes elements in fixed-size windows. One window executes in **1 VU tick**. Window size depends on element byte width:
 
-The VU memory port is **16 bytes wide**. Each tick processes 16 bytes of data regardless of element format:
+The VU memory port is **8 bytes wide**. Each tick processes 8 bytes of data regardless of element format:
 
 | Element size | Formats | Bytes/tick | Elements/tick (W) | Cost for VL elements |
 |-------------|---------|-----------|------------------|---------------------|
-| 1 byte | O3, O2, U, I | 16 | 16 | ceil(VL / 16) ticks |
-| 2 bytes | H, BF | 16 | 8 | ceil(VL / 8) ticks |
-| 4 bytes | F | 16 | 4 | ceil(VL / 4) ticks |
+| 1 byte | O3, O2, U, I | 8 | 8 | ceil(VL / 8) ticks |
+| 2 bytes | H, BF | 8 | 4 | ceil(VL / 4) ticks |
+| 4 bytes | F | 8 | 2 | ceil(VL / 2) ticks |
 
-**Formula:** VU execution cost = **ceil(VL / W)** VU ticks per command, where W = 16 / elem_size.
+**Formula:** VU execution cost = **ceil(VL / W)** VU ticks per command, where W = 8 / elem_size.
 
 Windows execute sequentially within a command. The VU dequeues the next command only after the current one completes all windows.
 
@@ -659,7 +659,7 @@ When CPU and VU operate on different memory regions, they run in true parallel �
     VSET VA, 256         ; 1 tick — source = page 1
     VSET VB, 512         ; 1 tick — destination = page 2
     VMOV.U VB, VA        ; 1 tick — issue (enqueue, auto-increment)
-    VWAIT                ; 1 tick — stall while VU drains (1 window)
+    VWAIT                ; 2 ticks — stall while VU drains (2 windows)
     HLT
 ```
 
@@ -670,11 +670,12 @@ Tick  CPU                      VU queue     VU executes
   2   VSET VA, 256             []           —
   3   VSET VB, 512             []           —
   4   VMOV.U VB, VA (issue)    [VMOV.U]     —
-  5   VWAIT (stall, +1 cycle)  [VMOV.U]     VMOV window 0..15
-  6   HLT                     []           done
+  5   VWAIT (stall, +1 cycle)  [VMOV.U]     VMOV window 0..7
+  6   VWAIT (stall, +1 cycle)  [VMOV.U]     VMOV window 8..15
+  7   HLT                     []           done
 ```
 
-**Total: 5 CPU cycles** (4 issue + 1 VWAIT drain). The VWAIT issue tick and the first VU drain tick overlap on the same clock edge.
+**Total: 6 CPU cycles** (4 issue + 2 VWAIT drain). The VWAIT issue tick and the first VU drain tick overlap on the same clock edge.
 
 ### Scalar Equivalent
 
@@ -694,18 +695,19 @@ Tick  CPU                      VU queue     VU executes
                          ; ≈ 11 ticks × 16 iterations + setup ≈ 183 cycles
 ```
 
-**Speedup: 37x** for 16-byte copy (5 vs 183 cycles).
+**Speedup: 30x** for 16-byte copy (6 vs 183 cycles).
 
 ### Cost Table by VL
 
 | VL | Windows | Total cycles | Breakdown |
 |----|---------|-------------|-----------|
-| 1–16 | 1 | 5 | 3×VSET + VMOV + 1 drain |
-| 17–32 | 2 | 6 | ... + 2 drain |
-| 33–48 | 3 | 7 | ... + 3 drain |
-| 64 | 4 | 8 | ... + 4 drain |
-| 128 | 8 | 12 | ... + 8 drain |
-| 256 | 16 | 20 | ... + 16 drain |
+| 1–8 | 1 | 5 | 3×VSET + VMOV + 1 drain |
+| 9–16 | 2 | 6 | ... + 2 drain |
+| 17–24 | 3 | 7 | ... + 3 drain |
+| 25–32 | 4 | 8 | ... + 4 drain |
+| 64 | 8 | 12 | ... + 8 drain |
+| 128 | 16 | 20 | ... + 16 drain |
+| 256 | 32 | 36 | ... + 32 drain |
 
 ### Parallel Issue (No VWAIT Between Commands)
 

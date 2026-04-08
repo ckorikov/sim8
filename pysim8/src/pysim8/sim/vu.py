@@ -9,7 +9,7 @@ from .memory import MEMORY_SIZE
 
 __all__ = ["VuRegisters", "VuCommand", "VuQueue"]
 
-VU_QUEUE_DEPTH = 8
+VU_QUEUE_DEPTH = 4
 
 
 @dataclass(slots=True)

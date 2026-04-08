@@ -328,9 +328,9 @@ VU_FMT_ELEM_SIZE: dict[int, int] = {
     VU_FMT_I: 1,
 }
 
-# VU memory port: 16 bytes/tick → window = 16 / elem_size elements
-VU_WINDOW_BYTES: int = 16
-VU_WINDOW_SIZE: dict[int, int] = {1: 16, 2: 8, 4: 4}
+# VU memory port: 8 bytes/tick → window = 8 / elem_size elements
+VU_WINDOW_BYTES: int = 8
+VU_WINDOW_SIZE: dict[int, int] = {1: 8, 2: 4, 4: 2}
 
 # VU mode codes
 VU_MODE_VV = 0
