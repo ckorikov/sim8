@@ -129,7 +129,7 @@ Disassemble machine code.
 
 Read a section of the CPU specification, optionally sliced by line range.
 
-- **Input:** `section` — one of: `isa`, `opcodes`, `errors`, `cpu`, `mem`, `uarch`, `asm`, `spec`, `fp`
+- **Input:** `section` — one of: `isa`, `errors`, `cpu`, `mem`, `uarch`, `asm`, `spec`, `fp`, `vector`
 - **Input (optional):** `start_line`, `end_line` — 1-based, inclusive. Default: full file.
 - **Output:** `content`, `total_lines` (always), `start_line`/`end_line` (when range given)
 - **Tip:** fetch without a range first to get `total_lines`, then read in chunks.

@@ -10,19 +10,25 @@ Simulator of an 8-bit computer with CPU and peripherals. Formally verified with 
 spec/           Specification
   spec.md         Overview
   isa.md          Instruction set architecture
-  opcodes.md      Opcode table
+  isa.json        Opcode table (canonical, machine-readable)
   cpu.md          CPU states and instruction cycle
   mem.md          Memory model and addressing
   uarch.md        Microarchitecture (interpreter pseudocode)
+  fp.md           FPU coprocessor (IEEE 754)
+  vector.md       Vector Unit (VU) coprocessor
   asm.md          Assembler
   errors.md       Error/fault codes
-  tests.md        Test specification
+  tests.md        Test specification (integer)
+  tests-fp.md     Test specification (FPU)
+  tests-vec.md    Test specification (VU)
 
-formal/         TLA+ formal model and tests
-  cpu_base.tla      Constants, helpers
-  cpu_core.tla      CPU state machine
-  cpu_ops_*.tla     Instruction semantics
-  tests/            TLC test suites
+formal/         Formal verification
+  tla/              TLA+ formal model and tests
+    cpu_base.tla      Constants, helpers
+    cpu_core.tla      CPU state machine
+    cpu_ops_*.tla     Instruction semantics
+    tests/            TLC test suites
+  z3/               Z3 encoding verification
 
 pysim8/         Python toolchain (assembler, simulator, disassembler)
 
@@ -48,17 +54,17 @@ ieee754-test-suite/  IEEE 754 conformance test vectors (.fptest)
 
 Requires Java and [TLA+ Tools](https://github.com/tlaplus/tlaplus).
 
-Download `tla2tools.jar` into `formal/`:
+Download `tla2tools.jar` into `formal/tla/`:
 
 ```bash
-cd formal
+cd formal/tla
 curl -LO https://github.com/tlaplus/tlaplus/releases/latest/download/tla2tools.jar
 ```
 
 Run tests:
 
 ```bash
-cd formal
+cd formal/tla
 
 make test          # all tests
 make test_basic    # single test
