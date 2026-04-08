@@ -13,6 +13,7 @@ export function adjustBlockPositions(initWiresFn) {
     const memEl = document.getElementById("blk-mem");
     const vuEl = document.getElementById("blk-vu");
     const dispEl = document.getElementById("blk-disp");
+    const padEl = document.getElementById("blk-pad");
     const wireGap = parseInt(cssVar("--s-wire-gap")) || 56;
 
     const cpuH = cpuEl.offsetHeight;
@@ -34,9 +35,24 @@ export function adjustBlockPositions(initWiresFn) {
 
     dispEl.style.top = memTop + memH + wireGap + "px";
 
+    // Pad below VU (if visible)
+    const padVisible = padEl && padEl.style.display !== "none";
+    if (padEl && vuEl && padVisible) {
+        const vuH = vuEl.offsetHeight;
+        padEl.style.top = memTop + vuH + wireGap + "px";
+    }
+
     const container = document.getElementById("diagram-container");
     const dispTop = parseInt(dispEl.style.top);
-    container.style.height = dispTop + dispEl.offsetHeight + 32 + "px";
+    let bottomEdge = dispTop + dispEl.offsetHeight;
+
+    if (padVisible) {
+        const padTop = parseInt(padEl.style.top);
+        const padBottom = padTop + padEl.offsetHeight;
+        bottomEdge = Math.max(bottomEdge, padBottom);
+    }
+
+    container.style.height = bottomEdge + 32 + "px";
 
     initWiresFn();
 }

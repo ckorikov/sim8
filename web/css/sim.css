@@ -24,6 +24,7 @@
     --a-green: #3a9a3a;
     --a-red: #c44;
     --a-blue: #48c;
+    --a-purple: #a6e;
     --a-orange-a20: rgb(204 85 0 / 20%);
     --a-green-a40: rgb(58 154 58 / 40%);
     --t-exec-bg: rgb(204 85 0 / 15%);
@@ -72,6 +73,10 @@
     --s-vu-w: 220px;
     --s-vu-x: 660px;
     --s-vu-queue-h: 22px;
+
+    /* ── Pad block ── */
+    --s-pad-w: 220px;
+    --s-pad-px: 6;
 }
 
 :root.light {
@@ -94,6 +99,7 @@
     --a-green: #3a7a50;
     --a-red: #9a4040;
     --a-blue: #3a6090;
+    --a-purple: #7a4a90;
     --a-orange-a20: rgb(138 90 48 / 15%);
     --a-green-a40: rgb(58 122 80 / 30%);
     --t-exec-bg: rgb(138 90 48 / 18%);
@@ -215,6 +221,10 @@ body {
     color: var(--a-green);
 }
 
+.mem-cell.pad-region {
+    color: var(--a-purple);
+}
+
 .mem-cell.marker-ip {
     background: var(--a-orange);
     color: var(--t-marker-text);
@@ -329,6 +339,41 @@ body {
 .cc.on {
     color: var(--a-green);
     text-shadow: 0 0 4px var(--a-green-a40);
+}
+
+/* ── Pad ── */
+#pad-canvas {
+    image-rendering: pixelated;
+    cursor: crosshair;
+    border: 1px solid var(--t-border);
+    border-radius: 2px;
+}
+
+#pad-page,
+#pad-addr {
+    width: 48px;
+    font-size: 10px;
+    font-family: "JetBrains Mono", monospace;
+    background: var(--t-bg);
+    color: var(--t-text);
+    border: 1px solid var(--t-border);
+    border-radius: 2px;
+    padding: 1px 4px;
+    text-align: center;
+}
+
+#pad-page:focus,
+#pad-addr:focus {
+    outline: 1px solid var(--a-orange);
+    border-color: var(--a-orange);
+}
+
+#pad-page::-webkit-inner-spin-button,
+#pad-page::-webkit-outer-spin-button,
+#pad-addr::-webkit-inner-spin-button,
+#pad-addr::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
 }
 
 /* ── Memory headers ── */

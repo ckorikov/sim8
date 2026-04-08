@@ -82,6 +82,14 @@
             <div class="flex-1"></div>
 
             <button
+                class="btn btn-xs btn-ghost rounded-sm"
+                style="border: 1px solid var(--t-border); color: var(--t-dim)"
+                id="btn-pad"
+            >
+                pad
+            </button>
+
+            <button
                 class="btn btn-xs btn-ghost rounded-sm gap-1"
                 style="border: 1px solid var(--t-border); color: var(--t-dim)"
                 id="btn-theme"
@@ -517,6 +525,11 @@
                             id="port-mem-right-b"
                             style="right: -4px; top: calc(50% + 8px); background: var(--a-yellow)"
                         ></div>
+                        <div
+                            class="hw-port"
+                            id="port-mem-right-pad"
+                            style="right: -4px; top: calc(50% + 24px); background: var(--a-purple); display: none"
+                        ></div>
                     </div>
 
                     <!-- Vector Unit Block -->
@@ -625,6 +638,69 @@
                             class="hw-port"
                             id="port-vu-left-b"
                             style="left: -4px; top: calc(50% + 8px); background: var(--a-yellow)"
+                        ></div>
+                    </div>
+
+                    <!-- Pad Block -->
+                    <div
+                        class="hw-block"
+                        id="blk-pad"
+                        style="left: var(--s-vu-x); top: 380px; width: var(--s-pad-w); display: none"
+                    >
+                        <div class="hw-hdr" style="justify-content: space-between">
+                            <div style="display: flex; align-items: center; gap: 8px">
+                                <div class="dot" style="background: var(--a-purple)"></div>
+                                pad
+                                <select
+                                    id="pad-size"
+                                    class="ft"
+                                    style="
+                                        font-size: 9px;
+                                        background: transparent;
+                                        border: none;
+                                        color: var(--t-dim);
+                                        cursor: pointer;
+                                        padding: 0;
+                                    "
+                                >
+                                    <option value="8">8×8</option>
+                                    <option value="16">16×16</option>
+                                    <option value="28" selected>28×28</option>
+                                </select>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 4px">
+                                <button class="ft" id="pad-clear">clear</button>
+                            </div>
+                        </div>
+                        <div class="hw-body" style="padding: 8px; flex-direction: column; gap: 6px">
+                            <div style="display: flex; align-items: center; gap: 8px">
+                                <span
+                                    style="
+                                        font-size: 8px;
+                                        color: var(--t-dim);
+                                        text-transform: uppercase;
+                                        letter-spacing: 0.1em;
+                                    "
+                                    >page</span
+                                >
+                                <input type="number" id="pad-page" value="1" min="0" max="252" />
+                                <span
+                                    style="
+                                        font-size: 8px;
+                                        color: var(--t-dim);
+                                        text-transform: uppercase;
+                                        letter-spacing: 0.1em;
+                                    "
+                                    >addr</span
+                                >
+                                <input type="number" id="pad-addr" value="0" min="0" max="255" />
+                            </div>
+                            <canvas id="pad-canvas" width="168" height="168"></canvas>
+                        </div>
+                        <div
+                            class="hw-port"
+                            id="port-pad-left"
+                            style="left: -4px; top: 50%; transform: translateY(-50%); background: var(--a-purple)"
                         ></div>
                     </div>
 

@@ -15,6 +15,14 @@ export const STACK_BASE = SP_INIT - 2;
 export const IO_BASE = IO_START;
 export { PAGE_SIZE };
 
+// ── Pad state (mutated by pad.js) ──────────────────────────────
+
+export const pad = {
+    visible: false,
+    start: 0, // base address
+    end: 0, // base address + size
+};
+
 // ── Assembly state (mutated by orchestrator) ────────────────────
 
 export const asm = {
@@ -46,6 +54,7 @@ export function refreshColors() {
         gr: cssVar("--a-green"),
         rd: cssVar("--a-red"),
         yl: cssVar("--a-yellow"),
+        pu: cssVar("--a-purple"),
         dim: cssVar("--t-dim"),
         mid: cssVar("--t-mid"),
         txt: cssVar("--t-text"),
