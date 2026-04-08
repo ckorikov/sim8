@@ -280,3 +280,29 @@ describe("overlay code", () => {
         expect(c[514]).toBe(1);
     });
 });
+
+// ── VSET label (full 16-bit address) ────────────────────────────────
+
+describe("VSET label (full 16-bit address)", () => {
+    it("VSET VA, label: page-0 label → lo=offset, hi=0", () => {
+        const c = asm("data: DB 0\nVSET VA, data\nHLT", 3);
+        expect(c[1]).toBe(163); // VSET_IMM16
+        expect(c[3]).toBe(0); // lo = 0
+        expect(c[4]).toBe(0); // hi = page 0
+    });
+
+    it("VSET VA, label: page-0 offset resolves correctly", () => {
+        // JMP(2) + DB×3(3) = VSET at offset 5; data at offset 2
+        const c = asm("JMP start\ndata: DB 1,2,3\nstart: VSET VA, data\nHLT", 3);
+        expect(c[7]).toBe(2); // lo = offset(data) = 2
+        expect(c[8]).toBe(0); // hi = page 0
+    });
+
+    it("VSET VA, label: cross-page label → lo=offset, hi=page", () => {
+        // @page 2 data first, then @page 0 VSET → VSET at c[0]
+        const c = asm("@page 2\ndata: DB 42\n@page 0\nVSET VA, data\nHLT", 3);
+        expect(c[0]).toBe(163); // VSET_IMM16
+        expect(c[2]).toBe(0); // lo = offset(data on page 2) = 0
+        expect(c[3]).toBe(2); // hi = page 2
+    });
+});
