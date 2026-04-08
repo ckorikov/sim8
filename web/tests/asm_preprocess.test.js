@@ -232,6 +232,56 @@ describe("@include binary files (spec §5.8)", () => {
     });
 });
 
+describe("@include cross-page binary (spec §5.8)", () => {
+    /** Generate binary data of given size (contains 0x00 bytes → always binary mode). */
+    function bindata(size) {
+        return new Uint8Array(Array.from({ length: size }, (_, i) => i & 0xff));
+    }
+
+    it("512-byte binary splits across 2 pages", () => {
+        const data = bindata(512);
+        const { code } = asmOk('@page 1\n@include "big.bin"', { "big.bin": data });
+        expect(Array.from(code.slice(256, 512))).toEqual(Array.from(data.slice(0, 256)));
+        expect(Array.from(code.slice(512, 768))).toEqual(Array.from(data.slice(256)));
+    });
+
+    it("partial last page", () => {
+        const data = bindata(266);
+        const { code } = asmOk('@page 3\n@include "blob.bin"', { "blob.bin": data });
+        expect(Array.from(code.slice(768, 1024))).toEqual(Array.from(data.slice(0, 256)));
+        expect(Array.from(code.slice(1024, 1034))).toEqual(Array.from(data.slice(256)));
+    });
+
+    it("3 full pages", () => {
+        const data = bindata(768);
+        const { code } = asmOk('@page 10\n@include "big.bin"', { "big.bin": data });
+        for (let p = 0; p < 3; p++) {
+            const start = (10 + p) * 256;
+            expect(Array.from(code.slice(start, start + 256))).toEqual(Array.from(data.slice(p * 256, (p + 1) * 256)));
+        }
+    });
+
+    it("label before cross-page binary", () => {
+        const data = bindata(300);
+        const { code, labels } = asmOk('@page 5\nweights:\n@include "w.bin"', { "w.bin": data });
+        expect(labels.weights).toBe(5 * 256);
+        expect(code[5 * 256]).toBe(data[0]);
+        expect(code[6 * 256]).toBe(data[256]);
+    });
+
+    it("page 255 overflow → error", () => {
+        const data = bindata(512);
+        const err = asmError('@page 255\n@include "huge.bin"', { "huge.bin": data });
+        expect(err.message).toMatch(/page 255/i);
+    });
+
+    it("small binary (≤256) stays on single page", () => {
+        const data = new Uint8Array([0x00, 0x01, 0x02]);
+        const { code } = asmOk('@page 1\n@include "s.bin"', { "s.bin": data });
+        expect(Array.from(code.slice(256, 259))).toEqual([0, 1, 2]);
+    });
+});
+
 describe("@include URL (assembleAsync, spec §5.8)", () => {
     afterEach(() => vi.restoreAllMocks());
 

@@ -509,6 +509,49 @@ function _encodeInstruction(mnemonic, operands, line, dstSuffix, srcSuffix, arch
 // ── Phase 0: @include preprocessing ──────────────────────────────
 
 const _MAX_INCLUDE_DEPTH = 16;
+const _PAGE_SIZE = 256;
+const _RE_PAGE_NUM = /^\s*@page\s+(\d+)/i;
+
+/** Find the most recent @page number from emitted lines. */
+function _findCurrentPage(outLines) {
+    for (let i = outLines.length - 1; i >= 0; i--) {
+        const m = _RE_PAGE_NUM.exec(outLines[i]);
+        if (m) return parseInt(m[1], 10);
+    }
+    return 0;
+}
+
+/** Emit a line into outLines + lineMap. */
+function _emitLine(text, outLines, lineMap, filename, lineNo) {
+    const flatLineNo = outLines.length + 1;
+    lineMap.set(flatLineNo, { file: filename, line: lineNo });
+    outLines.push(text);
+}
+
+/** Embed binary data as DB directives, auto-splitting across pages if needed. */
+function _embedBinary(bytes, outLines, lineMap, filename, lineNo) {
+    if (bytes.length <= _PAGE_SIZE) {
+        _emitLine("DB " + Array.from(bytes).join(", "), outLines, lineMap, filename, lineNo);
+        return;
+    }
+    let page = _findCurrentPage(outLines);
+    for (let i = 0; i < bytes.length; i += _PAGE_SIZE) {
+        if (i > 0) {
+            page++;
+            if (page > 255) {
+                throw new AsmError(
+                    `@include: binary file spans beyond page 255 ` +
+                        `(${bytes.length} bytes from page ${page - Math.floor(i / _PAGE_SIZE)})`,
+                    lineNo,
+                    filename,
+                );
+            }
+            _emitLine(`@page ${page}`, outLines, lineMap, filename, lineNo);
+        }
+        const chunk = bytes.slice(i, i + _PAGE_SIZE);
+        _emitLine("DB " + Array.from(chunk).join(", "), outLines, lineMap, filename, lineNo);
+    }
+}
 
 /**
  * Collect lines from source into outLines, building lineMap (1-based flat line → {file, line}).
@@ -539,21 +582,10 @@ function _collectLines(source, files, filename, visited, depth, outLines, lineMa
             }
             const included = files[path];
             if (included instanceof Uint8Array || included instanceof ArrayBuffer) {
-                // Binary file: embed raw bytes as a DB directive.
+                // Binary file: embed raw bytes as DB directives, auto-splitting across pages.
                 const bytes = included instanceof ArrayBuffer ? new Uint8Array(included) : included;
-                if (bytes.length > 256) {
-                    const nParts = Math.ceil(bytes.length / 256);
-                    throw new AsmError(
-                        `@include "${path}": binary file is ${bytes.length} bytes — exceeds page size (256). ` +
-                            `Split the file into ${nParts} parts (≤256 bytes each) and @include them on separate pages.`,
-                        lineNo,
-                        filename,
-                    );
-                }
                 if (bytes.length > 0) {
-                    const flatLineNo = outLines.length + 1;
-                    lineMap.set(flatLineNo, { file: filename, line: lineNo });
-                    outLines.push("DB " + Array.from(bytes).join(", "));
+                    _embedBinary(bytes, outLines, lineMap, filename, lineNo);
                 }
             } else {
                 _collectLines(included, files, path, new Set([...visited, path]), depth + 1, outLines, lineMap);
