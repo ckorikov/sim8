@@ -6,7 +6,8 @@ import { colors, hex, initFormatToggle, FPSR_FLAGS } from "../state.js";
 import { VU_QUEUE_DEPTH } from "../../lib/vu.js";
 import { isHidden, bindToggleClicks } from "./marker-toggle.js";
 
-const vuFmt = initFormatToggle("blk-vu", "#vu-fmt-tabs", "vfmt", () => renderVU(null));
+let _lastVu = null;
+const vuFmt = initFormatToggle("blk-vu", "#vu-fmt-tabs", "vfmt", () => renderVU(_lastVu));
 
 const elPtrs = document.getElementById("vu-ptrs");
 const elML = document.getElementById("vu-ml");
@@ -36,6 +37,7 @@ const EMPTY_REGS = { va: 0, vb: 0, vc: 0, vm: 0, vl: 0, vfpsr: 0 };
 
 /** @param {import('../../lib/vu.js').VectorUnit | null} vu */
 export function renderVU(vu) {
+    _lastVu = vu;
     const { va, vb, vc, vm, vl, vfpsr } = vu ? vu.regs : EMPTY_REGS;
     const vuState = vu ? vu.state : "IDLE";
     const queueItems = vu ? vu.queueItems : [];
