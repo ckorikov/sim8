@@ -1,0 +1,15 @@
+[project]
+name = "sim8-z3"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = ["z3-solver>=4.13.0"]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.20.0",
+    "ruff>=0.15.9",
+]
+
+[tool.mypy]
+strict = true
+ignore_missing_imports = true  # z3-solver has no stubs
