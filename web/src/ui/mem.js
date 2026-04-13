@@ -39,7 +39,7 @@ function disasmInstr(absAddr) {
     const bytes = readBytes(absAddr, def.size);
     const parts = [];
     let bi = 1;
-    for (const ot of def.sig) {
+    for (const ot of def.format) {
         let op;
         if (ot === OpType.REG || ot === OpType.REG_ARITH || ot === OpType.REG_STACK || ot === OpType.REG_GPR) {
             op = REG_NAMES[bytes[bi]] ?? `r${bytes[bi]}`;
@@ -71,7 +71,7 @@ function disasmInstr(absAddr) {
         text: def.mnemonic + (parts.length ? " " + parts.join(", ") : ""),
         size: def.size,
         cost: def.cost,
-        formatDep: def.formatDep,
+        fmtDep: def.fmtDep,
         confirmed: asm.instrStarts.has(absAddr),
     };
 }
@@ -130,7 +130,7 @@ function buildTooltip(absAddr) {
 function instrRow(absAddr, row, sep) {
     const instr = disasmInstr(absAddr);
     if (!instr) return "";
-    const costStr = instr.formatDep ? `${instr.cost}+c` : `${instr.cost}c`;
+    const costStr = instr.fmtDep ? `${instr.cost}+c` : `${instr.cost}c`;
     const tag = instr.confirmed ? "● asm" : "? asm";
     return sep + row(tag, escapeHtml(instr.text), `${instr.size}B ${costStr}`);
 }

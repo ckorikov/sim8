@@ -957,6 +957,7 @@ dev = [
     { name = "numpy", specifier = ">=2.4.2" },
     { name = "pytest" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
+    { name = "pytest-xdist", specifier = ">=3.8.0" },
     { name = "ruff", specifier = ">=0.15.5" },
 ]
 

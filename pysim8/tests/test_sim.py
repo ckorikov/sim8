@@ -12,7 +12,7 @@ from hypothesis import strategies as st
 from pysim8.asm import AssemblerError, assemble
 from pysim8.isa import Op
 from pysim8.sim import CPU, CpuState, ErrorCode, list_tracer
-from pysim8.sim.memory import MEMORY_SIZE, Memory
+from pysim8.sim.memory import MEM_SIZE, Memory
 from pysim8.sim.registers import Flags, FpuRegisters, RegisterFile
 from pysim8.sim.tracing import TraceEvent, print_tracer
 
@@ -1343,7 +1343,7 @@ class TestMemoryEdges:
     def test_load_overflow(self) -> None:
         mem = Memory()
         with pytest.raises(ValueError, match="exceeds memory size"):
-            mem.load(bytes(MEMORY_SIZE + 1))
+            mem.load(bytes(MEM_SIZE + 1))
 
 
 # ── CPU tracer, snapshot, repr, reset ─────────────────────────────
@@ -1449,7 +1449,7 @@ class TestHandlerEdges:
         assert cpu.state == CpuState.FAULT
         assert cpu.a == ErrorCode.INVALID_REG
 
-    def test_2byte_insn_at_page_end(self) -> None:
+    def test_2byte_instr_at_page_end(self) -> None:
         """2-byte INC B at 254 should execute (ends at 255)."""
         cpu = CPU()
         cpu.mem[254] = 18
@@ -1462,7 +1462,7 @@ class TestHandlerEdges:
         # B was incremented before the fault
         assert cpu.regs.read(1) == 1
 
-    def test_2byte_insn_crosses_page(self) -> None:
+    def test_2byte_instr_crosses_page(self) -> None:
         """2-byte instruction at 255 crosses page boundary → FAULT."""
         cpu = CPU()
         cpu.mem[255] = 18

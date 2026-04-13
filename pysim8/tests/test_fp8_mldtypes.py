@@ -29,17 +29,19 @@ import math
 
 import pytest
 
+from pysim8.fp_arithmetic import (
+    fp_add,
+    fp_div,
+    fp_mul,
+    fp_sqrt,
+    fp_sub,
+)
 from pysim8.fp_formats import (
     RoundingMode,
     decode_ofp8_e4m3,
     decode_ofp8_e5m2,
     encode_ofp8_e4m3,
     encode_ofp8_e5m2,
-    fp_add,
-    fp_div,
-    fp_mul,
-    fp_sqrt,
-    fp_sub,
 )
 
 np = pytest.importorskip("numpy")

@@ -179,10 +179,10 @@ ExecVAsync_push(op) ==
           /\ vu_queue' = Append(vu_queue, cmd)
           /\ vu_fault' = vu_fault
           /\ IP' = IP + InstrSize(op)
-          /\ VA_reg' = (VA_reg + apply[0]) % MEMORY_SIZE
-          /\ VB_reg' = (VB_reg + apply[1]) % MEMORY_SIZE
-          /\ VC_reg' = (VC_reg + apply[2]) % MEMORY_SIZE
-          /\ VM_reg' = (VM_reg + apply[3]) % MEMORY_SIZE
+          /\ VA_reg' = (VA_reg + apply[0]) % MEM_SIZE
+          /\ VB_reg' = (VB_reg + apply[1]) % MEM_SIZE
+          /\ VC_reg' = (VC_reg + apply[2]) % MEM_SIZE
+          /\ VM_reg' = (VM_reg + apply[3]) % MEM_SIZE
           /\ VL_reg' = VL_reg /\ VFPSR_reg' = VFPSR_reg
           /\ UNCHANGED unch_sync
 
@@ -210,7 +210,7 @@ ExecVFILL_183 == memory[IP] = 183 /\ Fault(ERR_INVALID_OPCODE)
 Mod(a, b) == a - (a \div b) * b
 
 WriteByte(mem, addr, val) ==
-    [mem EXCEPT ![Mod(addr, MEMORY_SIZE)] = Mod(val, 256)]
+    [mem EXCEPT ![Mod(addr, MEM_SIZE)] = Mod(val, 256)]
 
 \* Shared: unchanged CPU + VU pointer state
 VuUnchangedCPU ==
@@ -228,10 +228,10 @@ VuOOB(cmd) ==
                      ELSE IF op = OP_VDOT THEN sz
                      ELSE IF cmd[VU_MODE] = 3 THEN sz
                      ELSE vl * sz
-    IN (cmd[VU_DST] + dst_bytes > MEMORY_SIZE)
-       \/ (cmd[VU_S1] + vl * sz > MEMORY_SIZE)
-       \/ (cmd[VU_MODE] = 0 /\ cmd[VU_S2] + vl * sz > MEMORY_SIZE)
-       \/ (op \in {OP_VCMP, OP_VSEL} /\ cmd[VU_MASK] + vl > MEMORY_SIZE)
+    IN (cmd[VU_DST] + dst_bytes > MEM_SIZE)
+       \/ (cmd[VU_S1] + vl * sz > MEM_SIZE)
+       \/ (cmd[VU_MODE] = 0 /\ cmd[VU_S2] + vl * sz > MEM_SIZE)
+       \/ (op \in {OP_VCMP, OP_VSEL} /\ cmd[VU_MASK] + vl > MEM_SIZE)
 
 \* VU: OOB fault
 VuStep_oob ==

@@ -30,7 +30,7 @@ cpu_vars == <<IP, SP, DP, A, B, C, D, Z, C_flag, F, memory, state, step_count, c
 BYTE == 0..255
 STACK_MAX == 231
 MEM_PAGES == 256
-MEMORY_SIZE == MEM_PAGES * 256  \* 64KB full address space
+MEM_SIZE == MEM_PAGES * 256  \* 64KB full address space
 \* Note: 2^32 overflows TLC's Java int. Use Nat in TypeInvariant instead.
 \* WORD32 == 0..(2^32 - 1)  \* Not usable in TLC
 HALF16 == 0..(2^16 - 1)
@@ -138,7 +138,7 @@ SetRegABCD(code, val) ==
       [] code = 3 -> (D' = val /\ UNCHANGED <<A,B,C>>)
       [] OTHER -> UNCHANGED <<A,B,C,D>>
 
-DirectAddr(addr) == (DP * 256 + addr) % MEMORY_SIZE
+DirectAddr(addr) == (DP * 256 + addr) % MEM_SIZE
 
 DecodeIndirect(encoded) ==
     LET reg == encoded % 8
@@ -148,7 +148,7 @@ DecodeIndirect(encoded) ==
         page_off == base + offset
         reg_valid == reg <= 4
         bounds_valid == (page_off >= 0) /\ (page_off <= 255)
-        addr == IF reg = REG_SP THEN page_off ELSE (DP * 256 + page_off) % MEMORY_SIZE
+        addr == IF reg = REG_SP THEN page_off ELSE (DP * 256 + page_off) % MEM_SIZE
         err == IF ~reg_valid THEN ERR_INVALID_REG
                ELSE IF ~bounds_valid THEN ERR_PAGE_BOUNDARY
                ELSE 0
@@ -175,7 +175,7 @@ CheckSHR(value, cnt) ==
         zero == (result = 0)
     IN <<result, carry, zero>>
 
-Mem(addr) == memory[addr % MEMORY_SIZE]
+Mem(addr) == memory[addr % MEM_SIZE]
 
 \* Bitwise operations
 BitAt(n, i) == (n \div (2^i)) % 2
@@ -544,7 +544,7 @@ VStride(vl, fmt) == vl * VFmtBytes(fmt)
 \* Auto-increment: update a pointer register by code
 \* Returns the new value (modulo 64KB)
 VPtrInc(code, amount) ==
-    (VPtrValue(code) + amount) % MEMORY_SIZE
+    (VPtrValue(code) + amount) % MEM_SIZE
 
 \* Build a VU command record (as a TLA+ structure/tuple)
 \* <<op, fmt, mode, cond, addr_dst, addr_s1, addr_s2, addr_m, vl, imm>>

@@ -7,7 +7,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from pysim8.asm import assemble
-from pysim8.disasm import disasm, disasm_insn
+from pysim8.disasm import disasm, disasm_instr
 from pysim8.isa import (
     FP_FMT_BF,
     FP_FMT_F,
@@ -39,23 +39,23 @@ _SAMPLES: dict[tuple[int, OpType], int] = {
 }
 
 
-def _make_operands(defn: InstrDef) -> tuple[int, ...]:
-    return tuple(_SAMPLES[i, ot] for i, ot in enumerate(defn.sig))
+def _make_operands(instr_def: InstrDef) -> tuple[int, ...]:
+    return tuple(_SAMPLES[i, ot] for i, ot in enumerate(instr_def.format))
 
 
 # ── Roundtrip: assemble(disasm(bytes)) == bytes ──────────────────────
 
 
-@pytest.mark.parametrize("defn", ISA, ids=lambda d: d.op.name)
-def test_roundtrip(defn: InstrDef) -> None:
-    operands = _make_operands(defn)
-    original = [int(defn.op)] + list(operands)
+@pytest.mark.parametrize("instr_def", ISA, ids=lambda d: d.op.name)
+def test_roundtrip(instr_def: InstrDef) -> None:
+    operands = _make_operands(instr_def)
+    original = [int(instr_def.op)] + list(operands)
 
-    text = disasm_insn(int(defn.op), operands)
+    text = disasm_instr(int(instr_def.op), operands)
     result = assemble(text + "\nHLT")
 
-    assert result.code[: defn.size] == original, (
-        f"{defn.op.name}: disasm={text!r}, expected={original}, got={result.code[: defn.size]}"
+    assert result.code[: instr_def.size] == original, (
+        f"{instr_def.op.name}: disasm={text!r}, expected={original}, got={result.code[: instr_def.size]}"
     )
 
 
@@ -86,8 +86,8 @@ def test_full_stream() -> None:
     assert sum(sz for _, _, sz in items) == len(code)
 
 
-def test_disasm_insn_unknown() -> None:
-    assert disasm_insn(255) == "??? (255)"
+def test_disasm_instr_unknown() -> None:
+    assert disasm_instr(255) == "??? (255)"
 
 
 def test_fmt_operand_unknown_type() -> None:
@@ -113,7 +113,7 @@ def test_fmt_operand_unknown_type() -> None:
 def test_regaddr_disasm(reg: int, offset: int, expected: str) -> None:
     offset_u = offset if offset >= 0 else 32 + offset
     encoded = (offset_u << 3) | reg
-    text = disasm_insn(3, (0, encoded))
+    text = disasm_instr(3, (0, encoded))
     assert expected in text
 
 
@@ -124,7 +124,7 @@ def test_regaddr_roundtrip(offset: int) -> None:
     suffix = sign if offset != 0 else ""
     source = f"MOV A, [B{suffix}]\nHLT"
     code = assemble(source).code
-    text = disasm_insn(code[0], (code[1], code[2]))
+    text = disasm_instr(code[0], (code[1], code[2]))
     reassembled = assemble(text + "\nHLT").code[:3]
     assert reassembled == code[:3]
 
@@ -154,86 +154,86 @@ class TestFpDisasm:
 
     def test_fadd_addr(self) -> None:
         fpm = encode_fpm(0, 0, FP_FMT_H)
-        text = disasm_insn(int(Op.FADD_FP_ADDR), (fpm, 100))
+        text = disasm_instr(int(Op.FADD_FP_ADDR), (fpm, 100))
         assert text == "FADD.H FHA, [100]"
 
     def test_fabs(self) -> None:
         fpm = encode_fpm(0, 0, FP_FMT_F)
-        text = disasm_insn(int(Op.FABS_FP), (fpm,))
+        text = disasm_instr(int(Op.FABS_FP), (fpm,))
         assert text == "FABS.F FA"
 
     def test_fneg(self) -> None:
         fpm = encode_fpm(1, 0, FP_FMT_F)
-        text = disasm_insn(int(Op.FNEG_FP), (fpm,))
+        text = disasm_instr(int(Op.FNEG_FP), (fpm,))
         assert text == "FNEG.F FB"
 
     def test_fsqrt(self) -> None:
         fpm = encode_fpm(0, 1, FP_FMT_O3)
-        text = disasm_insn(int(Op.FSQRT_FP), (fpm,))
+        text = disasm_instr(int(Op.FSQRT_FP), (fpm,))
         assert text == "FSQRT.O3 FQB"
 
     def test_fmov_rr(self) -> None:
         dst = encode_fpm(0, 0, FP_FMT_H)
         src = encode_fpm(0, 1, FP_FMT_H)
-        text = disasm_insn(int(Op.FMOV_RR), (dst, src))
+        text = disasm_instr(int(Op.FMOV_RR), (dst, src))
         assert text == "FMOV.H FHA, FHB"
 
     def test_fcvt_dual_suffix(self) -> None:
         dst = encode_fpm(0, 0, FP_FMT_H)
         src = encode_fpm(0, 0, FP_FMT_F)
-        text = disasm_insn(int(Op.FCVT_FP_FP), (dst, src))
+        text = disasm_instr(int(Op.FCVT_FP_FP), (dst, src))
         assert text == "FCVT.H.F FHA, FA"
 
     def test_fcvt_same_suffix(self) -> None:
         """Same format → single suffix (pathological, but valid encoding)."""
         dst = encode_fpm(0, 0, FP_FMT_H)
         src = encode_fpm(0, 1, FP_FMT_H)
-        text = disasm_insn(int(Op.FCVT_FP_FP), (dst, src))
+        text = disasm_instr(int(Op.FCVT_FP_FP), (dst, src))
         assert text == "FCVT.H FHA, FHB"
 
     def test_fitof(self) -> None:
         fpm = encode_fpm(0, 0, FP_FMT_H)
-        text = disasm_insn(int(Op.FITOF_FP_GPR), (fpm, 1))
+        text = disasm_instr(int(Op.FITOF_FP_GPR), (fpm, 1))
         assert text == "FITOF.H FHA, B"
 
     def test_fftoi(self) -> None:
         """FFTOI encoding: [opcode, FPM, GPR] but display: FFTOI.H GPR, FP."""
         fpm = encode_fpm(0, 0, FP_FMT_H)
-        text = disasm_insn(int(Op.FFTOI_GPR_FP), (fpm, 1))
+        text = disasm_instr(int(Op.FFTOI_GPR_FP), (fpm, 1))
         assert text == "FFTOI.H B, FHA"
 
     def test_fstat_control(self) -> None:
-        text = disasm_insn(int(Op.FSTAT_GPR), (1,))
+        text = disasm_instr(int(Op.FSTAT_GPR), (1,))
         assert text == "FSTAT B"
 
     def test_fclr_control(self) -> None:
-        text = disasm_insn(int(Op.FCLR), ())
+        text = disasm_instr(int(Op.FCLR), ())
         assert text == "FCLR"
 
     def test_fscfg_control(self) -> None:
-        text = disasm_insn(int(Op.FSCFG_GPR), (2,))
+        text = disasm_instr(int(Op.FSCFG_GPR), (2,))
         assert text == "FSCFG C"
 
     def test_fmov_imm8(self) -> None:
         fpm = encode_fpm(0, 0, FP_FMT_O3)
-        text = disasm_insn(int(Op.FMOV_FP_IMM8), (fpm, 42))
+        text = disasm_instr(int(Op.FMOV_FP_IMM8), (fpm, 42))
         assert text == "FMOV.O3 FQA, 0.3125_O3"
 
     def test_fmov_imm16(self) -> None:
         fpm = encode_fpm(0, 0, FP_FMT_H)
-        text = disasm_insn(int(Op.FMOV_FP_IMM16), (fpm, 0x00, 0x3C))
+        text = disasm_instr(int(Op.FMOV_FP_IMM16), (fpm, 0x00, 0x3C))
         assert text == "FMOV.H FHA, 1_H"
 
     def test_fmadd(self) -> None:
         dst = encode_fpm(0, 0, FP_FMT_H)
         src = encode_fpm(0, 1, FP_FMT_H)
-        text = disasm_insn(int(Op.FMADD_FP_FP_ADDR), (dst, src, 100))
+        text = disasm_instr(int(Op.FMADD_FP_FP_ADDR), (dst, src, 100))
         assert text == "FMADD.H FHA, FHB, [100]"
 
     def test_fadd_regaddr(self) -> None:
         fpm = encode_fpm(0, 0, FP_FMT_BF)
         ra = (3 << 3) | 1
-        text = disasm_insn(int(Op.FADD_FP_REGADDR), (fpm, ra))
+        text = disasm_instr(int(Op.FADD_FP_REGADDR), (fpm, ra))
         assert "FADD.BF" in text
         assert "[B+3]" in text
 
@@ -262,13 +262,13 @@ class TestFpDisasm:
             (FP_FMT_O2, "O2"),
         ]:
             fpm = encode_fpm(0, 0, fmt)
-            text = disasm_insn(int(Op.FABS_FP), (fpm,))
+            text = disasm_instr(int(Op.FABS_FP), (fpm,))
             assert f".{suffix}" in text
 
     def test_phys1_register(self) -> None:
         """Physical register 1 names (FB family)."""
         fpm = encode_fpm(1, 0, FP_FMT_F)
-        text = disasm_insn(int(Op.FABS_FP), (fpm,))
+        text = disasm_instr(int(Op.FABS_FP), (fpm,))
         assert text == "FABS.F FB"
 
 
@@ -316,14 +316,14 @@ class TestDisasmFpEdgeCoverage:
 
     def test_fp_data_no_fpreg_operands(self) -> None:
         """FP data instr with zero FP_REG operands → label without suffix."""
-        from pysim8.disasm.core import _disasm_fp_insn
+        from pysim8.disasm.core import _disasm_fp_instr
         from pysim8.isa import BY_CODE_FP, InstrDef, Op, OpType
 
         fake = InstrDef(Op.FCLR, "FTEST", (OpType.MEM,), cost=1)
         saved = BY_CODE_FP.get(int(Op.FCLR))
         BY_CODE_FP[int(Op.FCLR)] = fake
         try:
-            result = _disasm_fp_insn(int(Op.FCLR), (42,))
+            result = _disasm_fp_instr(int(Op.FCLR), (42,))
             assert result == "FTEST [42]"
         finally:
             if saved is not None:
@@ -333,14 +333,14 @@ class TestDisasmFpEdgeCoverage:
 
     def test_fp_data_no_operands(self) -> None:
         """FP data instr with zero operands → bare label."""
-        from pysim8.disasm.core import _disasm_fp_insn
+        from pysim8.disasm.core import _disasm_fp_instr
         from pysim8.isa import BY_CODE_FP, InstrDef, Op
 
         fake = InstrDef(Op.FCLR, "FBARE", (), cost=1)
         saved = BY_CODE_FP.get(int(Op.FCLR))
         BY_CODE_FP[int(Op.FCLR)] = fake
         try:
-            result = _disasm_fp_insn(int(Op.FCLR), ())
+            result = _disasm_fp_instr(int(Op.FCLR), ())
             assert result == "FBARE"
         finally:
             if saved is not None:

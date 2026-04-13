@@ -95,7 +95,7 @@ IPOverflowGuard ==
     /\ IP + InstrSize(memory[IP]) >= 256
 
 \* Initialize memory with program
-InitMem == [i \in 0..MEMORY_SIZE-1 |-> IF i < Len(PROGRAM) THEN PROGRAM[i+1] ELSE 0]
+InitMem == [i \in 0..MEM_SIZE-1 |-> IF i < Len(PROGRAM) THEN PROGRAM[i+1] ELSE 0]
 
 \* Initial state - start in IDLE
 Init ==

@@ -19,7 +19,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from pysim8.disasm import disasm_insn
+from pysim8.disasm import disasm_instr
 from pysim8.fp_formats import decode_bfloat16, decode_float16, decode_float32
 from pysim8.isa import BY_CODE_FP, FP_FMT_BF, FP_FMT_F, FP_FMT_H, OpType, decode_fpm
 
@@ -108,8 +108,8 @@ def _hex(val: int | bool) -> str:
 
 def _fp_fmt_from_event(event: TraceEvent) -> int | None:
     """Return FP format code from first FPM byte of an FP instruction, or None."""
-    defn = BY_CODE_FP.get(event.opcode)
-    if defn is None or not any(ot == OpType.FP_REG for ot in defn.sig):
+    instr_def = BY_CODE_FP.get(event.opcode)
+    if instr_def is None or not any(ot == OpType.FP_REG for ot in instr_def.format):
         return None
     _, _, fmt = decode_fpm(event.operands[0])
     return fmt
@@ -146,7 +146,7 @@ def _fmt_changes(changes: dict[str, int | bool], fp_fmt: int | None = None) -> s
 
 
 def _fmt_trace(event: TraceEvent) -> Text:
-    asm = disasm_insn(event.opcode, event.operands)
+    asm = disasm_instr(event.opcode, event.operands)
     changes = _fmt_changes(event.changes, _fp_fmt_from_event(event))
     mnemonic = asm.split()[0].split(".")[0] if asm else ""
     color = _COLORS.get(mnemonic, "white")

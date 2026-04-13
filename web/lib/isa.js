@@ -41,17 +41,17 @@ const _OPTYPE_BYTES = { [OpType.FP_IMM16]: 2 };
 
 // ── InstrDef ──────────────────────────────────────────────────────
 
-function instr(op, mnemonic, sig, cost = 1, formatDep = false) {
-    const size = 1 + sig.reduce((s, ot) => s + (_OPTYPE_BYTES[ot] || 1), 0);
-    return Object.freeze({ op, mnemonic, sig: Object.freeze(sig), cost, size, formatDep });
+function _buildInstrDef(op, mnemonic, format, cost = 1, fmtDep = false) {
+    const size = 1 + format.reduce((s, ot) => s + (_OPTYPE_BYTES[ot] || 1), 0);
+    return Object.freeze({ op, mnemonic, format: Object.freeze(format), cost, size, fmtDep });
 }
 
 // ── ISA builder ──────────────────────────────────────────────────
 
 function _buildIsa(data) {
     return Object.freeze(
-        data.map(([, opcode, mnemonic, operands, cost, formatDep]) =>
-            instr(opcode, mnemonic, operands, cost, formatDep),
+        data.map(([, opcode, mnemonic, operands, cost, fmtDep]) =>
+            _buildInstrDef(opcode, mnemonic, operands, cost, fmtDep),
         ),
     );
 }

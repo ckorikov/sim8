@@ -151,7 +151,7 @@ export const MNEMONIC_FORMS_OVERRIDE = Object.freeze({
 
 // ── Operand type → human-readable label ──────────────────────────────────────
 
-export const SIG_LABELS = Object.freeze({
+export const FORMAT_LABELS = Object.freeze({
     [OpType.REG]: "reg",
     [OpType.REG_ARITH]: "reg|SP",
     [OpType.REG_STACK]: "gpr|DP",

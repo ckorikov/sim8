@@ -142,11 +142,6 @@ export function initWires() {
         const r = document.getElementById(id).getBoundingClientRect();
         return Math.round(r.top - cRect.top);
     }
-    function blockRight(id) {
-        const r = document.getElementById(id).getBoundingClientRect();
-        return Math.round(r.right - cRect.left);
-    }
-
     const hasVu = !!document.getElementById("port-vu-top");
 
     // Align VU before computing corridors (so its position is final)
@@ -162,11 +157,6 @@ export function initWires() {
     const row1Bot = Math.max(blockBottom("blk-cpu"), blockBottom("blk-fpu"));
     const row2Top = blockTop("blk-mem");
     const corridorY = Math.round((row1Bot + row2Top) / 2);
-
-    // Vertical corridor between Memory and VU
-    const memRight = blockRight("blk-mem");
-    const vuLeft = hasVu ? Math.round(document.getElementById("blk-vu").getBoundingClientRect().left - cRect.left) : 0;
-    const corridorX = hasVu ? Math.round((memRight + vuLeft) / 2) : 0;
 
     // ── data bus: CPU bottom → Memory top (stays in CPU/Mem column) ──
     const cpuBot = portPos("port-cpu-bottom");

@@ -148,7 +148,7 @@ function clearPad() {
 
 const elMemPort = document.getElementById("port-mem-right-pad");
 
-export function togglePad() {
+function togglePad() {
     pad.visible = !pad.visible;
     elBlock.style.display = pad.visible ? "" : "none";
     elMemPort.style.display = pad.visible ? "" : "none";

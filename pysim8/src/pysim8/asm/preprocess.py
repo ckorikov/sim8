@@ -43,6 +43,29 @@ class PreprocessResult:
     line_map: dict[int, SourceLoc] = field(default_factory=dict)
 
 
+@dataclass
+class _IncludeCtx:
+    """Shared mutable state + immutable config threaded through recursive include resolution."""
+
+    root_dir: Path | None
+    out_lines: list[str]
+    line_map: dict[int, SourceLoc]
+    include_paths: list[Path]
+    chain: frozenset[Path | str] = field(default_factory=frozenset)
+    depth: int = 0
+
+    def child(self, added: Path | str) -> _IncludeCtx:
+        """Return a new ctx for one level deeper, with `added` in the chain."""
+        return _IncludeCtx(
+            root_dir=self.root_dir,
+            out_lines=self.out_lines,
+            line_map=self.line_map,
+            include_paths=self.include_paths,
+            chain=self.chain | {added},
+            depth=self.depth + 1,
+        )
+
+
 def preprocess(
     source: str,
     base_path: Path | None,
@@ -55,51 +78,29 @@ def preprocess(
     include_paths: additional directories to search for @include files (like -I in C).
       Tried in order after the including file's own directory.
     """
-    out_lines: list[str] = []
-    line_map: dict[int, SourceLoc] = {}
-    _collect(
-        source=source,
-        current_dir=base_path,
+    ctx = _IncludeCtx(
         root_dir=base_path,
-        filename=None,
-        chain=frozenset(),
-        depth=0,
-        out_lines=out_lines,
-        line_map=line_map,
+        out_lines=[],
+        line_map={},
         include_paths=include_paths or [],
     )
-    return PreprocessResult(source="\n".join(out_lines), line_map=line_map)
+    _collect(source=source, current_dir=base_path, filename=None, ctx=ctx)
+    return PreprocessResult(source="\n".join(ctx.out_lines), line_map=ctx.line_map)
 
 
 def _collect(
     source: str,
     current_dir: Path | None,
-    root_dir: Path | None,
     filename: str | None,
-    chain: frozenset[Path | str],
-    depth: int,
-    out_lines: list[str],
-    line_map: dict[int, SourceLoc],
-    include_paths: list[Path] | None = None,
+    ctx: _IncludeCtx,
 ) -> None:
     for lineno, text in enumerate(source.splitlines(), start=1):
         if _RE_INCLUDE_START.match(text):
-            _handle_include(
-                text=text,
-                lineno=lineno,
-                filename=filename,
-                current_dir=current_dir,
-                root_dir=root_dir,
-                chain=chain,
-                depth=depth,
-                out_lines=out_lines,
-                line_map=line_map,
-                include_paths=include_paths,
-            )
+            _handle_include(text=text, lineno=lineno, filename=filename, current_dir=current_dir, ctx=ctx)
         else:
-            flat_lineno = len(out_lines) + 1
-            out_lines.append(text)
-            line_map[flat_lineno] = (filename, lineno)
+            flat_lineno = len(ctx.out_lines) + 1
+            ctx.out_lines.append(text)
+            ctx.line_map[flat_lineno] = (filename, lineno)
 
 
 _RE_PAGE_NUM = re.compile(r"^\s*@page\s+(\d+)", re.IGNORECASE)
@@ -171,14 +172,9 @@ def _handle_url_include(
     url: str,
     lineno: int,
     filename: str | None,
-    root_dir: Path | None,
-    chain: frozenset[Path | str],
-    depth: int,
-    out_lines: list[str],
-    line_map: dict[int, SourceLoc],
-    include_paths: list[Path] | None = None,
+    ctx: _IncludeCtx,
 ) -> None:
-    if url in chain:
+    if url in ctx.chain:
         raise PreprocessError(f"@include: circular include: {url}", lineno, filename=filename)
 
     try:
@@ -189,26 +185,21 @@ def _handle_url_include(
 
     inc_source = _decode_source(data)
     if inc_source is None:
-        _embed_binary(data, out_lines, line_map, filename, lineno)
+        _embed_binary(data, ctx.out_lines, ctx.line_map, filename, lineno)
         return
 
     _collect(
         source=inc_source,
         current_dir=None,  # URL context: no local filesystem base
-        root_dir=root_dir,
         filename=url,
-        chain=chain | {url},
-        depth=depth + 1,
-        out_lines=out_lines,
-        line_map=line_map,
-        include_paths=include_paths,
+        ctx=ctx.child(url),
     )
 
 
 def _resolve_include(
     path_str: str,
     current_dir: Path | None,
-    include_paths: list[Path] | None,
+    include_paths: list[Path],
 ) -> Path | None:
     """Try current_dir first, then each include_path. Return resolved Path or None."""
     candidates: list[Path] = []
@@ -228,65 +219,43 @@ def _handle_include(
     lineno: int,
     filename: str | None,
     current_dir: Path | None,
-    root_dir: Path | None,
-    chain: frozenset[Path | str],
-    depth: int,
-    out_lines: list[str],
-    line_map: dict[int, SourceLoc],
-    include_paths: list[Path] | None = None,
+    ctx: _IncludeCtx,
 ) -> None:
     m = _RE_INCLUDE_FULL.match(text)
     if not m or not m.group(1):
         raise PreprocessError("@include: invalid syntax", lineno, filename=filename)
 
-    if depth >= MAX_INCLUDE_DEPTH:
+    if ctx.depth >= MAX_INCLUDE_DEPTH:
         raise PreprocessError("@include: max include depth exceeded", lineno, filename=filename)
 
     path_str = m.group(1)
 
     if _is_url(path_str):
-        _handle_url_include(
-            url=path_str,
-            lineno=lineno,
-            filename=filename,
-            root_dir=root_dir,
-            chain=chain,
-            depth=depth,
-            out_lines=out_lines,
-            line_map=line_map,
-            include_paths=include_paths,
-        )
+        _handle_url_include(url=path_str, lineno=lineno, filename=filename, ctx=ctx)
         return
 
-    if current_dir is None and not include_paths:
+    if current_dir is None and not ctx.include_paths:
         raise PreprocessError("@include: no filesystem context", lineno, filename=filename)
 
-    inc_path = _resolve_include(path_str, current_dir, include_paths)
+    inc_path = _resolve_include(path_str, current_dir, ctx.include_paths)
 
     if inc_path is None:
         raise PreprocessError(f"@include: file not found: {path_str}", lineno, filename=filename)
 
-    if inc_path in chain:
+    if inc_path in ctx.chain:
         raise PreprocessError(f"@include: circular include: {path_str}", lineno, filename=filename)
-
-    inc_filename = _normalize(inc_path, root_dir)
 
     data = inc_path.read_bytes()
     inc_source = _decode_source(data)
     if inc_source is None:
-        _embed_binary(data, out_lines, line_map, filename, lineno)
+        _embed_binary(data, ctx.out_lines, ctx.line_map, filename, lineno)
         return
 
     _collect(
         source=inc_source,
         current_dir=inc_path.parent,
-        root_dir=root_dir,
-        filename=inc_filename,
-        chain=chain | {inc_path},
-        depth=depth + 1,
-        out_lines=out_lines,
-        line_map=line_map,
-        include_paths=include_paths,
+        filename=_normalize(inc_path, ctx.root_dir),
+        ctx=ctx.child(inc_path),
     )
 
 

@@ -20,7 +20,7 @@ import {
     MNEMONIC_FP_EXCEPTIONS,
     MNEMONIC_NOTES,
     MNEMONIC_FORMS_OVERRIDE,
-    SIG_LABELS,
+    FORMAT_LABELS,
     FP_FMT_NAMES,
     FP_FORMAT_DOCS,
     REGISTER_DOCS,
@@ -296,7 +296,7 @@ export async function initEditor(container, defaultCode) {
             const variants = {};
             for (const def of [...ISA, ...ISA_FP, ...ISA_VU]) {
                 if (MNEMONIC_FORMS_OVERRIDE[def.mnemonic]) continue;
-                const sig = def.sig.map((s) => SIG_LABELS[s] || "?").join(", ");
+                const sig = def.format.map((s) => FORMAT_LABELS[s] || "?").join(", ");
                 const form = sig ? `${def.mnemonic} ${sig}` : def.mnemonic;
                 if (!variants[def.mnemonic]) variants[def.mnemonic] = new Set();
                 variants[def.mnemonic].add(form);

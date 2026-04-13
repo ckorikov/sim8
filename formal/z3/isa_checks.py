@@ -41,7 +41,7 @@ _VU_SYNC_OPERANDS: dict[str, list[str]] = {
 }
 
 
-def _fpm_byte(r: dict[str, int]) -> int:
+def _encode_fpm(r: dict[str, int]) -> int:
     return (r["phys"] << 6) | (r["pos"] << 3) | r["fmt"]
 
 
@@ -96,7 +96,7 @@ def verify(isa: dict[str, Any]) -> None:
     check(vu_cond_codes == list(range(6)), "D5: VU condition codes are 0-5 in order")
 
     # D6 — FP register FPM bytes are distinct
-    reg_bytes = [_fpm_byte(r) for r in isa["fp_registers"]]
+    reg_bytes = [_encode_fpm(r) for r in isa["fp_registers"]]
     check(
         len(set(reg_bytes)) == len(reg_bytes),
         f"D6: {len(isa['fp_registers'])} named FP registers have distinct FPM bytes",

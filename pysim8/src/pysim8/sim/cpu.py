@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pysim8.isa import BY_CODE, BY_CODE_FP, BY_CODE_VU, FP_FMT_WIDTH, ISA, ISA_FP, ISA_VU, InstrDef, Op
+from pysim8.isa import FP_FMT_WIDTH, ISA, ISA_FP, ISA_VU, InstrDef, Op
 
 from .decoder import Decoder
 from .errors import CpuFault, ErrorCode
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 __all__ = ["CPU"]
 
-# FP memory cost by format (fmt = fpm_byte % 8).
+# FP memory cost by format (fmt = fpm_enc % 8).
 # Derived from FP_FMT_WIDTH (bits) / 8, covering fmt 0..4 (v2 valid formats).
 # FP_FMT_WIDTH: {0:32, 1:16, 2:16, 3:8, 4:8} → bytes: (4, 2, 2, 1, 1)
 _FP_FMT_MEM_COST: tuple[int, ...] = tuple(FP_FMT_WIDTH[fmt] // 8 for fmt in range(5))
@@ -72,9 +72,7 @@ class CPU(HandlersMixin, HandlersFpMixin, HandlersVuMixin):
             self._init_vu()
 
         overrides = costs or {}
-        all_isa = ISA if arch < 2 else ISA + ISA_FP
-        if arch >= 3:
-            all_isa = all_isa + ISA_VU
+        all_isa = ISA + (ISA_FP if arch >= 2 else ()) + (ISA_VU if arch >= 3 else ())
         valid = {d.mnemonic for d in all_isa}
         unknown = overrides.keys() - valid
         if unknown:
@@ -103,28 +101,13 @@ class CPU(HandlersMixin, HandlersFpMixin, HandlersVuMixin):
         # VU ticks at start of step (main clock)
         if self._arch >= 3:
             self.vu_tick()
-            # Check VU fault (surfaced at VWAIT or next step)
-            if self._vu_queue.fault != 0 and self._vwait_pending:
-                code = self._vu_queue.fault
-                self._vu_queue.fault = 0
-                self._vwait_pending = False
-                self._enter_fault(ErrorCode(code))
+            # Surface VU fault immediately if CPU is stalled at VWAIT
+            if self._vwait_pending and self._consume_vu_fault():
                 return False
 
         # VWAIT: CPU stalled, only VU ticks
         if self._vwait_pending:
-            self._cycles += 1  # stall cost
-            if self._vu_queue.fault != 0:
-                code = self._vu_queue.fault
-                self._vu_queue.fault = 0
-                self._vwait_pending = False
-                self._enter_fault(ErrorCode(code))
-                return False
-            if self._vu_queue.is_empty:
-                self._vwait_pending = False
-                self.regs.ip += self._vwait_size
-                self._vwait_size = 0
-            return True
+            return self._step_vwait()
 
         ip_before = self.regs.ip
 
@@ -138,12 +121,8 @@ class CPU(HandlersMixin, HandlersFpMixin, HandlersVuMixin):
             self._enter_fault(fault.code)
             if self._tracer is not None:
                 opcode = self.mem[ip_before]
-                defn = BY_CODE.get(opcode)
-                if defn is None and self._arch >= 2:
-                    defn = BY_CODE_FP.get(opcode)
-                if defn is None and self._arch >= 3:
-                    defn = BY_CODE_VU.get(opcode)
-                size = defn.size if defn is not None else 1
+                instr_def = self._instr_def.get(opcode)
+                size = instr_def.size if instr_def is not None else 1
                 self._trace(ip_before, opcode, (), size, {"FF": True, "A": int(fault.code)}, is_fault=True)
             return False
 
@@ -179,6 +158,27 @@ class CPU(HandlersMixin, HandlersFpMixin, HandlersVuMixin):
             )
 
         return self.state == CpuState.RUNNING
+
+    def _consume_vu_fault(self) -> bool:
+        """Enter fault from pending VU fault code. Returns True if a fault was consumed."""
+        code = self._vu_queue.fault
+        if code == 0:
+            return False
+        self._vu_queue.fault = 0
+        self._vwait_pending = False
+        self._enter_fault(ErrorCode(code))
+        return True
+
+    def _step_vwait(self) -> bool:
+        """Handle one VWAIT stall cycle. Returns True if still RUNNING."""
+        self._cycles += 1  # stall cost
+        if self._consume_vu_fault():
+            return False
+        if self._vu_queue.is_empty:
+            self._vwait_pending = False
+            self.regs.ip += self._vwait_size
+            self._vwait_size = 0
+        return True
 
     def run(self, max_steps: int = 100_000) -> CpuState:
         """Run until HALTED or FAULT (or max_steps exceeded).

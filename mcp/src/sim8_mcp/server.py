@@ -45,7 +45,7 @@ SPEC_SECTIONS = frozenset(
 
 # ── Instruction documentation (mirrors web/lib/isa-docs.js) ──────────────────
 
-_SIG_LABELS: dict[str, str] = {
+_FMT_LABELS: dict[str, str] = {
     OpType.REG.value: "reg",
     OpType.REG_ARITH.value: "reg|SP",
     OpType.REG_STACK.value: "gpr|DP",
@@ -198,8 +198,8 @@ def _build_instr_info(mnemonic: str) -> dict[str, Any] | None:
         seen: set[str] = set()
         for table in (BY_MNEMONIC, BY_MNEMONIC_FP, BY_MNEMONIC_VU):
             for instr_def in table.get(canonical, ()):
-                sig = ", ".join(_SIG_LABELS.get(ot.value, "?") for ot in instr_def.sig)
-                form = f"{instr_def.mnemonic} {sig}" if sig else instr_def.mnemonic
+                fmt = ", ".join(_FMT_LABELS.get(ot.value, "?") for ot in instr_def.format)
+                form = f"{instr_def.mnemonic} {fmt}" if fmt else instr_def.mnemonic
                 if form not in seen:
                     seen.add(form)
                     forms.append(form)

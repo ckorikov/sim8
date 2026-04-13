@@ -30,7 +30,7 @@ from pysim8.constants import (
     FP_FMT_O3,
     FP_FMT_WIDTH,
     IO_START,
-    MEMORY_SIZE,
+    MEM_SIZE,
     PAGE_SIZE,
     SP_INIT,
 )
@@ -73,7 +73,7 @@ __all__ = [
     "encode_fpm",
     "decode_fpm",
     "validate_fpm",
-    "MEMORY_SIZE",
+    "MEM_SIZE",
     "PAGE_SIZE",
     "IO_START",
     "SP_INIT",
@@ -270,13 +270,13 @@ class InstrDef:
 
     op: Op
     mnemonic: str
-    sig: tuple[OpType, ...]
+    format: tuple[OpType, ...]
     cost: int = 1  # clock cycles (or FPU overhead when format_dep=True)
     format_dep: bool = False  # True → cost = mem_cost[fmt] + cost
 
     @property
     def size(self) -> int:
-        return 1 + sum(_OPTYPE_BYTES.get(ot.value, 1) for ot in self.sig)
+        return 1 + sum(_OPTYPE_BYTES.get(ot.value, 1) for ot in self.format)
 
 
 _OPTYPE_MAP: dict[str, OpType] = {ot.value: ot for ot in OpType}
@@ -446,8 +446,8 @@ def vu_instr_size(opcode: int, vfm: int) -> int:
     if opcode == Op.VCMP:
         return 4
     if opcode not in VU_ASYNC_OPS:
-        defn = BY_CODE_VU.get(opcode)
-        return defn.size if defn is not None else 1
+        instr_def = BY_CODE_VU.get(opcode)
+        return instr_def.size if instr_def is not None else 1
     fmt, mode, _ = decode_vfm(vfm)
     if mode == VU_MODE_VI:
         return 3 + VU_FMT_ELEM_SIZE.get(fmt, 1)

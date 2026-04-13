@@ -410,7 +410,8 @@
       "cost": 1,
       "since": 1,
       "asm": "MOV reg, reg",
-      "desc": "Copy register to register"
+      "desc": "Copy register to register",
+      "handler": "direct:_h_mov_reg_reg"
     },
     {
       "op": "MOV_REG_ADDR",
@@ -423,7 +424,8 @@
       "cost": 2,
       "since": 1,
       "asm": "MOV reg, [addr]",
-      "desc": "Load byte from memory address into register"
+      "desc": "Load byte from memory address into register",
+      "handler": "direct:_h_mov_reg_addr"
     },
     {
       "op": "MOV_REG_REGADDR",
@@ -436,7 +438,8 @@
       "cost": 2,
       "since": 1,
       "asm": "MOV reg, [reg±offset]",
-      "desc": "Load byte from register-relative address into register"
+      "desc": "Load byte from register-relative address into register",
+      "handler": "direct:_h_mov_reg_regaddr"
     },
     {
       "op": "MOV_ADDR_REG",
@@ -449,7 +452,8 @@
       "cost": 2,
       "since": 1,
       "asm": "MOV [addr], reg",
-      "desc": "Store register to memory address"
+      "desc": "Store register to memory address",
+      "handler": "direct:_h_mov_addr_reg"
     },
     {
       "op": "MOV_REGADDR_REG",
@@ -462,7 +466,8 @@
       "cost": 2,
       "since": 1,
       "asm": "MOV [reg±offset], reg",
-      "desc": "Store register to register-relative address"
+      "desc": "Store register to register-relative address",
+      "handler": "direct:_h_mov_regaddr_reg"
     },
     {
       "op": "MOV_REG_CONST",
@@ -475,7 +480,8 @@
       "cost": 1,
       "since": 1,
       "asm": "MOV reg, imm",
-      "desc": "Load immediate byte into register"
+      "desc": "Load immediate byte into register",
+      "handler": "direct:_h_mov_reg_const"
     },
     {
       "op": "MOV_ADDR_CONST",
@@ -488,7 +494,8 @@
       "cost": 2,
       "since": 1,
       "asm": "MOV [addr], imm",
-      "desc": "Store immediate byte to memory address"
+      "desc": "Store immediate byte to memory address",
+      "handler": "direct:_h_mov_addr_const"
     },
     {
       "op": "MOV_REGADDR_CONST",
@@ -501,7 +508,8 @@
       "cost": 2,
       "since": 1,
       "asm": "MOV [reg±offset], imm",
-      "desc": "Store immediate byte to register-relative address"
+      "desc": "Store immediate byte to register-relative address",
+      "handler": "direct:_h_mov_regaddr_const"
     },
     {
       "op": "ADD_REG_REG",
@@ -514,7 +522,8 @@
       "cost": 1,
       "since": 1,
       "asm": "ADD reg, reg",
-      "desc": "dst += src; sets C (carry/borrow), Z"
+      "desc": "dst += src; sets C (carry/borrow), Z",
+      "handler": "alu_2op:add:stk_reg"
     },
     {
       "op": "ADD_REG_REGADDR",
@@ -527,7 +536,8 @@
       "cost": 3,
       "since": 1,
       "asm": "ADD reg, [reg±offset]",
-      "desc": "dst += [reg±offset]; sets C, Z"
+      "desc": "dst += [reg±offset]; sets C, Z",
+      "handler": "alu_2op:add:regaddr"
     },
     {
       "op": "ADD_REG_ADDR",
@@ -540,7 +550,8 @@
       "cost": 3,
       "since": 1,
       "asm": "ADD reg, [addr]",
-      "desc": "dst += [addr]; sets C, Z"
+      "desc": "dst += [addr]; sets C, Z",
+      "handler": "alu_2op:add:addr"
     },
     {
       "op": "ADD_REG_CONST",
@@ -553,7 +564,8 @@
       "cost": 1,
       "since": 1,
       "asm": "ADD reg, imm",
-      "desc": "dst += imm; sets C, Z"
+      "desc": "dst += imm; sets C, Z",
+      "handler": "alu_2op:add:const"
     },
     {
       "op": "SUB_REG_REG",
@@ -566,7 +578,8 @@
       "cost": 1,
       "since": 1,
       "asm": "SUB reg, reg",
-      "desc": "dst -= src; sets C (borrow), Z"
+      "desc": "dst -= src; sets C (borrow), Z",
+      "handler": "alu_2op:sub:stk_reg"
     },
     {
       "op": "SUB_REG_REGADDR",
@@ -579,7 +592,8 @@
       "cost": 3,
       "since": 1,
       "asm": "SUB reg, [reg±offset]",
-      "desc": "dst -= [reg±offset]; sets C, Z"
+      "desc": "dst -= [reg±offset]; sets C, Z",
+      "handler": "alu_2op:sub:regaddr"
     },
     {
       "op": "SUB_REG_ADDR",
@@ -592,7 +606,8 @@
       "cost": 3,
       "since": 1,
       "asm": "SUB reg, [addr]",
-      "desc": "dst -= [addr]; sets C, Z"
+      "desc": "dst -= [addr]; sets C, Z",
+      "handler": "alu_2op:sub:addr"
     },
     {
       "op": "SUB_REG_CONST",
@@ -605,7 +620,8 @@
       "cost": 1,
       "since": 1,
       "asm": "SUB reg, imm",
-      "desc": "dst -= imm; sets C, Z"
+      "desc": "dst -= imm; sets C, Z",
+      "handler": "alu_2op:sub:const"
     },
     {
       "op": "INC_REG",
@@ -617,7 +633,8 @@
       "cost": 1,
       "since": 1,
       "asm": "INC reg",
-      "desc": "reg += 1; sets Z (C unchanged)"
+      "desc": "reg += 1; sets Z (C unchanged)",
+      "handler": "direct:_h_inc"
     },
     {
       "op": "DEC_REG",
@@ -629,7 +646,8 @@
       "cost": 1,
       "since": 1,
       "asm": "DEC reg",
-      "desc": "reg -= 1; sets Z (C unchanged)"
+      "desc": "reg -= 1; sets Z (C unchanged)",
+      "handler": "direct:_h_dec"
     },
     {
       "op": "CMP_REG_REG",
@@ -642,7 +660,8 @@
       "cost": 1,
       "since": 1,
       "asm": "CMP reg, reg",
-      "desc": "Compare (subtract without storing result); sets C, Z"
+      "desc": "Compare (subtract without storing result); sets C, Z",
+      "handler": "alu_2op_no_wb:sub:stk_reg"
     },
     {
       "op": "CMP_REG_REGADDR",
@@ -655,7 +674,8 @@
       "cost": 3,
       "since": 1,
       "asm": "CMP reg, [reg±offset]",
-      "desc": "Compare with [reg±offset]; sets C, Z"
+      "desc": "Compare with [reg±offset]; sets C, Z",
+      "handler": "alu_2op_no_wb:sub:regaddr"
     },
     {
       "op": "CMP_REG_ADDR",
@@ -668,7 +688,8 @@
       "cost": 3,
       "since": 1,
       "asm": "CMP reg, [addr]",
-      "desc": "Compare with [addr]; sets C, Z"
+      "desc": "Compare with [addr]; sets C, Z",
+      "handler": "alu_2op_no_wb:sub:addr"
     },
     {
       "op": "CMP_REG_CONST",
@@ -681,7 +702,8 @@
       "cost": 1,
       "since": 1,
       "asm": "CMP reg, imm",
-      "desc": "Compare with immediate; sets C, Z"
+      "desc": "Compare with immediate; sets C, Z",
+      "handler": "alu_2op_no_wb:sub:const"
     },
     {
       "op": "JMP_REG",
@@ -693,7 +715,8 @@
       "cost": 1,
       "since": 1,
       "asm": "JMP reg",
-      "desc": "Unconditional jump to address in register"
+      "desc": "Unconditional jump to address in register",
+      "handler": "direct:_h_jmp_reg"
     },
     {
       "op": "JMP_ADDR",
@@ -705,7 +728,8 @@
       "cost": 1,
       "since": 1,
       "asm": "JMP addr",
-      "desc": "Unconditional jump to address"
+      "desc": "Unconditional jump to address",
+      "handler": "direct:_h_jmp_addr"
     },
     {
       "op": "JC_REG",
@@ -717,7 +741,8 @@
       "cost": 1,
       "since": 1,
       "asm": "JC reg",
-      "desc": "Jump if carry (C=1) to address in register"
+      "desc": "Jump if carry (C=1) to address in register",
+      "handler": "jcc:c:reg"
     },
     {
       "op": "JC_ADDR",
@@ -729,7 +754,8 @@
       "cost": 1,
       "since": 1,
       "asm": "JC addr",
-      "desc": "Jump if carry (C=1)"
+      "desc": "Jump if carry (C=1)",
+      "handler": "jcc:c:addr"
     },
     {
       "op": "JNC_REG",
@@ -741,7 +767,8 @@
       "cost": 1,
       "since": 1,
       "asm": "JNC reg",
-      "desc": "Jump if no carry (C=0) to address in register"
+      "desc": "Jump if no carry (C=0) to address in register",
+      "handler": "jcc:nc:reg"
     },
     {
       "op": "JNC_ADDR",
@@ -753,7 +780,8 @@
       "cost": 1,
       "since": 1,
       "asm": "JNC addr",
-      "desc": "Jump if no carry (C=0)"
+      "desc": "Jump if no carry (C=0)",
+      "handler": "jcc:nc:addr"
     },
     {
       "op": "JZ_REG",
@@ -765,7 +793,8 @@
       "cost": 1,
       "since": 1,
       "asm": "JZ reg",
-      "desc": "Jump if zero (Z=1) to address in register"
+      "desc": "Jump if zero (Z=1) to address in register",
+      "handler": "jcc:z:reg"
     },
     {
       "op": "JZ_ADDR",
@@ -777,7 +806,8 @@
       "cost": 1,
       "since": 1,
       "asm": "JZ addr",
-      "desc": "Jump if zero (Z=1)"
+      "desc": "Jump if zero (Z=1)",
+      "handler": "jcc:z:addr"
     },
     {
       "op": "JNZ_REG",
@@ -789,7 +819,8 @@
       "cost": 1,
       "since": 1,
       "asm": "JNZ reg",
-      "desc": "Jump if not zero (Z=0) to address in register"
+      "desc": "Jump if not zero (Z=0) to address in register",
+      "handler": "jcc:nz:reg"
     },
     {
       "op": "JNZ_ADDR",
@@ -801,7 +832,8 @@
       "cost": 1,
       "since": 1,
       "asm": "JNZ addr",
-      "desc": "Jump if not zero (Z=0)"
+      "desc": "Jump if not zero (Z=0)",
+      "handler": "jcc:nz:addr"
     },
     {
       "op": "JA_REG",
@@ -813,7 +845,8 @@
       "cost": 1,
       "since": 1,
       "asm": "JA reg",
-      "desc": "Jump if above (C=0 and Z=0) to address in register"
+      "desc": "Jump if above (C=0 and Z=0) to address in register",
+      "handler": "jcc:a:reg"
     },
     {
       "op": "JA_ADDR",
@@ -825,7 +858,8 @@
       "cost": 1,
       "since": 1,
       "asm": "JA addr",
-      "desc": "Jump if above (C=0 and Z=0)"
+      "desc": "Jump if above (C=0 and Z=0)",
+      "handler": "jcc:a:addr"
     },
     {
       "op": "JNA_REG",
@@ -837,7 +871,8 @@
       "cost": 1,
       "since": 1,
       "asm": "JNA reg",
-      "desc": "Jump if not above (C=1 or Z=1) to address in register"
+      "desc": "Jump if not above (C=1 or Z=1) to address in register",
+      "handler": "jcc:na:reg"
     },
     {
       "op": "JNA_ADDR",
@@ -849,7 +884,8 @@
       "cost": 1,
       "since": 1,
       "asm": "JNA addr",
-      "desc": "Jump if not above (C=1 or Z=1)"
+      "desc": "Jump if not above (C=1 or Z=1)",
+      "handler": "jcc:na:addr"
     },
     {
       "op": "PUSH_REG",
@@ -861,7 +897,8 @@
       "cost": 2,
       "since": 1,
       "asm": "PUSH reg",
-      "desc": "Push register onto stack (SP--)"
+      "desc": "Push register onto stack (SP--)",
+      "handler": "direct:_h_push_reg"
     },
     {
       "op": "PUSH_REGADDR",
@@ -873,7 +910,8 @@
       "cost": 4,
       "since": 1,
       "asm": "PUSH [reg±offset]",
-      "desc": "Push byte at [reg±offset] onto stack"
+      "desc": "Push byte at [reg±offset] onto stack",
+      "handler": "direct:_h_push_regaddr"
     },
     {
       "op": "PUSH_ADDR",
@@ -885,7 +923,8 @@
       "cost": 4,
       "since": 1,
       "asm": "PUSH [addr]",
-      "desc": "Push byte at [addr] onto stack"
+      "desc": "Push byte at [addr] onto stack",
+      "handler": "direct:_h_push_addr"
     },
     {
       "op": "PUSH_CONST",
@@ -897,7 +936,8 @@
       "cost": 2,
       "since": 1,
       "asm": "PUSH imm",
-      "desc": "Push immediate byte onto stack"
+      "desc": "Push immediate byte onto stack",
+      "handler": "direct:_h_push_const"
     },
     {
       "op": "POP_REG",
@@ -909,7 +949,8 @@
       "cost": 2,
       "since": 1,
       "asm": "POP reg",
-      "desc": "Pop top of stack into register (SP++)"
+      "desc": "Pop top of stack into register (SP++)",
+      "handler": "direct:_h_pop_reg"
     },
     {
       "op": "CALL_REG",
@@ -921,7 +962,8 @@
       "cost": 2,
       "since": 1,
       "asm": "CALL reg",
-      "desc": "Push return address, jump to address in register"
+      "desc": "Push return address, jump to address in register",
+      "handler": "direct:_h_call_reg"
     },
     {
       "op": "CALL_ADDR",
@@ -933,7 +975,8 @@
       "cost": 2,
       "since": 1,
       "asm": "CALL addr",
-      "desc": "Push return address, jump to address"
+      "desc": "Push return address, jump to address",
+      "handler": "direct:_h_call_addr"
     },
     {
       "op": "RET",
@@ -943,7 +986,8 @@
       "cost": 2,
       "since": 1,
       "asm": "RET",
-      "desc": "Pop return address and jump to it"
+      "desc": "Pop return address and jump to it",
+      "handler": "direct:_h_ret"
     },
     {
       "op": "MUL_REG",
@@ -955,7 +999,8 @@
       "cost": 2,
       "since": 1,
       "asm": "MUL reg",
-      "desc": "A = A × reg (unsigned 8-bit); C=1 on overflow, sets Z"
+      "desc": "A = A × reg (unsigned 8-bit); C=1 on overflow, sets Z",
+      "handler": "muldiv:mul:muldiv_reg"
     },
     {
       "op": "MUL_REGADDR",
@@ -967,7 +1012,8 @@
       "cost": 4,
       "since": 1,
       "asm": "MUL [reg±offset]",
-      "desc": "A = A × [reg±offset] (unsigned); C=1 on overflow, sets Z"
+      "desc": "A = A × [reg±offset] (unsigned); C=1 on overflow, sets Z",
+      "handler": "muldiv:mul:muldiv_regaddr"
     },
     {
       "op": "MUL_ADDR",
@@ -979,7 +1025,8 @@
       "cost": 4,
       "since": 1,
       "asm": "MUL [addr]",
-      "desc": "A = A × [addr] (unsigned); C=1 on overflow, sets Z"
+      "desc": "A = A × [addr] (unsigned); C=1 on overflow, sets Z",
+      "handler": "muldiv:mul:muldiv_addr"
     },
     {
       "op": "MUL_CONST",
@@ -991,7 +1038,8 @@
       "cost": 2,
       "since": 1,
       "asm": "MUL imm",
-      "desc": "A = A × imm (unsigned); C=1 on overflow, sets Z"
+      "desc": "A = A × imm (unsigned); C=1 on overflow, sets Z",
+      "handler": "muldiv:mul:muldiv_const"
     },
     {
       "op": "DIV_REG",
@@ -1003,7 +1051,8 @@
       "cost": 2,
       "since": 1,
       "asm": "DIV reg",
-      "desc": "A = A / reg, B = A mod reg (unsigned); FAULT(ERR_DIV_ZERO) if reg=0"
+      "desc": "A = A / reg, B = A mod reg (unsigned); FAULT(ERR_DIV_ZERO) if reg=0",
+      "handler": "div:muldiv_reg"
     },
     {
       "op": "DIV_REGADDR",
@@ -1015,7 +1064,8 @@
       "cost": 4,
       "since": 1,
       "asm": "DIV [reg±offset]",
-      "desc": "A = A / [reg±offset], B = A mod [reg±offset]; FAULT on zero"
+      "desc": "A = A / [reg±offset], B = A mod [reg±offset]; FAULT on zero",
+      "handler": "div:muldiv_regaddr"
     },
     {
       "op": "DIV_ADDR",
@@ -1027,7 +1077,8 @@
       "cost": 4,
       "since": 1,
       "asm": "DIV [addr]",
-      "desc": "A = A / [addr], B = A mod [addr]; FAULT on zero"
+      "desc": "A = A / [addr], B = A mod [addr]; FAULT on zero",
+      "handler": "div:muldiv_addr"
     },
     {
       "op": "DIV_CONST",
@@ -1039,7 +1090,8 @@
       "cost": 2,
       "since": 1,
       "asm": "DIV imm",
-      "desc": "A = A / imm, B = A mod imm; FAULT(ERR_DIV_ZERO) if imm=0"
+      "desc": "A = A / imm, B = A mod imm; FAULT(ERR_DIV_ZERO) if imm=0",
+      "handler": "div:muldiv_const"
     },
     {
       "op": "AND_REG_REG",
@@ -1052,7 +1104,8 @@
       "cost": 1,
       "since": 1,
       "asm": "AND reg, reg",
-      "desc": "Bitwise AND; sets Z, clears C"
+      "desc": "Bitwise AND; sets Z, clears C",
+      "handler": "bitwise:and:gpr_reg"
     },
     {
       "op": "AND_REG_REGADDR",
@@ -1065,7 +1118,8 @@
       "cost": 3,
       "since": 1,
       "asm": "AND reg, [reg±offset]",
-      "desc": "Bitwise AND with [reg±offset]; sets Z, clears C"
+      "desc": "Bitwise AND with [reg±offset]; sets Z, clears C",
+      "handler": "bitwise:and:regaddr"
     },
     {
       "op": "AND_REG_ADDR",
@@ -1078,7 +1132,8 @@
       "cost": 3,
       "since": 1,
       "asm": "AND reg, [addr]",
-      "desc": "Bitwise AND with [addr]; sets Z, clears C"
+      "desc": "Bitwise AND with [addr]; sets Z, clears C",
+      "handler": "bitwise:and:addr"
     },
     {
       "op": "AND_REG_CONST",
@@ -1091,7 +1146,8 @@
       "cost": 1,
       "since": 1,
       "asm": "AND reg, imm",
-      "desc": "Bitwise AND with immediate; sets Z, clears C"
+      "desc": "Bitwise AND with immediate; sets Z, clears C",
+      "handler": "bitwise:and:const"
     },
     {
       "op": "OR_REG_REG",
@@ -1104,7 +1160,8 @@
       "cost": 1,
       "since": 1,
       "asm": "OR reg, reg",
-      "desc": "Bitwise OR; sets Z, clears C"
+      "desc": "Bitwise OR; sets Z, clears C",
+      "handler": "bitwise:or:gpr_reg"
     },
     {
       "op": "OR_REG_REGADDR",
@@ -1117,7 +1174,8 @@
       "cost": 3,
       "since": 1,
       "asm": "OR reg, [reg±offset]",
-      "desc": "Bitwise OR with [reg±offset]; sets Z, clears C"
+      "desc": "Bitwise OR with [reg±offset]; sets Z, clears C",
+      "handler": "bitwise:or:regaddr"
     },
     {
       "op": "OR_REG_ADDR",
@@ -1130,7 +1188,8 @@
       "cost": 3,
       "since": 1,
       "asm": "OR reg, [addr]",
-      "desc": "Bitwise OR with [addr]; sets Z, clears C"
+      "desc": "Bitwise OR with [addr]; sets Z, clears C",
+      "handler": "bitwise:or:addr"
     },
     {
       "op": "OR_REG_CONST",
@@ -1143,7 +1202,8 @@
       "cost": 1,
       "since": 1,
       "asm": "OR reg, imm",
-      "desc": "Bitwise OR with immediate; sets Z, clears C"
+      "desc": "Bitwise OR with immediate; sets Z, clears C",
+      "handler": "bitwise:or:const"
     },
     {
       "op": "XOR_REG_REG",
@@ -1156,7 +1216,8 @@
       "cost": 1,
       "since": 1,
       "asm": "XOR reg, reg",
-      "desc": "Bitwise XOR; sets Z, clears C"
+      "desc": "Bitwise XOR; sets Z, clears C",
+      "handler": "bitwise:xor:gpr_reg"
     },
     {
       "op": "XOR_REG_REGADDR",
@@ -1169,7 +1230,8 @@
       "cost": 3,
       "since": 1,
       "asm": "XOR reg, [reg±offset]",
-      "desc": "Bitwise XOR with [reg±offset]; sets Z, clears C"
+      "desc": "Bitwise XOR with [reg±offset]; sets Z, clears C",
+      "handler": "bitwise:xor:regaddr"
     },
     {
       "op": "XOR_REG_ADDR",
@@ -1182,7 +1244,8 @@
       "cost": 3,
       "since": 1,
       "asm": "XOR reg, [addr]",
-      "desc": "Bitwise XOR with [addr]; sets Z, clears C"
+      "desc": "Bitwise XOR with [addr]; sets Z, clears C",
+      "handler": "bitwise:xor:addr"
     },
     {
       "op": "XOR_REG_CONST",
@@ -1195,7 +1258,8 @@
       "cost": 1,
       "since": 1,
       "asm": "XOR reg, imm",
-      "desc": "Bitwise XOR with immediate; sets Z, clears C"
+      "desc": "Bitwise XOR with immediate; sets Z, clears C",
+      "handler": "bitwise:xor:const"
     },
     {
       "op": "NOT_REG",
@@ -1207,7 +1271,8 @@
       "cost": 1,
       "since": 1,
       "asm": "NOT reg",
-      "desc": "Bitwise NOT (one's complement); sets Z, clears C"
+      "desc": "Bitwise NOT (one's complement); sets Z, clears C",
+      "handler": "direct:_h_not"
     },
     {
       "op": "SHL_REG_REG",
@@ -1220,7 +1285,8 @@
       "cost": 1,
       "since": 1,
       "asm": "SHL reg, reg",
-      "desc": "Logical shift left by reg bits; C = last bit shifted out, sets Z"
+      "desc": "Logical shift left by reg bits; C = last bit shifted out, sets Z",
+      "handler": "shift:shl:gpr_reg"
     },
     {
       "op": "SHL_REG_REGADDR",
@@ -1233,7 +1299,8 @@
       "cost": 3,
       "since": 1,
       "asm": "SHL reg, [reg±offset]",
-      "desc": "Logical shift left by [reg±offset] bits; C = last bit shifted out, sets Z"
+      "desc": "Logical shift left by [reg±offset] bits; C = last bit shifted out, sets Z",
+      "handler": "shift:shl:regaddr"
     },
     {
       "op": "SHL_REG_ADDR",
@@ -1246,7 +1313,8 @@
       "cost": 3,
       "since": 1,
       "asm": "SHL reg, [addr]",
-      "desc": "Logical shift left by [addr] bits; C = last bit shifted out, sets Z"
+      "desc": "Logical shift left by [addr] bits; C = last bit shifted out, sets Z",
+      "handler": "shift:shl:addr"
     },
     {
       "op": "SHL_REG_CONST",
@@ -1259,7 +1327,8 @@
       "cost": 1,
       "since": 1,
       "asm": "SHL reg, imm",
-      "desc": "Logical shift left by imm bits; C = last bit shifted out, sets Z"
+      "desc": "Logical shift left by imm bits; C = last bit shifted out, sets Z",
+      "handler": "shift:shl:const"
     },
     {
       "op": "SHR_REG_REG",
@@ -1272,7 +1341,8 @@
       "cost": 1,
       "since": 1,
       "asm": "SHR reg, reg",
-      "desc": "Logical shift right by reg bits; C = last bit shifted out, sets Z"
+      "desc": "Logical shift right by reg bits; C = last bit shifted out, sets Z",
+      "handler": "shift:shr:gpr_reg"
     },
     {
       "op": "SHR_REG_REGADDR",
@@ -1285,7 +1355,8 @@
       "cost": 3,
       "since": 1,
       "asm": "SHR reg, [reg±offset]",
-      "desc": "Logical shift right by [reg±offset] bits; C = last bit shifted out, sets Z"
+      "desc": "Logical shift right by [reg±offset] bits; C = last bit shifted out, sets Z",
+      "handler": "shift:shr:regaddr"
     },
     {
       "op": "SHR_REG_ADDR",
@@ -1298,7 +1369,8 @@
       "cost": 3,
       "since": 1,
       "asm": "SHR reg, [addr]",
-      "desc": "Logical shift right by [addr] bits; C = last bit shifted out, sets Z"
+      "desc": "Logical shift right by [addr] bits; C = last bit shifted out, sets Z",
+      "handler": "shift:shr:addr"
     },
     {
       "op": "SHR_REG_CONST",
@@ -1311,7 +1383,8 @@
       "cost": 1,
       "since": 1,
       "asm": "SHR reg, imm",
-      "desc": "Logical shift right by imm bits; C = last bit shifted out, sets Z"
+      "desc": "Logical shift right by imm bits; C = last bit shifted out, sets Z",
+      "handler": "shift:shr:const"
     }
   ],
   "instructions_fp": [

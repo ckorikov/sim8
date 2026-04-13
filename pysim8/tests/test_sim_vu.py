@@ -352,21 +352,21 @@ class TestReduction:
 class TestVuFaults:
     def test_invalid_vfm_fmt7_faults(self) -> None:
         cpu = cpu3()
-        vfm = encode_vfm(7, VU_MODE_VV)  # fmt=7 → reserved
-        code = vset_imm16(4, 4) + [int(Op.VADD), vfm, 0, 0]
+        vfm_enc = encode_vfm(7, VU_MODE_VV)  # fmt=7 → reserved
+        code = vset_imm16(4, 4) + [int(Op.VADD), vfm_enc, 0, 0]
         load_run(cpu, code)
         assert cpu.state == CpuState.FAULT
         assert cpu.regs.a == ErrorCode.VU_FORMAT
 
     def test_vdot_int_faults(self) -> None:
         cpu = cpu3()
-        vfm = encode_vfm(VU_FMT_U, VU_MODE_VV)
+        vfm_enc = encode_vfm(VU_FMT_U, VU_MODE_VV)
         code = (
             vset_imm16(0, 0x0100)
             + vset_imm16(1, 0x0110)
             + vset_imm16(2, 0x0120)
             + vset_imm16(4, 4)
-            + [int(Op.VDOT), vfm, encode_vu_regs(2, 0, 1), 0]
+            + [int(Op.VDOT), vfm_enc, encode_vu_regs(2, 0, 1), 0]
         )
         load_run(cpu, code)
         assert cpu.state == CpuState.FAULT
@@ -389,13 +389,13 @@ class TestVuFaults:
     def test_invalid_mode_for_vdot_faults(self) -> None:
         """VDOT only supports .vv (mode=0). Mode=1 (.vs) should FAULT."""
         cpu = cpu3()
-        vfm = encode_vfm(0, VU_MODE_VS)  # float32, .vs — invalid for VDOT
+        vfm_enc = encode_vfm(0, VU_MODE_VS)  # float32, .vs — invalid for VDOT
         code = (
             vset_imm16(0, 0x0100)
             + vset_imm16(1, 0x0110)
             + vset_imm16(2, 0x0120)
             + vset_imm16(4, 4)
-            + [int(Op.VDOT), vfm, encode_vu_regs(2, 0, 1), 0]
+            + [int(Op.VDOT), vfm_enc, encode_vu_regs(2, 0, 1), 0]
         )
         load_run(cpu, code)
         assert cpu.state == CpuState.FAULT
@@ -404,17 +404,17 @@ class TestVuFaults:
     def test_invalid_mode_for_vfill_faults(self) -> None:
         """Op.VFILL (183) is reserved. Executing it faults with INVALID_OPCODE."""
         cpu = cpu3()
-        vfm = encode_vfm(VU_FMT_U, VU_MODE_VV)
-        code = vset_imm16(4, 4) + [int(Op.VFILL), vfm, 0, 0]
+        vfm_enc = encode_vfm(VU_FMT_U, VU_MODE_VV)
+        code = vset_imm16(4, 4) + [int(Op.VFILL), vfm_enc, 0, 0]
         load_run(cpu, code)
         assert cpu.state == CpuState.FAULT
         assert cpu.regs.a == ErrorCode.INVALID_OPCODE
 
     def test_reserved_regs_bits_fault(self) -> None:
         cpu = cpu3()
-        vfm = encode_vfm(VU_FMT_U, VU_MODE_VV)
+        vfm_enc = encode_vfm(VU_FMT_U, VU_MODE_VV)
         regs_byte = encode_vu_regs(2, 0, 1) | 0x01  # bit[0] set
-        code = vset_imm16(4, 4) + [int(Op.VADD), vfm, regs_byte, 0]
+        code = vset_imm16(4, 4) + [int(Op.VADD), vfm_enc, regs_byte, 0]
         load_run(cpu, code)
         assert cpu.state == CpuState.FAULT
         assert cpu.regs.a == ErrorCode.VU_FORMAT
@@ -441,9 +441,9 @@ class TestVuAssembler:
 
     def test_vadd_encoding(self) -> None:
         code = asm_bytes("VADD.U.vv VC, VA, VB\nHLT", arch=3)
-        vfm = encode_vfm(VU_FMT_U, VU_MODE_VV)
+        vfm_enc = encode_vfm(VU_FMT_U, VU_MODE_VV)
         regs = encode_vu_regs(2, 0, 1)
-        assert code == [int(Op.VADD), vfm, regs, 0]
+        assert code == [int(Op.VADD), vfm_enc, regs, 0]
 
     def test_vfclr_encoding(self) -> None:
         code = asm_bytes("VFCLR\nHLT", arch=3)
@@ -455,10 +455,10 @@ class TestVuAssembler:
 
     def test_vcmp_condition_suffix(self) -> None:
         code = asm_bytes("VCMP.U.LT VM, VA, VB\nHLT", arch=3)
-        vfm = encode_vfm(VU_FMT_U, 0)  # mode=0(vv), cond now in 4th byte
+        vfm_enc = encode_vfm(VU_FMT_U, 0)  # mode=0(vv), cond now in 4th byte
         regs = encode_vu_regs(3, 0, 1)  # dst=VM, s1=VA, s2=VB
         cond = VU_CMP_SUFFIX["LT"]  # cond=2
-        assert code == [int(Op.VCMP), vfm, regs, cond, 0]
+        assert code == [int(Op.VCMP), vfm_enc, regs, cond, 0]
 
     def test_vu_regs_not_labels_in_arch2(self) -> None:
         # VA should not be recognized as VU register in arch=2

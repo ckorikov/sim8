@@ -19,7 +19,7 @@ const {
   MNEMONIC_FLAGS,
   MNEMONIC_FP_EXCEPTIONS,
   MNEMONIC_NOTES,
-  SIG_LABELS,
+  FORMAT_LABELS,
   FP_FORMAT_DOCS,
   REGISTER_DOCS,
   DIRECTIVE_DOCS,
@@ -30,7 +30,7 @@ const {
 function buildSyntaxForms() {
   const forms = {};
   for (const def of [...ISA, ...ISA_FP, ...ISA_VU]) {
-    const sig = def.sig.map((s) => SIG_LABELS[s] ?? "?").join(", ");
+    const sig = def.format.map((s) => FORMAT_LABELS[s] ?? "?").join(", ");
     const form = sig ? `${def.mnemonic} ${sig}` : def.mnemonic;
     if (!forms[def.mnemonic]) forms[def.mnemonic] = new Set();
     forms[def.mnemonic].add(form);

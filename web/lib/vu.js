@@ -26,7 +26,7 @@ import {
 
 export const VU_QUEUE_DEPTH = 4;
 
-const MEMORY_SIZE = 65536;
+const MEM_SIZE = 65536;
 
 const VuState = Object.freeze({
     IDLE: "IDLE",
@@ -86,19 +86,20 @@ function _writeElem(mem, addr, fmt, val, rm) {
 
 // ── Element arithmetic ──────────────────────────────────────────
 
+/** NaN-propagating min/max: if either operand is NaN, return the other. */
+function _fpPropagateNaN(a, b, mathFn) {
+    if (Number.isNaN(a)) return b;
+    if (Number.isNaN(b)) return a;
+    return mathFn(a, b);
+}
+
 function _arithFp(op, a, b, fmt, rm) {
     if (op === Op.VADD) return fpAdd(a, b, fmt, rm);
     if (op === Op.VSUB) return fpSub(a, b, fmt, rm);
     if (op === Op.VMUL) return fpMul(a, b, fmt, rm);
     if (op === Op.VDIV) return fpDiv(a, b, fmt, rm);
-    if (op === Op.VMAX) {
-        const val = Number.isNaN(a) ? b : Number.isNaN(b) ? a : Math.max(a, b);
-        return { result: val, exc: _NO_EXC };
-    }
-    if (op === Op.VMIN) {
-        const val = Number.isNaN(a) ? b : Number.isNaN(b) ? a : Math.min(a, b);
-        return { result: val, exc: _NO_EXC };
-    }
+    if (op === Op.VMAX) return { result: _fpPropagateNaN(a, b, Math.max), exc: _NO_EXC };
+    if (op === Op.VMIN) return { result: _fpPropagateNaN(a, b, Math.min), exc: _NO_EXC };
     throw new Error(`Unknown FP VU op: ${op}`);
 }
 
@@ -182,14 +183,25 @@ function _vuAbs(val, fmt) {
     return { result: Math.abs(val) & 0xff, exc: _NO_EXC };
 }
 
+const _VU_UNARY_FN = new Map([
+    [Op.VSQRT, _vuSqrt],
+    [Op.VNEG, _vuNeg],
+    [Op.VABS, _vuAbs],
+]);
+
+const _CMP_FN = new Map([
+    [VU_CMP_EQ, (a, b) => a === b],
+    [VU_CMP_NE, (a, b) => a !== b],
+    [VU_CMP_LT, (a, b) => a < b],
+    [VU_CMP_LE, (a, b) => a <= b],
+    [VU_CMP_GT, (a, b) => a > b],
+    [VU_CMP_GE, (a, b) => a >= b],
+]);
+
 function _compare(a, b, cond) {
-    if (cond === VU_CMP_EQ) return a === b;
-    if (cond === VU_CMP_NE) return a !== b;
-    if (cond === VU_CMP_LT) return a < b;
-    if (cond === VU_CMP_LE) return a <= b;
-    if (cond === VU_CMP_GT) return a > b;
-    if (cond === VU_CMP_GE) return a >= b;
-    throw new Error(`Unknown VU comparison condition: ${cond}`);
+    const fn = _CMP_FN.get(cond);
+    if (!fn) throw new Error(`Unknown VU comparison condition: ${cond}`);
+    return fn(a, b);
 }
 
 function _vuCmp(a, b, cond, fmt) {
@@ -224,27 +236,22 @@ class VuRegisters {
         this.vfpsr = 0;
     }
 
+    static _PTR_ATTRS = ["va", "vb", "vc", "vm"];
+    static _REG_ATTRS = ["va", "vb", "vc", "vm", "vl"];
+
     readPtr(code) {
-        if (code === 0) return this.va;
-        if (code === 1) return this.vb;
-        if (code === 2) return this.vc;
-        if (code === 3) return this.vm;
-        throw new RangeError(`Invalid VU pointer code: ${code}`);
+        if (code >= VuRegisters._PTR_ATTRS.length) throw new RangeError(`Invalid VU pointer code: ${code}`);
+        return this[VuRegisters._PTR_ATTRS[code]];
     }
 
     writeReg(code, val) {
-        val &= 0xffff;
-        if (code === 0) this.va = val;
-        else if (code === 1) this.vb = val;
-        else if (code === 2) this.vc = val;
-        else if (code === 3) this.vm = val;
-        else if (code === 4) this.vl = val;
-        else throw new RangeError(`Invalid VU register code: ${code}`);
+        if (code >= VuRegisters._REG_ATTRS.length) throw new RangeError(`Invalid VU register code: ${code}`);
+        this[VuRegisters._REG_ATTRS[code]] = val & 0xffff;
     }
 
     incPtr(code, amount) {
         const cur = this.readPtr(code);
-        this.writeReg(code, (cur + amount) % MEMORY_SIZE);
+        this.writeReg(code, (cur + amount) % MEM_SIZE);
     }
 
     reset() {
@@ -403,29 +410,27 @@ export class VectorUnit {
         }
     }
 
+    /** Return dst byte footprint: byte mask (VCMP), scalar (VDOT/reduce), or full vector. */
+    _dstFootprint(cmd, sz) {
+        if (cmd.op === Op.VCMP) return cmd.vl;
+        if (cmd.op === Op.VDOT || cmd.mode === VU_MODE_R) return sz;
+        return cmd.vl * sz;
+    }
+
     _checkOob(cmd, sz) {
         const vl = cmd.vl;
-        // dst footprint depends on operation
-        let dstBytes;
-        if (cmd.op === Op.VCMP) {
-            dstBytes = vl;
-        } else if (cmd.op === Op.VDOT || cmd.mode === VU_MODE_R) {
-            dstBytes = sz;
-        } else {
-            dstBytes = vl * sz;
-        }
-        if (cmd.dstAddr + dstBytes > MEMORY_SIZE) return true;
+        if (cmd.dstAddr + this._dstFootprint(cmd, sz) > MEM_SIZE) return true;
         // s1 footprint (VFILL and VSEL don't read s1 as vector)
         if (cmd.op !== Op.VFILL && cmd.op !== Op.VSEL) {
-            if (cmd.s1Addr + vl * sz > MEMORY_SIZE) return true;
+            if (cmd.s1Addr + vl * sz > MEM_SIZE) return true;
         }
         // s2 footprint for VV mode
         if (cmd.mode === VU_MODE_VV) {
-            if (cmd.s2Addr + vl * sz > MEMORY_SIZE) return true;
+            if (cmd.s2Addr + vl * sz > MEM_SIZE) return true;
         }
         // Mask pointer for VCMP/VSEL
         if (cmd.op === Op.VCMP || cmd.op === Op.VSEL) {
-            if (cmd.maskAddr + vl > MEMORY_SIZE) return true;
+            if (cmd.maskAddr + vl > MEM_SIZE) return true;
         }
         return false;
     }
@@ -438,51 +443,33 @@ export class VectorUnit {
         }
     }
 
-    _execFill(mem, cmd, startIdx, endIdx, sz, fmt, rm) {
+    /** Run elemFn(i) for i in [start,end) and OR all returned flags into VFPSR. */
+    _accumVfpsr(start, end, elemFn) {
         let flags = 0;
-        for (let i = startIdx; i < endIdx; i++) {
-            const exc = _writeElem(mem, cmd.dstAddr + i * sz, fmt, cmd.imm, rm);
-            flags |= _excToFlags(exc);
-        }
+        for (let i = start; i < end; i++) flags |= elemFn(i);
         this.regs.vfpsr |= flags;
+    }
+
+    _execFill(mem, cmd, startIdx, endIdx, sz, fmt, rm) {
+        this._accumVfpsr(startIdx, endIdx, (i) => _excToFlags(_writeElem(mem, cmd.dstAddr + i * sz, fmt, cmd.imm, rm)));
     }
 
     _execUnary(mem, cmd, startIdx, endIdx, sz, fmt, rm) {
-        const op = cmd.op;
-        let flags = 0;
-        for (let i = startIdx; i < endIdx; i++) {
-            const val = _readElem(mem, cmd.s1Addr + i * sz, fmt);
-            let result, opExc;
-            if (op === Op.VSQRT) {
-                ({ result, exc: opExc } = _vuSqrt(val, fmt, rm));
-            } else if (op === Op.VNEG) {
-                ({ result, exc: opExc } = _vuNeg(val, fmt));
-            } else {
-                ({ result, exc: opExc } = _vuAbs(val, fmt));
-            }
-            flags |= _excToFlags(opExc);
-            const wExc = _writeElem(mem, cmd.dstAddr + i * sz, fmt, result, rm);
-            flags |= _excToFlags(wExc);
-        }
-        this.regs.vfpsr |= flags;
+        const unaryFn = _VU_UNARY_FN.get(cmd.op);
+        this._accumVfpsr(startIdx, endIdx, (i) => {
+            const { result, exc: opExc } = unaryFn(_readElem(mem, cmd.s1Addr + i * sz, fmt), fmt, rm);
+            return _excToFlags(opExc) | _excToFlags(_writeElem(mem, cmd.dstAddr + i * sz, fmt, result, rm));
+        });
     }
 
     _execArith(mem, cmd, startIdx, endIdx, sz, fmt, rm) {
-        let flags = 0;
-        for (let i = startIdx; i < endIdx; i++) {
+        const isVV = cmd.mode === VU_MODE_VV;
+        this._accumVfpsr(startIdx, endIdx, (i) => {
             const a = _readElem(mem, cmd.s1Addr + i * sz, fmt);
-            let b;
-            if (cmd.mode === VU_MODE_VV) {
-                b = _readElem(mem, cmd.s2Addr + i * sz, fmt);
-            } else {
-                b = cmd.imm;
-            }
+            const b = isVV ? _readElem(mem, cmd.s2Addr + i * sz, fmt) : cmd.imm;
             const { result, exc: opExc } = _vuArith(cmd.op, a, b, fmt, rm);
-            flags |= _excToFlags(opExc);
-            const wExc = _writeElem(mem, cmd.dstAddr + i * sz, fmt, result, rm);
-            flags |= _excToFlags(wExc);
-        }
-        this.regs.vfpsr |= flags;
+            return _excToFlags(opExc) | _excToFlags(_writeElem(mem, cmd.dstAddr + i * sz, fmt, result, rm));
+        });
     }
 
     _execDot(mem, cmd, sz, fmt, rm) {

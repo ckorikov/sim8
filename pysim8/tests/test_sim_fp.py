@@ -10,6 +10,17 @@ from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
 from pysim8.asm import assemble
+from pysim8.fp_arithmetic import (
+    fp_abs,
+    fp_add,
+    fp_classify,
+    fp_cmp,
+    fp_div,
+    fp_mul,
+    fp_neg,
+    fp_sqrt,
+    fp_sub,
+)
 from pysim8.fp_formats import (
     FpExceptions,
     RoundingMode,
@@ -25,15 +36,6 @@ from pysim8.fp_formats import (
     encode_ofp8_e4m3,
     encode_ofp8_e5m2,
     float_to_bytes,
-    fp_abs,
-    fp_add,
-    fp_classify,
-    fp_cmp,
-    fp_div,
-    fp_mul,
-    fp_neg,
-    fp_sqrt,
-    fp_sub,
 )
 from pysim8.isa import (
     FP_FMT_BF,
@@ -1095,7 +1097,7 @@ class TestFpFormatsEdges:
         assert mask & 0x02
 
     def test_is_subnormal_unknown_fmt(self) -> None:
-        from pysim8.fp_formats import _is_subnormal
+        from pysim8.fp_arithmetic import _is_subnormal
 
         assert _is_subnormal(0x0001, 16, 99) is False
 
@@ -2635,7 +2637,7 @@ class TestPropSimRoundTrip:
 class TestCrazySimInput:
     """Adversarial simulator inputs that should not crash."""
 
-    def test_invalid_fpm_byte(self) -> None:
+    def test_invalid_fpm_enc(self) -> None:
         """FPM with reserved format code → FAULT."""
         fpm_bad = (0 << 6) | (0 << 3) | 5
         cpu = run_binary([int(Op.FABS_FP), fpm_bad, int(Op.HLT)])
@@ -2775,11 +2777,11 @@ class TestFpArithRrFormatMismatch:
 
         cpu = CPU(arch=2)
         # Build FADD_RR with dst=FA (fmt=F) src=FHA (fmt=H)
-        dst_fpm = encode_fpm(0, 0, FP_FMT_F)
-        src_fpm = encode_fpm(0, 0, FP_FMT_H)
+        dst_fpm_enc = encode_fpm(0, 0, FP_FMT_F)
+        src_fpm_enc = encode_fpm(0, 0, FP_FMT_H)
         cpu.mem[0] = int(Op.FADD_RR)
-        cpu.mem[1] = dst_fpm
-        cpu.mem[2] = src_fpm
+        cpu.mem[1] = dst_fpm_enc
+        cpu.mem[2] = src_fpm_enc
         cpu.mem[3] = int(Op.HLT)
         cpu.run()
         assert cpu.state == CpuState.FAULT

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass
 
-from .memory import MEMORY_SIZE
+from .memory import MEM_SIZE
 
 __all__ = ["VuRegisters", "VuCommand", "VuQueue"]
 
@@ -42,38 +42,25 @@ class VuRegisters:
         self.vl: int = 0
         self.vfpsr: int = 0
 
+    _PTR_ATTRS = ("va", "vb", "vc", "vm")
+    _REG_ATTRS = ("va", "vb", "vc", "vm", "vl")
+
     def read_ptr(self, code: int) -> int:
         """Read pointer register by code (0=VA, 1=VB, 2=VC, 3=VM)."""
-        if code == 0:
-            return self.va
-        if code == 1:
-            return self.vb
-        if code == 2:
-            return self.vc
-        if code == 3:
-            return self.vm
-        raise ValueError(f"Invalid VU pointer code: {code}")
+        if code >= len(self._PTR_ATTRS):
+            raise ValueError(f"Invalid VU pointer code: {code}")
+        return getattr(self, self._PTR_ATTRS[code])
 
     def write_reg(self, code: int, val: int) -> None:
         """Write VU register by code (0=VA, 1=VB, 2=VC, 3=VM, 4=VL)."""
-        val &= 0xFFFF
-        if code == 0:
-            self.va = val
-        elif code == 1:
-            self.vb = val
-        elif code == 2:
-            self.vc = val
-        elif code == 3:
-            self.vm = val
-        elif code == 4:
-            self.vl = val
-        else:
+        if code >= len(self._REG_ATTRS):
             raise ValueError(f"Invalid VU register code: {code}")
+        setattr(self, self._REG_ATTRS[code], val & 0xFFFF)
 
     def inc_ptr(self, code: int, amount: int) -> None:
         """Increment pointer register by amount (mod 64K)."""
         cur = self.read_ptr(code)
-        self.write_reg(code, (cur + amount) % MEMORY_SIZE)
+        self.write_reg(code, (cur + amount) % MEM_SIZE)
 
     def reset(self) -> None:
         """Reset all VU registers to zero."""

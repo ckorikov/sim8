@@ -4,7 +4,7 @@ Leaf module — no pysim8 internal imports. Safe to import from anywhere.
 """
 
 # ── Memory layout ────────────────────────────────────────────────
-MEMORY_SIZE = 65536
+MEM_SIZE = 65536
 PAGE_SIZE = 256
 IO_START = 232
 SP_INIT = 231

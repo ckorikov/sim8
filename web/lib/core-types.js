@@ -83,7 +83,7 @@ export {
 
 // ── Constants ────────────────────────────────────────────────────
 
-const MEMORY_SIZE = 65536;
+const MEM_SIZE = 65536;
 export const PAGE_SIZE = 256;
 export const IO_START = 232;
 export const SP_INIT = 231;
@@ -121,7 +121,7 @@ export class CpuFault extends Error {
 
 export class Memory {
     constructor() {
-        this._data = new Uint8Array(MEMORY_SIZE);
+        this._data = new Uint8Array(MEM_SIZE);
         this._nonZero = 0; // tracked incrementally for usedBytes()
     }
 
@@ -145,10 +145,8 @@ export class Memory {
     }
 
     load(data, offset = 0) {
-        if (offset + data.length > MEMORY_SIZE) {
-            throw new RangeError(
-                `Data (${data.length} bytes at offset ${offset}) exceeds memory size (${MEMORY_SIZE})`,
-            );
+        if (offset + data.length > MEM_SIZE) {
+            throw new RangeError(`Data (${data.length} bytes at offset ${offset}) exceeds memory size (${MEM_SIZE})`);
         }
         for (let i = 0; i < data.length; i++) {
             this.set(offset + i, data[i]);
@@ -210,22 +208,22 @@ export const ALU = {
         return [result, carry, result === 0];
     },
 
-    and_op(a, b) {
+    and(a, b) {
         const result = a & b;
         return [result, result === 0];
     },
 
-    or_op(a, b) {
+    or(a, b) {
         const result = a | b;
         return [result, result === 0];
     },
 
-    xor_op(a, b) {
+    xor(a, b) {
         const result = a ^ b;
         return [result, result === 0];
     },
 
-    not_op(a) {
+    not(a) {
         const result = a ^ 0xff;
         return [result, result === 0];
     },
@@ -417,11 +415,11 @@ export function decode(mem, ip, arch) {
     }
     let size = defn.size;
     // VU async instructions have variable size depending on VFM mode
-    if (defn.formatDep && arch >= 3 && ip + 1 < PAGE_SIZE) {
-        const vfm = mem.get(ip + 1);
-        const mode = (vfm >> 3) & 3;
+    if (defn.fmtDep && arch >= 3 && ip + 1 < PAGE_SIZE) {
+        const vfmEnc = mem.get(ip + 1);
+        const mode = (vfmEnc >> 3) & 3;
         if (mode === VU_MODE_VI) {
-            const fmt = vfm & 7;
+            const fmt = vfmEnc & 7;
             const elemSize = VU_FMT_ELEM_SIZE[fmt] || 1;
             size = 3 + elemSize;
         }

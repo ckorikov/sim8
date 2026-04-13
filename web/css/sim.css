@@ -372,7 +372,7 @@ body {
 #pad-page::-webkit-outer-spin-button,
 #pad-addr::-webkit-inner-spin-button,
 #pad-addr::-webkit-outer-spin-button {
-    -webkit-appearance: none;
+    appearance: none;
     margin: 0;
 }
 

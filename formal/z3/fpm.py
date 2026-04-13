@@ -21,7 +21,7 @@ import z3
 from harness import check, prove
 
 
-def _fpm_byte(r: dict[str, int]) -> int:
+def _encode_fpm(r: dict[str, int]) -> int:
     return (r["phys"] << 6) | (r["pos"] << 3) | r["fmt"]
 
 
@@ -102,7 +102,7 @@ def verify(isa: dict[str, Any]) -> None:
     )
 
     # Data check: all 30 named FP registers produce distinct FPM bytes
-    reg_bytes = [_fpm_byte(r) for r in isa["fp_registers"]]
+    reg_bytes = [_encode_fpm(r) for r in isa["fp_registers"]]
     check(
         len(set(reg_bytes)) == len(reg_bytes),
         f"all {len(reg_bytes)} named FP registers have distinct FPM bytes",

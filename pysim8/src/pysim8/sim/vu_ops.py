@@ -7,20 +7,23 @@ The VU executor calls these per-element in a loop.
 from __future__ import annotations
 
 import math
+import operator
 from typing import TYPE_CHECKING
 
-from pysim8.fp_formats import (
-    NO_EXC,
-    FpExceptions,
-    bytes_to_float,
-    float_to_bytes,
+from pysim8.fp_arithmetic import (
     fp_add,
     fp_div,
     fp_mul,
     fp_sub,
 )
-from pysim8.fp_formats import (
+from pysim8.fp_arithmetic import (
     fp_sqrt as _fp_sqrt,
+)
+from pysim8.fp_formats import (
+    NO_EXC,
+    FpExceptions,
+    bytes_to_float,
+    float_to_bytes,
 )
 from pysim8.isa import (
     VU_CMP_EQ,
@@ -86,6 +89,15 @@ def vu_write_elem(mem: Memory, addr: int, fmt: int, val: float | int, rm: int = 
     return FpExceptions()
 
 
+def _fp_propagate_nan(a: float, b: float, fn: object) -> float:
+    """NaN-propagating min/max: if either operand is NaN, return the other."""
+    if math.isnan(a):
+        return b
+    if math.isnan(b):
+        return a
+    return fn(a, b)  # type: ignore[operator]
+
+
 def _arith_fp(op: int, a: float, b: float, fmt: int, rm: int = 0) -> tuple[float, FpExceptions]:
     if op == Op.VADD:
         return fp_add(a, b, fmt, rm)
@@ -96,11 +108,9 @@ def _arith_fp(op: int, a: float, b: float, fmt: int, rm: int = 0) -> tuple[float
     if op == Op.VDIV:
         return fp_div(a, b, fmt, rm)
     if op == Op.VMAX:
-        val = b if math.isnan(a) else (a if math.isnan(b) else max(a, b))
-        return val, NO_EXC
+        return _fp_propagate_nan(a, b, max), NO_EXC
     if op == Op.VMIN:
-        val = b if math.isnan(a) else (a if math.isnan(b) else min(a, b))
-        return val, NO_EXC
+        return _fp_propagate_nan(a, b, min), NO_EXC
     raise ValueError(f"Unknown FP VU op: {op}")
 
 
@@ -190,13 +200,13 @@ def vu_neg(val: float | int, fmt: int) -> tuple[float | int, FpExceptions]:
 def vu_abs(val: float | int, fmt: int) -> tuple[float | int, FpExceptions]:
     """Element absolute value."""
     if fmt in _FP_FMTS:
-        return abs(float(val)), FpExceptions()
+        return abs(float(val)), NO_EXC
     if fmt == VU_FMT_U:
-        return int(val) & 0xFF, FpExceptions()
+        return int(val) & 0xFF, NO_EXC
     iv = int(val)
     if iv == -128:
-        return _to_byte(-128), FpExceptions()
-    return _to_byte(abs(iv)), FpExceptions()
+        return _to_byte(-128), NO_EXC
+    return _to_byte(abs(iv)), NO_EXC
 
 
 def vu_cmp(a: float | int, b: float | int, cond: int, fmt: int) -> int:
@@ -211,17 +221,18 @@ def vu_cmp(a: float | int, b: float | int, cond: int, fmt: int) -> int:
     return 0xFF if result else 0x00
 
 
+_CMP_FN: dict[int, object] = {
+    VU_CMP_EQ: operator.eq,
+    VU_CMP_NE: operator.ne,
+    VU_CMP_LT: operator.lt,
+    VU_CMP_LE: operator.le,
+    VU_CMP_GT: operator.gt,
+    VU_CMP_GE: operator.ge,
+}
+
+
 def _compare(a: float | int, b: float | int, cond: int) -> bool:
-    if cond == VU_CMP_EQ:
-        return a == b
-    if cond == VU_CMP_NE:
-        return a != b
-    if cond == VU_CMP_LT:
-        return a < b
-    if cond == VU_CMP_LE:
-        return a <= b
-    if cond == VU_CMP_GT:
-        return a > b
-    if cond == VU_CMP_GE:
-        return a >= b
-    raise ValueError(f"Unknown VU comparison condition: {cond}")
+    fn = _CMP_FN.get(cond)
+    if fn is None:
+        raise ValueError(f"Unknown VU comparison condition: {cond}")
+    return fn(a, b)  # type: ignore[operator]

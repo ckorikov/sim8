@@ -38,9 +38,14 @@ from pysim8.isa import (
     vu_instr_size,
 )
 
-__all__ = ["disasm_insn", "disasm"]
+__all__ = ["disasm_instr", "disasm"]
 
 _REG_NAMES: dict[int, str] = {r.value: r.name for r in Reg}
+
+
+def _lookup_instr_def(opcode: int) -> object:
+    """Look up an InstrDef by opcode across all ISA tables."""
+    return BY_CODE.get(opcode) or BY_CODE_FP.get(opcode) or BY_CODE_VU.get(opcode)
 
 
 def _build_fpm_to_reg(
@@ -123,25 +128,25 @@ def _build_fp_label(mnemonic: str, fp_decoded: list[tuple[str, int]]) -> str:
     return f"{mnemonic}.{fmts[0]}"
 
 
-def _disasm_fp_insn(opcode: int, raw_operands: tuple[int, ...]) -> str | None:
+def _disasm_fp_instr(opcode: int, raw_operands: tuple[int, ...]) -> str | None:
     """Disassemble one FP instruction. Returns None if opcode not FP."""
-    defn = BY_CODE_FP.get(opcode)
-    if defn is None:
+    instr_def = BY_CODE_FP.get(opcode)
+    if instr_def is None:
         return None
 
-    mnemonic = defn.mnemonic
+    mnemonic = instr_def.mnemonic
     if mnemonic in FP_CONTROL_MNEMONICS:
-        parts = [_fmt_operand(ot, val) for ot, val in zip(defn.sig, raw_operands)]
+        parts = [_fmt_operand(ot, val) for ot, val in zip(instr_def.format, raw_operands)]
         return f"{mnemonic} {', '.join(parts)}" if parts else mnemonic
 
-    fp_count = sum(1 for ot in defn.sig if ot == OpType.FP_REG)
+    fp_count = sum(1 for ot in instr_def.format if ot == OpType.FP_REG)
     fp_decoded: list[tuple[str, int]] = [_fmt_fpm(b) for b in raw_operands[:fp_count]]
     fp_iter = iter(fp_decoded)
     non_fp_iter = iter(raw_operands[fp_count:])
     fmt_code = -1
     parts = []
 
-    for ot in defn.sig:
+    for ot in instr_def.format:
         if ot == OpType.FP_REG:
             name, fmt_code = next(fp_iter)
             parts.append(name)
@@ -179,8 +184,8 @@ _VU_DST_SRC1_ONLY = frozenset({"VSQRT", "VNEG", "VABS", "VMOV"})
 
 def _disasm_vu_sync(opcode: int, raw: tuple[int, ...]) -> str | None:
     """Disassemble a synchronous VU instruction."""
-    defn = BY_CODE_VU.get(opcode)
-    if defn is None:
+    instr_def = BY_CODE_VU.get(opcode)
+    if instr_def is None:
         return None
     if opcode == Op.VFCLR:
         return "VFCLR"
@@ -208,20 +213,20 @@ def _disasm_vu_async(opcode: int, code: bytes | list[int], offset: int) -> tuple
     """Disassemble an async VU instruction. Returns (text, size) or None."""
     if opcode not in VU_ASYNC_OPS:
         return None
-    defn = BY_CODE_VU.get(opcode)
-    if defn is None:
+    instr_def = BY_CODE_VU.get(opcode)
+    if instr_def is None:
         return None
     if offset + 3 > len(code):
         return None
-    vfm = code[offset + 1]
+    vfm_enc = code[offset + 1]
     regs = code[offset + 2]
-    fmt, mode, cond = decode_vfm(vfm)
+    fmt, mode, cond = decode_vfm(vfm_enc)
     dst, src1, src2 = decode_vu_regs(regs)
-    size = vu_instr_size(opcode, vfm)
+    size = vu_instr_size(opcode, vfm_enc)
     if offset + size > len(code):
         return None
 
-    mnemonic = defn.mnemonic
+    mnemonic = instr_def.mnemonic
     suffix = _VU_FMT_TO_SUFFIX.get(fmt, f"?{fmt}")
     dn = _VU_REG_NAMES.get(dst, f"?{dst}")
     s1n = _VU_REG_NAMES.get(src1, f"?{src1}")
@@ -251,17 +256,17 @@ def _disasm_vu_async(opcode: int, code: bytes | list[int], offset: int) -> tuple
     return f"{label} {parts}", size
 
 
-def disasm_insn(opcode: int, operands: tuple[int, ...] = ()) -> str:
+def disasm_instr(opcode: int, operands: tuple[int, ...] = ()) -> str:
     """Disassemble one instruction to text, e.g. 'MOV A, 42'."""
-    defn = BY_CODE.get(opcode)
-    if defn is not None:
-        ops = [_fmt_operand(ot, val) for ot, val in zip(defn.sig, operands)]
+    instr_def = BY_CODE.get(opcode)
+    if instr_def is not None:
+        ops = [_fmt_operand(ot, val) for ot, val in zip(instr_def.format, operands)]
         if ops:
-            return f"{defn.mnemonic} {', '.join(ops)}"
-        return defn.mnemonic
+            return f"{instr_def.mnemonic} {', '.join(ops)}"
+        return instr_def.mnemonic
 
     # Try FP instruction
-    result = _disasm_fp_insn(opcode, operands)
+    result = _disasm_fp_instr(opcode, operands)
     if result is not None:
         return result
 
@@ -300,21 +305,17 @@ def disasm(code: bytes | list[int]) -> list[tuple[int, str, int]]:
                 i += size
                 continue
 
-        defn = BY_CODE.get(opcode)
-        if defn is None:
-            defn = BY_CODE_FP.get(opcode)
-        if defn is None:
-            defn = BY_CODE_VU.get(opcode)
-        if defn is None:
+        instr_def = _lookup_instr_def(opcode)
+        if instr_def is None:
             result.append((i, f"DB {opcode}", 1))
             i += 1
             continue
-        size = defn.size
+        size = instr_def.size
         if i + size > len(code):
             result.append((i, f"DB {opcode}", 1))
             i += 1
             continue
         operands = tuple(code[i + k] for k in range(1, size))
-        result.append((i, disasm_insn(opcode, operands), size))
+        result.append((i, disasm_instr(opcode, operands), size))
         i += size
     return result

@@ -137,14 +137,14 @@ export function generateProgram(seed, { maxInstrs = 10, useFP = false } = {}) {
 
         // Determine FP suffix if needed
         let suffix = "";
-        const isFP = FP_CONTROL_MNEMONICS.has(mnemonic) ? false : def.sig.some((s) => s === OpType.FP_REG);
+        const isFP = FP_CONTROL_MNEMONICS.has(mnemonic) ? false : def.format.some((s) => s === OpType.FP_REG);
         if (isFP) {
             suffix = "." + rng.pick(FP_SUFFIXES);
         }
 
         // Generate operands
         const fpSuffix = suffix.slice(1) || "F";
-        const operands = def.sig.map((s) => genOperand(rng, s, fpSuffix));
+        const operands = def.format.map((s) => genOperand(rng, s, fpSuffix));
 
         // Skip if any operand generation failed (e.g. FP_IMM)
         if (operands.some((o) => o === null)) continue;

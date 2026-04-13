@@ -633,7 +633,7 @@ class TestIsaEdges:
         e = asm_error("FCVT.H FHA, FA\nHLT", arch=2)
         assert "suffix required" in e.message.lower()
 
-    def test_fp_insn_no_suffix(self) -> None:
+    def test_fp_instr_no_suffix(self) -> None:
         """FADD without format suffix → error (line 233)."""
         e = asm_error("FADD FA, [100]\nHLT", arch=2)
         assert "suffix required" in e.message.lower()
@@ -659,7 +659,7 @@ class TestIsaEdges:
 
     def test_operand_matches_fp_imm(self) -> None:
         """FP_IMM8/FP_IMM16 matching (line 67-68)."""
-        from pysim8.asm.codegen import _operand_matches
+        from pysim8.asm._codegen_core import _operand_matches
         from pysim8.isa import OpType
 
         fp_imm = OpFpImm(value=1.0, fmt=None)
@@ -674,7 +674,7 @@ class TestIsaEdges:
 
     def test_db_float_then_float(self) -> None:
         """DB with multiple floats exercises OpFloat loop-back branch."""
-        from pysim8.asm.codegen import _encode_db
+        from pysim8.asm._codegen_fp import _encode_db
         from pysim8.asm.parser import OpFloat
 
         result = _encode_db([OpFloat(1.0, 0), OpFloat(2.0, 0)], 1)
@@ -682,7 +682,8 @@ class TestIsaEdges:
 
     def test_db_unsupported_operand_type(self) -> None:
         """DB with unexpected operand type raises AssemblerError."""
-        from pysim8.asm.codegen import AssemblerError, _encode_db_operand
+        from pysim8.asm._codegen_fp import _encode_db_operand
+        from pysim8.asm._codegen_core import AssemblerError
         from pysim8.asm.parser import OpReg
 
         result: list[int] = []
@@ -876,14 +877,14 @@ class TestCodegenEdgeCoverage:
 
     def test_operand_matches_returns_false(self) -> None:
         """_operand_matches returns False for unrecognized operand type."""
-        from pysim8.asm.codegen import _operand_matches
+        from pysim8.asm._codegen_core import _operand_matches
         from pysim8.asm.parser import OpReg
 
         assert _operand_matches(OpReg(0), "NOT_AN_OPTYPE") is False
 
     def test_encode_operand_unexpected_type(self) -> None:
         """_encode_operand raises on unexpected operand type."""
-        from pysim8.asm.codegen import _encode_operand
+        from pysim8.asm._codegen_core import _encode_operand
         from pysim8.asm.parser import OpString
 
         with pytest.raises(AssertionError) as exc_info:
@@ -892,7 +893,7 @@ class TestCodegenEdgeCoverage:
 
     def test_find_instr_invalid_fp_mnemonic(self) -> None:
         """_find_instr with FP table raises on invalid mnemonic."""
-        from pysim8.asm.codegen import AssemblerError, _find_instr
+        from pysim8.asm._codegen_core import AssemblerError, _find_instr
         from pysim8.isa import BY_MNEMONIC_FP
 
         with pytest.raises(AssemblerError) as exc_info:

@@ -284,7 +284,7 @@ describe("InstrDef", () => {
     it("HLT has size 1 and cost 0", () => {
         const hlt = BY_CODE[Op.HLT];
         expect(hlt.mnemonic).toBe("HLT");
-        expect(hlt.sig.length).toBe(0);
+        expect(hlt.format.length).toBe(0);
         expect(hlt.size).toBe(1);
         expect(hlt.cost).toBe(0);
     });
