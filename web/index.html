@@ -249,79 +249,34 @@
                             style="padding: var(--s-body-compact-pad); gap: 0; align-items: flex-start"
                         >
                             <div style="width: 100%; margin-bottom: var(--s-row-gap)">
-                                <div
-                                    style="
-                                        font-size: var(--s-label-font);
-                                        color: var(--t-dim);
-                                        text-transform: uppercase;
-                                        letter-spacing: 0.1em;
-                                        margin-bottom: 4px;
-                                    "
-                                >
-                                    registers
-                                </div>
+                                <div class="hw-label">registers</div>
                                 <div
                                     class="rr"
                                     id="cpu-regs"
                                     style="margin-bottom: 0; justify-content: flex-start"
                                 ></div>
                             </div>
-                            <div
-                                style="
-                                    width: 100%;
-                                    display: flex;
-                                    justify-content: space-between;
-                                    align-items: flex-end;
-                                "
-                            >
-                                <div>
-                                    <div
-                                        style="
-                                            font-size: var(--s-label-font);
-                                            color: var(--t-dim);
-                                            text-transform: uppercase;
-                                            letter-spacing: 0.1em;
-                                            margin-bottom: 4px;
-                                        "
-                                    >
-                                        pointers
-                                    </div>
-                                    <div
-                                        class="rr"
-                                        id="cpu-ptrs"
-                                        style="margin-bottom: 0; justify-content: flex-start"
-                                    ></div>
-                                </div>
-                                <div>
-                                    <div
-                                        style="
-                                            font-size: var(--s-label-font);
-                                            color: var(--t-dim);
-                                            text-transform: uppercase;
-                                            letter-spacing: 0.1em;
-                                            margin-bottom: 4px;
-                                        "
-                                    >
-                                        flags
-                                    </div>
-                                    <div class="rr" id="cpu-flags" style="margin-bottom: 0"></div>
-                                </div>
+                            <div style="width: 100%; margin-bottom: var(--s-row-gap)">
+                                <div class="hw-label">pointers</div>
+                                <div
+                                    class="rr"
+                                    id="cpu-ptrs"
+                                    style="margin-bottom: 0; justify-content: flex-start"
+                                ></div>
+                            </div>
+                            <div style="width: 100%">
+                                <div class="hw-label">flags</div>
+                                <div
+                                    class="rr"
+                                    id="cpu-flags"
+                                    style="margin-bottom: 0; justify-content: flex-start"
+                                ></div>
                             </div>
                         </div>
                         <div
                             class="hw-port"
                             id="port-cpu-bottom"
-                            style="bottom: -4px; left: 33%; background: var(--a-yellow)"
-                        ></div>
-                        <div
-                            class="hw-port"
-                            id="port-cpu-vu"
-                            style="bottom: -4px; left: 66%; background: var(--a-yellow)"
-                        ></div>
-                        <div
-                            class="hw-port"
-                            id="port-cpu-right"
-                            style="right: -4px; top: 50%; transform: translateY(-50%); background: var(--a-orange)"
+                            style="bottom: -4px; left: 50%; transform: translateX(-50%); background: var(--a-yellow)"
                         ></div>
                     </div>
 
@@ -329,7 +284,7 @@
                     <div
                         class="hw-block"
                         id="blk-fpu"
-                        style="left: var(--s-fpu-x); top: var(--s-top-y); width: var(--s-fpu-w)"
+                        style="left: var(--s-cpu-x); top: var(--s-top-y); width: var(--s-fpu-w)"
                     >
                         <div class="hw-hdr" style="justify-content: space-between">
                             <div style="display: flex; align-items: center; gap: 8px">
@@ -358,29 +313,13 @@
                         </div>
                         <div class="hw-body" style="padding: var(--s-body-compact-pad); gap: 0">
                             <div style="width: 100%; margin-bottom: 6px">
-                                <div
-                                    style="
-                                        font-size: var(--s-label-font);
-                                        color: var(--t-dim);
-                                        text-transform: uppercase;
-                                        letter-spacing: 0.1em;
-                                        margin-bottom: 4px;
-                                    "
-                                >
+                                <div class="hw-label">
                                     fa <span id="fpu-fa-info" style="color: var(--t-dim); text-transform: none"></span>
                                 </div>
                                 <div id="fpu-fa-bytes" style="display: flex; justify-content: center"></div>
                             </div>
                             <div style="width: 100%; margin-bottom: 6px">
-                                <div
-                                    style="
-                                        font-size: var(--s-label-font);
-                                        color: var(--t-dim);
-                                        text-transform: uppercase;
-                                        letter-spacing: 0.1em;
-                                        margin-bottom: 4px;
-                                    "
-                                >
+                                <div class="hw-label">
                                     fb <span id="fpu-fb-info" style="color: var(--t-dim); text-transform: none"></span>
                                 </div>
                                 <div id="fpu-fb-bytes" style="display: flex; justify-content: center"></div>
@@ -426,13 +365,13 @@
                         </div>
                         <div
                             class="hw-port"
-                            id="port-fpu-left"
-                            style="left: -4px; top: 50%; transform: translateY(-50%); background: var(--a-orange)"
+                            id="port-fpu-bottom"
+                            style="bottom: -4px; left: 50%; transform: translateX(-50%); background: var(--a-yellow)"
                         ></div>
                     </div>
 
                     <!-- Memory Block -->
-                    <div class="hw-block" id="blk-mem" style="left: var(--s-cpu-x); top: 288px; width: var(--s-mem-w)">
+                    <div class="hw-block" id="blk-mem" style="left: var(--s-cpu-x); width: var(--s-mem-w)">
                         <div class="hw-hdr" style="justify-content: space-between">
                             <div style="display: flex; align-items: center; gap: 8px">
                                 <div class="dot" style="background: var(--a-yellow)"></div>
@@ -507,33 +446,13 @@
                         <div class="hw-body" id="mem-grid"></div>
                         <div
                             class="hw-port"
-                            id="port-mem-top"
-                            style="top: -4px; left: 50%; transform: translateX(-50%); background: var(--a-yellow)"
-                        ></div>
-                        <div
-                            class="hw-port"
                             id="port-mem-bottom"
-                            style="bottom: -4px; left: 50%; transform: translateX(-50%); background: var(--a-green)"
-                        ></div>
-                        <div
-                            class="hw-port"
-                            id="port-mem-right-a"
-                            style="right: -4px; top: calc(50% - 8px); background: var(--a-yellow)"
-                        ></div>
-                        <div
-                            class="hw-port"
-                            id="port-mem-right-b"
-                            style="right: -4px; top: calc(50% + 8px); background: var(--a-yellow)"
-                        ></div>
-                        <div
-                            class="hw-port"
-                            id="port-mem-right-pad"
-                            style="right: -4px; top: calc(50% + 24px); background: var(--a-purple); display: none"
+                            style="bottom: -4px; left: 50%; transform: translateX(-50%); background: var(--a-yellow)"
                         ></div>
                     </div>
 
                     <!-- Vector Unit Block -->
-                    <div class="hw-block" id="blk-vu" style="left: var(--s-vu-x); top: 380px; width: var(--s-vu-w)">
+                    <div class="hw-block" id="blk-vu" style="left: var(--s-vu-x); width: var(--s-vu-w)">
                         <div class="hw-hdr" style="justify-content: space-between">
                             <div style="display: flex; align-items: center; gap: 8px">
                                 <div class="dot" id="vu-state-dot" style="background: var(--t-dim)"></div>
@@ -560,17 +479,7 @@
                         >
                             <!-- Pointers: VA, VB, VC -->
                             <div style="width: 100%; margin-bottom: var(--s-row-gap)">
-                                <div
-                                    style="
-                                        font-size: var(--s-label-font);
-                                        color: var(--t-dim);
-                                        text-transform: uppercase;
-                                        letter-spacing: 0.1em;
-                                        margin-bottom: 4px;
-                                    "
-                                >
-                                    addresses
-                                </div>
+                                <div class="hw-label">addresses</div>
                                 <div
                                     class="rr"
                                     id="vu-ptrs"
@@ -579,45 +488,17 @@
                             </div>
                             <!-- Mask + Length -->
                             <div style="width: 100%; margin-bottom: var(--s-row-gap)">
-                                <div
-                                    style="
-                                        font-size: var(--s-label-font);
-                                        color: var(--t-dim);
-                                        text-transform: uppercase;
-                                        letter-spacing: 0.1em;
-                                        margin-bottom: 4px;
-                                    "
-                                >
-                                    mask &amp; length
-                                </div>
+                                <div class="hw-label">mask &amp; length</div>
                                 <div class="rr" id="vu-ml" style="margin-bottom: 0; justify-content: flex-start"></div>
                             </div>
                             <!-- Status -->
                             <div style="width: 100%; margin-bottom: var(--s-row-gap)">
-                                <div
-                                    style="
-                                        font-size: var(--s-label-font);
-                                        color: var(--t-dim);
-                                        text-transform: uppercase;
-                                        letter-spacing: 0.1em;
-                                        margin-bottom: 4px;
-                                    "
-                                >
-                                    status
-                                </div>
+                                <div class="hw-label">status</div>
                                 <div class="rr" id="vu-flags" style="margin-bottom: 0"></div>
                             </div>
                             <!-- Queue -->
                             <div style="width: 100%; margin-bottom: var(--s-row-gap)">
-                                <div
-                                    style="
-                                        font-size: var(--s-label-font);
-                                        color: var(--t-dim);
-                                        text-transform: uppercase;
-                                        letter-spacing: 0.1em;
-                                        margin-bottom: 4px;
-                                    "
-                                >
+                                <div class="hw-label">
                                     queue
                                     <span id="vu-queue-depth" style="color: var(--t-dim); text-transform: none"></span>
                                 </div>
@@ -626,18 +507,8 @@
                         </div>
                         <div
                             class="hw-port"
-                            id="port-vu-top"
-                            style="top: -4px; left: 50%; transform: translateX(-50%); background: var(--a-yellow)"
-                        ></div>
-                        <div
-                            class="hw-port"
                             id="port-vu-left-a"
-                            style="left: -4px; top: calc(50% - 8px); background: var(--a-yellow)"
-                        ></div>
-                        <div
-                            class="hw-port"
-                            id="port-vu-left-b"
-                            style="left: -4px; top: calc(50% + 8px); background: var(--a-yellow)"
+                            style="left: -4px; top: 50%; background: var(--a-yellow)"
                         ></div>
                     </div>
 
@@ -645,71 +516,43 @@
                     <div
                         class="hw-block"
                         id="blk-pad"
-                        style="left: var(--s-vu-x); top: 380px; width: var(--s-pad-w); display: none"
+                        style="left: var(--s-vu-x); width: var(--s-pad-w); display: none"
                     >
                         <div class="hw-hdr" style="justify-content: space-between">
                             <div style="display: flex; align-items: center; gap: 8px">
                                 <div class="dot" style="background: var(--a-purple)"></div>
                                 pad
-                                <select
-                                    id="pad-size"
-                                    class="ft"
-                                    style="
-                                        font-size: 9px;
-                                        background: transparent;
-                                        border: none;
-                                        color: var(--t-dim);
-                                        cursor: pointer;
-                                        padding: 0;
-                                    "
-                                >
-                                    <option value="8">8×8</option>
-                                    <option value="16">16×16</option>
-                                    <option value="28" selected>28×28</option>
-                                </select>
                             </div>
                             <div style="display: flex; align-items: center; gap: 4px">
                                 <button class="ft" id="pad-clear">clear</button>
                             </div>
                         </div>
                         <div class="hw-body" style="padding: 8px; flex-direction: column; gap: 6px">
-                            <div style="display: flex; align-items: center; gap: 8px">
-                                <span
-                                    style="
-                                        font-size: 8px;
-                                        color: var(--t-dim);
-                                        text-transform: uppercase;
-                                        letter-spacing: 0.1em;
-                                    "
-                                    >page</span
-                                >
+                            <div style="display: flex; align-items: baseline; gap: 8px">
+                                <span class="hw-label">page</span>
                                 <input type="number" id="pad-page" value="1" min="0" max="252" />
-                                <span
-                                    style="
-                                        font-size: 8px;
-                                        color: var(--t-dim);
-                                        text-transform: uppercase;
-                                        letter-spacing: 0.1em;
-                                    "
-                                    >addr</span
-                                >
+                                <span class="hw-label">addr</span>
                                 <input type="number" id="pad-addr" value="0" min="0" max="255" />
                             </div>
                             <canvas id="pad-canvas" width="168" height="168"></canvas>
+                            <div
+                                id="pad-size-tabs"
+                                style="display: flex; align-items: center; gap: 4px; justify-content: center"
+                            >
+                                <button class="ft" data-padsize="8">8×8</button>
+                                <button class="ft" data-padsize="16">16×16</button>
+                                <button class="ft act" data-padsize="28">28×28</button>
+                            </div>
                         </div>
                         <div
                             class="hw-port"
                             id="port-pad-left"
-                            style="left: -4px; top: 50%; transform: translateY(-50%); background: var(--a-purple)"
+                            style="left: -4px; top: 50%; transform: translateY(-50%); background: var(--a-yellow)"
                         ></div>
                     </div>
 
                     <!-- Display Block -->
-                    <div
-                        class="hw-block"
-                        id="blk-disp"
-                        style="left: var(--s-cpu-x); top: 752px; width: var(--s-disp-w)"
-                    >
+                    <div class="hw-block" id="blk-disp" style="left: var(--s-cpu-x); width: var(--s-disp-w)">
                         <div class="hw-hdr" style="justify-content: center">
                             <div class="dot" style="background: var(--a-green)"></div>
                             display
@@ -718,7 +561,7 @@
                         <div
                             class="hw-port"
                             id="port-disp-top"
-                            style="top: -4px; left: 50%; transform: translateX(-50%); background: var(--a-green)"
+                            style="top: -4px; left: 50%; transform: translateX(-50%); background: var(--a-yellow)"
                         ></div>
                     </div>
                 </div>

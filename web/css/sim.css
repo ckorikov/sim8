@@ -1,4 +1,4 @@
-/* sim8 v2 — Styles */
+/* sim8 v3 — Styles */
 * {
     box-sizing: border-box;
 }
@@ -31,7 +31,7 @@
 
     /* ── Layout sizes (for resizable diagram) ── */
     --s-split: 38%;
-    --s-diagram-w: 930px;
+    --s-diagram-w: 980px;
     --s-block-radius: 4px;
     --s-block-font: 11px;
     --s-hdr-font: 10px;
@@ -43,15 +43,14 @@
     --s-label-font: 8px;
     --s-row-gap: 10px;
     --s-wire-gap: 56px;
-    --s-cpu-w: 312px;
-    --s-fpu-w: 360px;
-    --s-mem-w: 544px;
-    --s-disp-w: 544px;
+    --s-cpu-w: 220px;
+    --s-fpu-w: 340px;
+    --s-mem-w: 620px;
+    --s-disp-w: 620px;
     --s-cpu-x: 48px;
-    --s-fpu-x: 432px;
     --s-top-y: 32px;
     --s-mem-cell-w: 28px;
-    --s-mem-cell-h: 20px;
+    --s-mem-cell-h: 22px;
     --s-mem-cell-font: 10px;
     --s-mem-hdr-w: 28px;
     --s-mem-row-w: 24px;
@@ -71,12 +70,11 @@
 
     /* ── VU block ── */
     --s-vu-w: 220px;
-    --s-vu-x: 660px;
+    --s-vu-x: 724px; /* memRight(668) + wireGap(56) = 724 */
     --s-vu-queue-h: 22px;
 
     /* ── Pad block ── */
     --s-pad-w: 220px;
-    --s-pad-px: 6;
 }
 
 :root.light {
@@ -268,6 +266,19 @@ body {
 
 .mem-cell.marker-vc {
     border: 1px dashed var(--a-orange);
+}
+
+/* ── Section label (used in CPU, FPU, VU, Pad block headers) ── */
+.hw-label {
+    font-size: var(--s-label-font);
+    color: var(--t-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 4px;
+}
+
+span.hw-label {
+    margin-bottom: 0;
 }
 
 /* ── Register rows ── */
@@ -488,16 +499,26 @@ body {
 
 /* ── Split drag handle ── */
 #split-handle {
-    width: 5px;
+    width: 8px;
     cursor: col-resize;
     flex-shrink: 0;
     background: var(--t-border);
     transition: background 0.15s;
+    background-image: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 3px,
+        color-mix(in srgb, var(--t-text) 20%, transparent) 3px,
+        color-mix(in srgb, var(--t-text) 20%, transparent) 4px
+    );
+    background-size: 100% 24px;
+    background-position: center;
+    background-repeat: no-repeat;
 }
 
 #split-handle:hover,
 #split-handle.active {
-    background: var(--a-orange);
+    background-color: var(--a-orange);
 }
 
 /* ── CodeMirror syntax highlighting via CSS vars ── */
