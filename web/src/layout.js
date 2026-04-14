@@ -4,8 +4,9 @@
 
 import { cssVar } from "./state.js";
 
-const SPLIT_MIN_PCT = 15;
-const SPLIT_MAX_PCT = 70;
+const SPLIT_SNAP_RATIO = 0.05; // snap to fully collapsed within 5% of either edge
+const BLOCK_GAP = 16; // gap between adjacent blocks (CPU↔FPU, VU↔Pad)
+const CONTAINER_PAD = 32; // bottom padding for diagram container
 
 export function adjustBlockPositions(initWiresFn) {
     const cpuEl = document.getElementById("blk-cpu");
@@ -15,45 +16,53 @@ export function adjustBlockPositions(initWiresFn) {
     const dispEl = document.getElementById("blk-disp");
     const padEl = document.getElementById("blk-pad");
     const wireGap = parseInt(cssVar("--s-wire-gap")) || 56;
-
-    const cpuH = cpuEl.offsetHeight;
-    const fpuH = fpuEl.offsetHeight;
-    const maxH = Math.max(cpuH, fpuH);
     const topY = parseInt(cssVar("--s-top-y")) || 32;
-    if (cpuH < fpuH) cpuEl.style.top = topY + Math.round((fpuH - cpuH) / 2) + "px";
-    if (fpuH < cpuH) fpuEl.style.top = topY + Math.round((cpuH - fpuH) / 2) + "px";
 
-    const topBottom = topY + maxH;
-    memEl.style.top = topBottom + wireGap + "px";
+    // ── Horizontal: CPU+FPU left-aligned ──
+    const memLeft = parseInt(cssVar("--s-cpu-x")) || 48;
+    cpuEl.style.left = memLeft + "px";
+    fpuEl.style.left = memLeft + cpuEl.offsetWidth + BLOCK_GAP + "px";
 
-    const memTop = parseInt(memEl.style.top);
-    const memH = memEl.offsetHeight;
+    // ── Row 1: CPU + FPU at top, equal height ──
+    cpuEl.style.top = topY + "px";
+    fpuEl.style.top = topY + "px";
+    const maxH = Math.max(cpuEl.offsetHeight, fpuEl.offsetHeight);
+    cpuEl.style.minHeight = maxH + "px";
+    fpuEl.style.minHeight = maxH + "px";
 
-    if (vuEl) {
-        vuEl.style.top = memTop + "px";
-    }
+    const row1Bottom = topY + maxH;
+    const fpuRight = memLeft + cpuEl.offsetWidth + BLOCK_GAP + fpuEl.offsetWidth;
 
-    dispEl.style.top = memTop + memH + wireGap + "px";
+    // ── Memory + Display width = CPU left to FPU right ──
+    const rowWidth = fpuRight - memLeft;
+    memEl.style.width = rowWidth + "px";
+    dispEl.style.width = rowWidth + "px";
 
-    // Pad below VU (if visible)
+    // ── VU X: same gap as wireGap from Memory right ──
+    if (vuEl) vuEl.style.left = fpuRight + wireGap + "px";
+
+    // ── Row 2: Memory below bus corridor; VU aligned with row 1 top ──
+    const row2Top = row1Bottom + wireGap;
+    memEl.style.top = row2Top + "px";
+    if (vuEl) vuEl.style.top = topY + "px";
+
+    const memBottom = row2Top + memEl.offsetHeight;
+    const vuBottom = vuEl ? topY + vuEl.offsetHeight : topY;
+
+    dispEl.style.top = memBottom + wireGap + "px";
+
     const padVisible = padEl && padEl.style.display !== "none";
-    if (padEl && vuEl && padVisible) {
-        const vuH = vuEl.offsetHeight;
-        padEl.style.top = memTop + vuH + wireGap + "px";
+    if (padVisible) {
+        padEl.style.left = fpuRight + wireGap + "px";
+        padEl.style.top = vuBottom + BLOCK_GAP + "px";
     }
 
     const container = document.getElementById("diagram-container");
-    const dispTop = parseInt(dispEl.style.top);
-    let bottomEdge = dispTop + dispEl.offsetHeight;
+    let bottomEdge = parseInt(dispEl.style.top) + dispEl.offsetHeight;
+    if (vuEl) bottomEdge = Math.max(bottomEdge, vuBottom);
+    if (padVisible && padEl) bottomEdge = Math.max(bottomEdge, parseInt(padEl.style.top) + padEl.offsetHeight);
 
-    if (padVisible) {
-        const padTop = parseInt(padEl.style.top);
-        const padBottom = padTop + padEl.offsetHeight;
-        bottomEdge = Math.max(bottomEdge, padBottom);
-    }
-
-    container.style.height = bottomEdge + 32 + "px";
-
+    container.style.height = bottomEdge + CONTAINER_PAD + "px";
     initWiresFn();
 }
 
@@ -84,9 +93,14 @@ export function setupSplitHandle(onResize) {
     window.addEventListener("mousemove", (e) => {
         if (!dragging) return;
         const mainRect = left.parentElement.getBoundingClientRect();
+        const maxLeftW = mainRect.width - handle.offsetWidth; // right collapsed: diagram = 0px
+        const snapPx = mainRect.width * SPLIT_SNAP_RATIO;
         const x = e.clientX - mainRect.left;
-        const pct = Math.min(Math.max((x / mainRect.width) * 100, SPLIT_MIN_PCT), SPLIT_MAX_PCT);
-        left.style.width = pct + "%";
+        let targetW;
+        if (x < snapPx) targetW = 0;
+        else if (x > maxLeftW - snapPx) targetW = maxLeftW;
+        else targetW = x;
+        left.style.width = targetW + "px";
         onResize();
     });
 
