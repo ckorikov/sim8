@@ -19,18 +19,7 @@ import { setupControls, stopRun, isRunning, updateRunBtnColor } from "./controls
 import { initEditor, highlightExecLine, clearExecLine, showDiagnostic, clearDiagnostics } from "./editor.js";
 import { initTabs, saveCurrentTab, getVirtualFiles, getMainSource, switchTabForExec } from "./tabs.js";
 import { breakpoints } from "./breakpoints.js";
-import {
-    flashWire,
-    initWires,
-    updateWireColors,
-    WIRE_DATA,
-    WIRE_FP,
-    WIRE_IO,
-    WIRE_VU_CMD,
-    WIRE_VU_A,
-    WIRE_VU_B,
-    WIRE_PAD,
-} from "./wires.js";
+import { flashWire, initWires, updateWireColors, WIRE_DATA, WIRE_FP, WIRE_VU_A, WIRE_IO, WIRE_PAD } from "./wires.js";
 import { fitDiagram, setupSplitHandle, adjustBlockPositions } from "./layout.js";
 
 // ── Render all ─────────────────────────────────────────────────
@@ -76,25 +65,27 @@ async function doAssemble() {
     clearDiagnostics();
 
     cpu.reset();
-    asm.codeLen = 0;
     asm.labels = {};
     asm.mapping = {};
     asm.lineMap = null;
+    asm.lastCode = null;
+    asm.lastUsedBytes = 0;
     asm.instrStarts = new Set();
     asm.labelAddrs = new Set();
     asm.labelNames = new Map();
 
     try {
         const result = await assembleAsync(getMainSource(), 3, getVirtualFiles());
-        asm.codeLen = result.code.length;
         asm.labels = result.labels;
         asm.mapping = result.mapping;
         asm.lineMap = result.lineMap;
+        asm.lastCode = result.code;
+        asm.lastUsedBytes = result.usedBytes;
         asm.instrStarts = new Set(Object.keys(result.mapping).map(Number));
         const allLabels = Object.entries(result.labels);
         asm.labelAddrs = new Set(allLabels.map(([, v]) => v));
         asm.labelNames = new Map(allLabels.map(([n, v]) => [v, n]));
-        cpu.load(result.code);
+        cpu.load(result.code, result.usedBytes);
         renderLabels();
         renderAll();
         return true;
@@ -136,10 +127,10 @@ function padChanged() {
 
 function _activeWires(cpuDid, vuDid, opcode) {
     const wires = [];
-    if (vuDid) wires.push(WIRE_VU_A, WIRE_VU_B);
+    if (vuDid) wires.push(WIRE_VU_A);
     if (cpuDid) {
         if (BY_CODE_VU[opcode] !== undefined) {
-            wires.push(WIRE_VU_CMD);
+            wires.push(WIRE_DATA, WIRE_VU_A);
         } else if (BY_CODE_FP[opcode] !== undefined) {
             wires.push(WIRE_FP);
         } else {
@@ -171,9 +162,14 @@ function stepCPU() {
     return 1;
 }
 
-async function resetCPU() {
+function resetCPU() {
     if (isRunning()) stopRun();
-    await doAssemble();
+    if (asm.lastCode) {
+        cpu.load(asm.lastCode, asm.lastUsedBytes);
+    } else {
+        cpu.reset();
+    }
+    renderAll();
 }
 
 // ── Controls wiring ────────────────────────────────────────────
@@ -206,13 +202,13 @@ function applyTheme(dark) {
     document.getElementById("theme-label").textContent = dark ? "light" : "dark";
 }
 
-let isDark = localStorage.getItem("theme") !== "light";
+let isDark = localStorage.getItem("sim8-theme") !== "light";
 applyTheme(isDark);
 refreshColors();
 
 document.getElementById("btn-theme").addEventListener("click", () => {
     isDark = !isDark;
-    localStorage.setItem("theme", isDark ? "dark" : "light");
+    localStorage.setItem("sim8-theme", isDark ? "dark" : "light");
     applyTheme(isDark);
     refreshColors();
     renderAll();
