@@ -164,7 +164,7 @@ function cellClass(addr, val, showInstr) {
         cl += " stack";
     } else if (pad.visible && absAddr >= pad.start && absAddr < pad.end) {
         cl += " pad-region";
-    } else if (showInstr && absAddr < asm.codeLen && val) {
+    } else if (showInstr && absAddr < asm.lastUsedBytes && val) {
         cl += " instr";
     }
 
@@ -276,6 +276,44 @@ document.getElementById("page-prev").addEventListener("click", () => {
 });
 document.getElementById("page-next").addEventListener("click", () => {
     if (page < 255) setPage(page + 1);
+});
+
+// Click page-num to jump directly to a page
+const elPageNum = document.getElementById("page-num");
+const elPageInput = document.createElement("input");
+elPageInput.type = "number";
+elPageInput.min = "0";
+elPageInput.max = "255";
+elPageInput.style.cssText =
+    "width:42px;font-size:9px;text-align:center;font-weight:400;letter-spacing:0;" +
+    "background:var(--t-bg);color:var(--t-text);border:1px solid var(--t-border);border-radius:3px;" +
+    "padding:1px 2px;display:none";
+elPageNum.insertAdjacentElement("afterend", elPageInput);
+elPageNum.style.cursor = "pointer";
+
+function commitPageInput() {
+    const v = parseInt(elPageInput.value, 10);
+    if (Number.isFinite(v) && v >= 0 && v <= 255) setPage(v);
+    elPageInput.style.display = "none";
+    elPageNum.style.display = "";
+}
+
+elPageNum.addEventListener("click", () => {
+    elPageInput.value = page;
+    elPageNum.style.display = "none";
+    elPageInput.style.display = "";
+    elPageInput.select();
+});
+elPageInput.addEventListener("blur", commitPageInput);
+elPageInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+        e.preventDefault();
+        commitPageInput();
+    }
+    if (e.key === "Escape") {
+        elPageInput.style.display = "none";
+        elPageNum.style.display = "";
+    }
 });
 
 // Data inspector tooltip

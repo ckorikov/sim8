@@ -73,10 +73,10 @@ export class CPU {
 
     // ── Public API ────────────────────────────────────────────────────
 
-    load(code) {
+    load(code, usedBytes) {
         this.reset();
         this.mem.load(code);
-        this._peakMem = code.length;
+        this._peakMem = usedBytes ?? code.length;
     }
 
     /** True when VU queue has pending work. */

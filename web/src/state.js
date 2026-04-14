@@ -32,7 +32,8 @@ export const asm = {
     instrStarts: new Set(),
     labelAddrs: new Set(), // absolute addresses that are label entry points (globals only)
     labelNames: new Map(), // absolute address → label name (globals only)
-    codeLen: 0,
+    lastCode: null,
+    lastUsedBytes: 0,
 };
 
 // ── CSS helper ──────────────────────────────────────────────────

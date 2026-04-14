@@ -366,7 +366,13 @@ function _buildOutput(st) {
         mapping[flatAddr(entry.page, entry.offset)] = entry.lineNo;
     }
 
-    return { code, labels, mapping };
+    // Actual bytes emitted (without page padding)
+    let usedBytes = 0;
+    for (const data of Object.values(st.pageCodes)) {
+        usedBytes += data.length;
+    }
+
+    return { code, labels, mapping, usedBytes };
 }
 
 export function assemble(source, arch = 2, files = {}) {
@@ -396,8 +402,8 @@ export function assemble(source, arch = 2, files = {}) {
         // Pass 2: resolve labels
         _pass2(st);
         // Build output
-        const { code, labels, mapping } = _buildOutput(st);
-        return { code, labels, mapping, lineMap };
+        const { code, labels, mapping, usedBytes } = _buildOutput(st);
+        return { code, labels, mapping, usedBytes, lineMap };
     } catch (e) {
         throw _locErr(e);
     }
