@@ -3,13 +3,11 @@
  * Bidirectional: mouse drawing writes to memory, program writes update the canvas.
  */
 
-import { cpu, pad, PAGE_SIZE } from "../state.js";
+import { cpu, pad, colors, PAGE_SIZE } from "../state.js";
 
-const MODES = {
-    8: { w: 8, h: 8, px: 21 },
-    16: { w: 16, h: 16, px: 10 },
-    28: { w: 28, h: 28, px: 6 },
-};
+const VALID_SIZES = [8, 16, 28];
+const CANVAS_SIZE = 168; // fixed visual size in px; PX = CANVAS_SIZE / gridSize
+const DRAW_VALUE = 255;
 const DEFAULT_PAGE = 1;
 
 const elBlock = document.getElementById("blk-pad");
@@ -18,23 +16,18 @@ const elPage = document.getElementById("pad-page");
 const elAddr = document.getElementById("pad-addr");
 const elClear = document.getElementById("pad-clear");
 const elToggle = document.getElementById("btn-pad");
-const elSize = document.getElementById("pad-size");
+const elSizeTabs = document.getElementById("pad-size-tabs");
 
 const ctx = elCanvas.getContext("2d");
 
-let padW = 28;
-let padH = 28;
-let padSize = padW * padH;
-let PX = MODES[28].px;
+let gridSize = 28;
+let padSize = gridSize * gridSize;
+let PX = CANVAS_SIZE / gridSize;
 
 function setMode(size) {
-    const m = MODES[size];
-    padW = m.w;
-    padH = m.h;
-    PX = m.px;
-    padSize = padW * padH;
-    elCanvas.width = padW * PX;
-    elCanvas.height = padH * PX;
+    gridSize = size;
+    PX = CANVAS_SIZE / gridSize;
+    padSize = gridSize * gridSize;
     applyPadState();
 }
 
@@ -55,13 +48,8 @@ function syncInputs() {
     elAddr.value = padOffset;
 }
 
-// Initialize shared state
 applyPadState();
 syncInputs();
-
-function getDrawValue() {
-    return 255;
-}
 
 function parsePageInput() {
     const v = parseInt(elPage.value, 10);
@@ -81,30 +69,20 @@ function parseAddrInput() {
 
 function cellFromEvent(e) {
     const rect = elCanvas.getBoundingClientRect();
-    const scaleX = elCanvas.width / rect.width;
-    const scaleY = elCanvas.height / rect.height;
-    const x = Math.floor(((e.clientX - rect.left) * scaleX) / PX);
-    const y = Math.floor(((e.clientY - rect.top) * scaleY) / PX);
-    if (x < 0 || x >= padW || y < 0 || y >= padH) return null;
+    const x = Math.floor((e.clientX - rect.left) / PX);
+    const y = Math.floor((e.clientY - rect.top) / PX);
+    if (x < 0 || x >= gridSize || y < 0 || y >= gridSize) return null;
     return { x, y };
-}
-
-function getBgStyle() {
-    return getComputedStyle(document.documentElement).getPropertyValue("--t-bg").trim();
-}
-
-function getFgStyle() {
-    return getComputedStyle(document.documentElement).getPropertyValue("--a-green").trim();
 }
 
 function paintCell(cx, cy, val) {
     const x = cx * PX;
     const y = cy * PX;
-    ctx.fillStyle = getBgStyle();
+    ctx.fillStyle = colors.canvas;
     ctx.fillRect(x, y, PX, PX);
     if (val > 0) {
         ctx.globalAlpha = val / 255;
-        ctx.fillStyle = getFgStyle();
+        ctx.fillStyle = colors.gr;
         ctx.fillRect(x, y, PX, PX);
         ctx.globalAlpha = 1;
     }
@@ -112,48 +90,39 @@ function paintCell(cx, cy, val) {
 
 function paint(cell) {
     if (!cell) return;
-    const addr = pad.start + cell.y * padW + cell.x;
-    const val = getDrawValue();
-    cpu.mem.set(addr, val);
-    paintCell(cell.x, cell.y, val);
+    const addr = pad.start + cell.y * gridSize + cell.x;
+    cpu.mem.set(addr, DRAW_VALUE);
+    paintCell(cell.x, cell.y, DRAW_VALUE);
 }
 
 export function renderPad() {
     if (!pad.visible) return;
     const base = pad.start;
-    const bg = getBgStyle();
-    const fg = getFgStyle();
-    for (let y = 0; y < padH; y++) {
-        for (let x = 0; x < padW; x++) {
-            const v = cpu.mem.get(base + y * padW + x);
-            const px = x * PX;
-            const py = y * PX;
-            ctx.fillStyle = bg;
-            ctx.fillRect(px, py, PX, PX);
-            if (v > 0) {
-                ctx.globalAlpha = v / 255;
-                ctx.fillStyle = fg;
-                ctx.fillRect(px, py, PX, PX);
-                ctx.globalAlpha = 1;
-            }
+    for (let y = 0; y < gridSize; y++) {
+        for (let x = 0; x < gridSize; x++) {
+            paintCell(x, y, cpu.mem.get(base + y * gridSize + x));
         }
     }
 }
 
 function clearPad() {
-    cpu.mem.reset();
+    for (let i = pad.start; i < pad.end; i++) cpu.mem.set(i, 0);
+    ctx.fillStyle = colors.canvas;
+    ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
     renderPad();
     if (_onSync) _onSync();
 }
 
-const elMemPort = document.getElementById("port-mem-right-pad");
+function applyPadVisible() {
+    elBlock.style.display = pad.visible ? "" : "none";
+    elToggle.style.color = pad.visible ? "var(--a-purple)" : "var(--t-dim)";
+    if (pad.visible) renderPad();
+}
 
 function togglePad() {
     pad.visible = !pad.visible;
-    elBlock.style.display = pad.visible ? "" : "none";
-    elMemPort.style.display = pad.visible ? "" : "none";
-    elToggle.style.color = pad.visible ? "var(--a-purple)" : "var(--t-dim)";
-    if (pad.visible) renderPad();
+    localStorage.setItem("sim8-pad", pad.visible ? "on" : "off");
+    applyPadVisible();
 }
 
 let _onLayout = null;
@@ -161,6 +130,9 @@ let _onLayout = null;
 export function initPad(onLayout, onSync) {
     _onLayout = onLayout;
     _onSync = onSync;
+
+    pad.visible = localStorage.getItem("sim8-pad") === "on";
+    applyPadVisible();
 
     elCanvas.addEventListener("mousedown", (e) => {
         e.preventDefault();
@@ -173,27 +145,25 @@ export function initPad(onLayout, onSync) {
         paint(cellFromEvent(e));
     });
 
-    elCanvas.addEventListener("mouseup", () => {
+    const stopDrawing = () => {
         if (drawing) {
             drawing = false;
             if (_onSync) _onSync();
         }
-    });
-
-    elCanvas.addEventListener("mouseleave", () => {
-        if (drawing) {
-            drawing = false;
-            if (_onSync) _onSync();
-        }
-    });
+    };
+    elCanvas.addEventListener("mouseup", stopDrawing);
+    elCanvas.addEventListener("mouseleave", stopDrawing);
 
     elClear.addEventListener("click", clearPad);
 
-    elSize.addEventListener("change", () => {
-        setMode(parseInt(elSize.value, 10));
-        renderPad();
-        if (_onLayout) _onLayout();
-        if (_onSync) _onSync();
+    elSizeTabs.addEventListener("click", (e) => {
+        const t = e.target.closest("[data-padsize]");
+        if (!t) return;
+        const size = parseInt(t.dataset.padsize, 10);
+        if (!VALID_SIZES.includes(size)) return;
+        elSizeTabs.querySelectorAll(".ft").forEach((b) => b.classList.toggle("act", b === t));
+        setMode(size);
+        clearPad();
     });
 
     elPage.addEventListener("change", () => {
