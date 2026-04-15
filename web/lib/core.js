@@ -91,7 +91,11 @@ export class CPU {
 
     /** Tick VU independently. Returns true if VU did work. */
     vuTick() {
-        if (this.vu === null || this.vu.isEmpty) return false;
+        if (this.vu === null) return false;
+        if (this.vu.isEmpty) {
+            if (this._vuWaiting) this._stepVwait();
+            return false;
+        }
         this.vu.tick(this.mem, this._vuRoundingMode());
         if (this._consumeVuFault()) return false;
         if (this._vuWaiting) this._stepVwait();

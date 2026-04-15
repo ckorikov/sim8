@@ -354,6 +354,7 @@ span.hw-label {
 
 /* ── Pad ── */
 #pad-canvas {
+    display: block;
     image-rendering: pixelated;
     cursor: crosshair;
     border: 1px solid var(--t-border);
@@ -928,6 +929,21 @@ span.hw-label {
     flex-direction: column;
     gap: 2px;
     width: 100%;
+}
+
+#vu-state-dot.vu-busy {
+    animation: dot-pulse 0.6s ease-in-out infinite;
+}
+
+@keyframes dot-pulse {
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.2;
+    }
 }
 
 .vu-queue-slot {

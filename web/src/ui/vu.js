@@ -65,4 +65,5 @@ export function renderVU(vu) {
     elQueue.innerHTML = slots;
 
     elDot.style.background = colors[DOT_COLORS[vuState] || "dim"];
+    elDot.classList.toggle("vu-busy", vuState === "BUSY");
 }
