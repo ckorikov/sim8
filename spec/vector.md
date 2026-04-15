@@ -75,7 +75,7 @@ $S = \text{VL} \times \text{elem\_size}$, $s = \text{elem\_size}$.
 | src1 | $+S$ | $+S$ | $+S$ | $+S$ |
 | src2 | $+S$ | — | — | — |
 
-**Overrides:** VDOT dst $+s$. VCMP dst $+\text{VL}$. VSEL mask no advance. VMOV unary — dst and src1 only. VMOV vi — dst only. VGATHER: src $+S$, VM and dst **no advance**. VSCATTER: dst $+S$, VM and src **no advance**.
+**Overrides:** VDOT dst $+s$. VCMP dst $+\text{VL}$. VSEL mask no advance. VMOV unary — dst and src1 only. VMOV vi — dst only. VGATHER/VSCATTER — see §9.11.
 
 **Deduplication:** Same register in multiple roles → advance **once** by the largest stride. VL = 0 → no advance.
 
@@ -159,8 +159,8 @@ Bits [7:3] must be 0. cond: EQ=0, NE=1, LT=2, LE=3, GT=4, GE=5. Values 6–7 →
 | Compare | VCMP | vv | all | 4 bytes (cond in byte 3; see above) |
 | Select | VSEL | vv | all | Reads mask from VM |
 | Memory | VMOV | vv (unary), vi | all | vi mode: `VFILL` is an assembler alias |
-| Gather | VGATHER | vv (unary) | all | Mask compress: pack where VM[i]≠0; reads VM |
-| Scatter | VSCATTER | vv (unary) | all | Mask expand: unpack where VM[i]≠0; reads VM |
+| Gather | VGATHER | vv (unary) | all | Mask compress; see §9.11 |
+| Scatter | VSCATTER | vv (unary) | all | Mask expand; see §9.11 |
 
 Invalid mode or format combination → FAULT(`ERR_VU_FORMAT`).
 
@@ -181,11 +181,10 @@ Invalid mode or format combination → FAULT(`ERR_VU_FORMAT`).
 - **VDOT:** FP only. Intermediate precision ≥ source format.
 - **VNEG:** FP flips sign; integer: two's complement negate (wrapping).
 - **VABS:** FP clears sign; .U: identity; .I: wrapping (-128 → -128).
-- **VCMP:** Byte mask (0xFF/0x00). FP NaN → false (except NE). Integer: `.U` unsigned; `.I` signed. 4-byte encoding (cond in byte 3, see §9.7).
-- **VSEL:** `dst[i] = mask[i] ? dst[i] : alt[i]`. Overlap undefined.
+- **VCMP:** Byte mask (0xFF/0x00). FP NaN → false (except NE). Integer: `.U` unsigned; `.I` signed. 4-byte encoding (cond in byte 3, see §9.7). See §9.11.
+- **VSEL:** `dst[i] = mask[i] ? dst[i] : alt[i]`. Overlap undefined. See §9.11.
 - **VMOV:** Unary: raw byte copy, no conversion. vi mode: `dst[i] = imm` broadcast; `VFILL` is an assembler alias. Overlap undefined.
-- **VGATHER:** Mask compress. `j=0; for i in 0..VL-1: if mask[i]: dst[j++] = src[i]`. Raw byte copy. src $+S$, VM and dst **no advance**. Overlap undefined.
-- **VSCATTER:** Mask expand. `j=0; for i in 0..VL-1: if mask[i]: dst[i] = src[j++]`. Raw byte copy. dst $+S$, VM and src **no advance**. Overlap undefined.
+- **VGATHER/VSCATTER:** Mask compress/expand. See §9.11.
 
 ## 9.10 Assembly
 
@@ -210,3 +209,38 @@ VWAIT                          ; sync
 ```
 
 Format suffix mandatory. Mode suffix optional — inferred from operands (see §9.4). Condition suffix required for VCMP.
+
+## 9.11 Mask Operations
+
+The **VM** register points to a byte-mask array in memory. Each byte is either `0x00` (false) or non-zero (true). VCMP produces `0xFF`/`0x00`, but any non-zero value is truthy.
+
+Four instructions use the mask:
+
+| Instruction | VM role | Semantics | VM auto-increment |
+|-------------|---------|-----------|-------------------|
+| VCMP | write | Compare src1, src2 → write byte mask at [VM] | VM $+\text{VL}$ |
+| VSEL | read | `dst[i] = mask[i] ? dst[i] : alt[i]` | no advance |
+| VGATHER | read | Compress: pack elements where `mask[i]≠0` | no advance |
+| VSCATTER | read | Expand: unpack into positions where `mask[i]≠0` | no advance |
+
+**Mask size:** Always VL bytes (one byte per element), regardless of element format. For `.F` (4 bytes/element), the mask is still VL bytes, not VL×4.
+
+**Typical pattern:**
+
+```asm
+; Compare VA > VB, then select
+VCMP.U.GT VM, VA, VB        ; mask[i] = (VA[i] > VB[i]) ? 0xFF : 0x00
+VSEL.U VC, VA, VB            ; VC[i] = mask[i] ? VC[i] : VA[i]
+VWAIT
+
+; Compress: extract every 4th byte (e.g., blue channel from BGRA)
+VSET VM, {mask}, mask         ; pre-built [FF,00,00,00] pattern
+VGATHER.U VB, VA              ; VB ← packed selected bytes from VA
+VWAIT
+```
+
+**VGATHER compress:** `j=0; for i in 0..VL-1: if mask[i]: dst[j++] = src[i]`. Output length = popcount of mask. Auto-increment: src $+S$, dst and VM no advance. Overlap undefined.
+
+**VSCATTER expand:** `j=0; for i in 0..VL-1: if mask[i]: dst[i] = src[j++]`. Inverse of VGATHER. Auto-increment: dst $+S$, src and VM no advance. Overlap undefined.
+
+**OOB:** Deterministic pointers are pre-checked on first window. Data-dependent pointers (VGATHER dst, VSCATTER src) are checked per-window at runtime → `ERR_VU_OOB` deferred to VWAIT.
