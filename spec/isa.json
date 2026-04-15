@@ -2127,6 +2127,32 @@
       "since": 3,
       "asm": "VFILL.fmt vdst, imm",
       "desc": "Alias for VMOV.VI: vdst[i] = imm (broadcast fill); opcode 183 reserved"
+    },
+    {
+      "op": "VGATHER",
+      "opcode": 184,
+      "mnemonic": "VGATHER",
+      "operands": [
+        "imm",
+        "imm"
+      ],
+      "cost": 1,
+      "since": 3,
+      "asm": "VGATHER.fmt vdst, vsrc",
+      "desc": "Mask compress: pack elements where VM[i]!=0 from vsrc into contiguous vdst"
+    },
+    {
+      "op": "VSCATTER",
+      "opcode": 185,
+      "mnemonic": "VSCATTER",
+      "operands": [
+        "imm",
+        "imm"
+      ],
+      "cost": 1,
+      "since": 3,
+      "asm": "VSCATTER.fmt vdst, vsrc",
+      "desc": "Mask expand: unpack contiguous vsrc into vdst at positions where VM[i]!=0"
     }
   ]
 }

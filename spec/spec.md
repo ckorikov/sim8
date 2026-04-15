@@ -183,7 +183,7 @@ Asynchronous Vector Unit (VU) coprocessor for bulk data operations. Designed for
 - vi (immediate broadcast): inline immediate — inferred when 3rd operand is number
 - r (reduction): scalar result — inferred when 2 operands
 
-**Vector instructions (21 opcodes, 163–183):**
+**Vector instructions (23 opcodes, 163–185):**
 
 - Configuration: VSET (4 opcodes), VFSTAT, VFCLR, VWAIT
 - Arithmetic: VADD, VSUB, VMUL, VDIV, VMAX, VMIN (6 opcodes, each with vv/vs/vi/r modes)
@@ -191,6 +191,7 @@ Asynchronous Vector Unit (VU) coprocessor for bulk data operations. Designed for
 - Unary: VSQRT, VNEG, VABS
 - Mask: VCMP (6 conditions: EQ/NE/LT/LE/GT/GE) → byte mask at [VM]; VSEL (select by mask)
 - Memory: VMOV (copy with auto-increment), VFILL (fill with immediate)
+- Gather/Scatter: VGATHER (mask compress), VSCATTER (mask expand)
 
 **VFM Byte Encoding:**
 
@@ -216,4 +217,4 @@ Asynchronous Vector Unit (VU) coprocessor for bulk data operations. Designed for
 - ERR_VU_OOB (13): VU memory access overflow
 - ERR_VU_FORMAT (14): invalid VFM byte encoding
 
-**Totals:** 130 opcodes assigned (74 integer + 35 FP + 21 vector), 126 free, 9 error codes
+**Totals:** 132 opcodes assigned (74 integer + 35 FP + 23 vector), 124 free, 9 error codes

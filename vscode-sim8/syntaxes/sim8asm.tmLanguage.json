@@ -109,7 +109,7 @@
     },
     "vu-instruction": {
       "comment": "VU async instructions with format/mode/cond suffixes: VADD.U  VMUL.F.VV  VCMP.U.EQ",
-      "match": "(?i)\\\\b(VADD|VSUB|VMUL|VDIV|VMAX|VMIN|VDOT|VSQRT|VNEG|VABS|VCMP|VSEL|VMOV|VFILL)((?:\\.(?:BF|O[23]|[FHUI]|VV|VS|VI|R|EQ|NE|LT|LE|GT|GE))+)\\\\b",
+      "match": "(?i)\\\\b(VADD|VSUB|VMUL|VDIV|VMAX|VMIN|VDOT|VSQRT|VNEG|VABS|VCMP|VSEL|VMOV|VFILL|VGATHER|VSCATTER)((?:\\.(?:BF|O[23]|[FHUI]|VV|VS|VI|R|EQ|NE|LT|LE|GT|GE))+)\\\\b",
       "captures": {
         "1": {
           "name": "keyword.mnemonic.vu.sim8"

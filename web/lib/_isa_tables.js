@@ -137,6 +137,8 @@ export const Op = Object.freeze({
     VSEL: 181,
     VMOV: 182,
     VFILL: 183,
+    VGATHER: 184,
+    VSCATTER: 185,
 
 });
 
@@ -280,6 +282,8 @@ export const ISA_VU_DATA = [
     ["VSEL", 181, "VSEL", ["imm", "imm"], 1, false],
     ["VMOV", 182, "VMOV", ["imm", "imm"], 1, false],
     ["VFILL", 183, "VFILL", ["imm", "imm"], 1, false],
+    ["VGATHER", 184, "VGATHER", ["imm", "imm"], 1, false],
+    ["VSCATTER", 185, "VSCATTER", ["imm", "imm"], 1, false],
 ];
 
 // ── FP register data ─────────────────────────────────────────────────

@@ -10,7 +10,7 @@ Asynchronous coprocessor for bulk SIMD operations on contiguous memory. The CPU 
 |----------|-------|
 | Queue | FIFO, in-order (see [uarch §4.6b](uarch.md#46b-vu-pipeline) for depth) |
 | Sync instructions | VSET (163–166), VFSTAT (167), VFCLR (168), VWAIT (169) |
-| Async commands | VADD–VMOV (170–182) — see `spec/isa.json` |
+| Async commands | VADD–VSCATTER (170–185) — see `spec/isa.json` |
 | Memory | Shared 64 KB, absolute addressing (DP ignored), no coherence |
 
 ## 9.2 Registers
@@ -75,7 +75,7 @@ $S = \text{VL} \times \text{elem\_size}$, $s = \text{elem\_size}$.
 | src1 | $+S$ | $+S$ | $+S$ | $+S$ |
 | src2 | $+S$ | — | — | — |
 
-**Overrides:** VDOT dst $+s$. VCMP dst $+\text{VL}$. VSEL mask no advance. VMOV unary — dst and src1 only. VMOV vi — dst only.
+**Overrides:** VDOT dst $+s$. VCMP dst $+\text{VL}$. VSEL mask no advance. VMOV unary — dst and src1 only. VMOV vi — dst only. VGATHER: src $+S$, VM and dst **no advance**. VSCATTER: dst $+S$, VM and src **no advance**.
 
 **Deduplication:** Same register in multiple roles → advance **once** by the largest stride. VL = 0 → no advance.
 
@@ -159,6 +159,8 @@ Bits [7:3] must be 0. cond: EQ=0, NE=1, LT=2, LE=3, GT=4, GE=5. Values 6–7 →
 | Compare | VCMP | vv | all | 4 bytes (cond in byte 3; see above) |
 | Select | VSEL | vv | all | Reads mask from VM |
 | Memory | VMOV | vv (unary), vi | all | vi mode: `VFILL` is an assembler alias |
+| Gather | VGATHER | vv (unary) | all | Mask compress: pack where VM[i]≠0; reads VM |
+| Scatter | VSCATTER | vv (unary) | all | Mask expand: unpack where VM[i]≠0; reads VM |
 
 Invalid mode or format combination → FAULT(`ERR_VU_FORMAT`).
 
@@ -182,6 +184,8 @@ Invalid mode or format combination → FAULT(`ERR_VU_FORMAT`).
 - **VCMP:** Byte mask (0xFF/0x00). FP NaN → false (except NE). Integer: `.U` unsigned; `.I` signed. 4-byte encoding (cond in byte 3, see §9.7).
 - **VSEL:** `dst[i] = mask[i] ? dst[i] : alt[i]`. Overlap undefined.
 - **VMOV:** Unary: raw byte copy, no conversion. vi mode: `dst[i] = imm` broadcast; `VFILL` is an assembler alias. Overlap undefined.
+- **VGATHER:** Mask compress. `j=0; for i in 0..VL-1: if mask[i]: dst[j++] = src[i]`. Raw byte copy. src $+S$, VM and dst **no advance**. Overlap undefined.
+- **VSCATTER:** Mask expand. `j=0; for i in 0..VL-1: if mask[i]: dst[i] = src[j++]`. Raw byte copy. dst $+S$, VM and src **no advance**. Overlap undefined.
 
 ## 9.10 Assembly
 
@@ -200,6 +204,8 @@ VCMP.U.LT VM, VA, VB          ; condition suffix (always vv), 4 bytes
 VMOV.U VC, VA                 ; unary: raw byte copy
 VMOV.U VC, 0                  ; vi mode: broadcast fill (VFILL alias)
 VFILL.U VC, 0                 ; same as above
+VGATHER.U VB, VA              ; mask compress: pack where VM[i]!=0
+VSCATTER.U VB, VA             ; mask expand: unpack where VM[i]!=0
 VWAIT                          ; sync
 ```
 
