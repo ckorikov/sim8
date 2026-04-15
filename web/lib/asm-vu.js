@@ -148,7 +148,7 @@ const _VU_MNEMONIC_TO_OP = {
     VSCATTER: Op.VSCATTER,
 };
 
-const _VU_SINGLE_MODE = new Set(["VDOT", "VSQRT", "VNEG", "VABS", "VSEL", "VGATHER", "VSCATTER"]);
+const _VU_SINGLE_MODE = new Set(["VMOV", "VDOT", "VSQRT", "VNEG", "VABS", "VSEL", "VGATHER", "VSCATTER"]);
 
 function _resolveVuModeCond(mnemonic, modeSuffix, operands, line) {
     if (mnemonic === "VCMP") {

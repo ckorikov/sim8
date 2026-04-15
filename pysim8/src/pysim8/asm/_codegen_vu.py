@@ -37,7 +37,7 @@ _VU_MNEMONIC_TO_OP: dict[str, int] = {d.mnemonic: int(d.op) for d in ISA_VU if d
 # VFILL is an alias for VMOV — emits opcode 182 (Op.VMOV) with forced vi mode
 _VU_MNEMONIC_TO_OP["VFILL"] = int(Op.VMOV)
 
-_VU_SINGLE_MODE: frozenset[str] = frozenset({"VDOT", "VSQRT", "VNEG", "VABS", "VSEL", "VGATHER", "VSCATTER"})
+_VU_SINGLE_MODE: frozenset[str] = frozenset({"VMOV", "VDOT", "VSQRT", "VNEG", "VABS", "VSEL", "VGATHER", "VSCATTER"})
 
 
 def _encode_vu_instruction(
