@@ -133,7 +133,7 @@ class HandlersFpMixin:
 
     # ── Memory helpers ─────────────────────────────────────────────
 
-    def _check_page_boundary(self, addr: int, nbytes: int) -> None:
+    def _validate_page_boundary(self, addr: int, nbytes: int) -> None:
         """Raise PAGE_BOUNDARY if [addr, addr+nbytes) crosses a page."""
         if addr % PAGE_SIZE + nbytes > PAGE_SIZE:
             raise CpuFault(ErrorCode.PAGE_BOUNDARY, self.regs.ip)
@@ -141,7 +141,7 @@ class HandlersFpMixin:
     def _fp_read_mem_raw(self, addr: int, fmt: int) -> bytes:
         """Read raw bytes from memory for an FP value."""
         nbytes = FP_FMT_WIDTH[fmt] // 8
-        self._check_page_boundary(addr, nbytes)
+        self._validate_page_boundary(addr, nbytes)
         return bytes(self.mem[addr + i] for i in range(nbytes))
 
     def _fp_read_mem(self, addr: int, fmt: int) -> float:
@@ -150,7 +150,7 @@ class HandlersFpMixin:
 
     def _fp_write_mem_raw(self, addr: int, fmt: int, data: bytes) -> None:
         """Write raw bytes to memory."""
-        self._check_page_boundary(addr, FP_FMT_WIDTH[fmt] // 8)
+        self._validate_page_boundary(addr, FP_FMT_WIDTH[fmt] // 8)
         for i, b in enumerate(data):
             self.mem[addr + i] = b
 

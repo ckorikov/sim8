@@ -1479,7 +1479,7 @@ class TestHandlerEdges:
         incomplete = dict(cpu._dispatch)
         del incomplete[Op.INC_REG]
         with pytest.raises(RuntimeError, match="INC_REG"):
-            HandlersMixin._check_dispatch_complete(incomplete)
+            HandlersMixin._validate_dispatch_complete(incomplete)
 
     def test_fpu_not_available_on_arch1(self) -> None:
         """Accessing _fpu on arch=1 (no FPU) raises RuntimeError."""

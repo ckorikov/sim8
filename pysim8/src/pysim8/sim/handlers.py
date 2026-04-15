@@ -218,10 +218,10 @@ class HandlersMixin:
                     d[op] = self._make_div(_src[entry[2]])
                 case "jcc":
                     d[op] = self._make_jcc(_jcc[entry[2]], is_reg=entry[3] == "reg")
-        self._check_dispatch_complete(d)
+        self._validate_dispatch_complete(d)
 
     @staticmethod
-    def _check_dispatch_complete(d: dict[Op, Handler]) -> None:
+    def _validate_dispatch_complete(d: dict[Op, Handler]) -> None:
         """Verify every non-HLT, non-FP Op has a handler."""
         _fp_ops: set[Op] = {Op(c) for c in BY_CODE_FP}
         _vu_ops: set[Op] = {Op(c) for c in BY_CODE_VU}

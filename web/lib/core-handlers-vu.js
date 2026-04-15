@@ -202,7 +202,7 @@ function _vuDrainAndEnqueue(vu, cmd) {
 /** Return the immediate value for a VU instruction based on its addressing mode. */
 function _vuBuildImm(mode, s2Code, operands) {
     if (mode === VU_MODE_VI) {
-        // operands: [opcode, vfm_enc|regs, imm_byte_0, imm_byte_1, ...]
+        // operands: [opcode, vfmEnc|regs, imm_byte_0, imm_byte_1, ...]
         let imm = 0;
         for (let i = 2; i < operands.length; i++) imm |= operands[i] << (8 * (i - 2));
         return imm;

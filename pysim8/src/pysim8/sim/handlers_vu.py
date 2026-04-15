@@ -351,7 +351,7 @@ class HandlersVuMixin:
         sz = VU_FMT_ELEM_SIZE.get(cmd.fmt, 1)
 
         # OOB check on first tick only
-        if cmd.progress == 0 and self._vu_check_oob(cmd, sz):
+        if cmd.progress == 0 and self._vu_validate_oob(cmd, sz):
             self._vu_queue.fault = ErrorCode.VU_OOB
             self._vu_queue.flush()
             return
@@ -521,7 +521,7 @@ class HandlersVuMixin:
 
     _GATHER_OPS: frozenset[int] = frozenset({Op.VGATHER, Op.VSCATTER})
 
-    def _vu_check_oob(self, cmd: VuCommand, sz: int) -> bool:
+    def _vu_validate_oob(self, cmd: VuCommand, sz: int) -> bool:
         """Check if any operand access is out of bounds."""
         vl = cmd.vl
         dst_bytes = self._vu_dst_footprint(cmd, sz)

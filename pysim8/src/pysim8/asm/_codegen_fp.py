@@ -30,7 +30,7 @@ def _encode_db_operand(op: Operand, line: int, result: list[int]) -> None:
         return
     if isinstance(op, OpFloat):
         data, exc = float_to_bytes(op.value, op.fmt)
-        _check_e4m3_range(exc, op.fmt, line)
+        _validate_e4m3_range(exc, op.fmt, line)
         result.extend(data)
         return
     raise AssemblerError("DB does not support this operand", line)
@@ -51,7 +51,7 @@ def _validate_fp_suffix(suffix: str, line: int) -> int:
     return _lookup_suffix(suffix, FP_SUFFIX_TO_FMT, "Invalid FP format suffix", line)
 
 
-def _check_e4m3_range(exc: FpExceptions, fmt: int, line: int) -> None:
+def _validate_e4m3_range(exc: FpExceptions, fmt: int, line: int) -> None:
     if exc.overflow and fmt == FP_FMT_O3:
         raise AssemblerError("Float value out of range for format E4M3", line)
 
@@ -146,7 +146,7 @@ def _encode_fmov_imm(
     _validate_fp_reg_width(dst_reg, dst_fmt, line)
 
     data, exc = float_to_bytes(fp_imm.value, dst_fmt)
-    _check_e4m3_range(exc, dst_fmt, line)
+    _validate_e4m3_range(exc, dst_fmt, line)
 
     fpm_enc = encode_fpm(dst_reg.phys, dst_reg.pos, dst_fmt)
 
