@@ -355,6 +355,8 @@ span.hw-label {
 /* ── Pad ── */
 #pad-canvas {
     display: block;
+    width: 192px;
+    height: 192px;
     image-rendering: pixelated;
     cursor: crosshair;
     border: 1px solid var(--t-border);
@@ -461,6 +463,15 @@ span.hw-label {
 .ft.act {
     border-color: var(--a-orange);
     color: var(--a-orange);
+}
+
+#pad-size-tabs {
+    display: flex;
+    gap: 4px;
+}
+
+#pad-size-tabs .ft {
+    flex: 1;
 }
 
 /* ── Page buttons ── */

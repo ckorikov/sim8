@@ -1,12 +1,12 @@
 /**
- * Pad block: 28×28 pixel grid mapped to CPU memory.
+ * Pad block: pixel grid (8×8, 16×16, 28×28, 64×64) mapped to CPU memory.
  * Bidirectional: mouse drawing writes to memory, program writes update the canvas.
  */
 
 import { cpu, pad, colors, PAGE_SIZE } from "../state.js";
 
-const VALID_SIZES = [8, 16, 28];
-const CANVAS_SIZE = 168; // fixed visual size in px; PX = CANVAS_SIZE / gridSize
+const VALID_SIZES = [8, 16, 28, 64];
+const CANVAS_SIZES = { 8: 192, 16: 192, 28: 168, 64: 192 };
 const DRAW_VALUE = 255;
 const DEFAULT_PAGE = 1;
 
@@ -22,12 +22,16 @@ const ctx = elCanvas.getContext("2d");
 
 let gridSize = 28;
 let padSize = gridSize * gridSize;
-let PX = CANVAS_SIZE / gridSize;
+let canvasSize = CANVAS_SIZES[gridSize];
+let PX = canvasSize / gridSize;
 
 function setMode(size) {
     gridSize = size;
-    PX = CANVAS_SIZE / gridSize;
+    canvasSize = CANVAS_SIZES[size];
+    PX = canvasSize / gridSize;
     padSize = gridSize * gridSize;
+    elCanvas.width = canvasSize;
+    elCanvas.height = canvasSize;
     applyPadState();
 }
 
@@ -69,8 +73,9 @@ function parseAddrInput() {
 
 function cellFromEvent(e) {
     const rect = elCanvas.getBoundingClientRect();
-    const x = Math.floor((e.clientX - rect.left) / PX);
-    const y = Math.floor((e.clientY - rect.top) / PX);
+    const cellPx = rect.width / gridSize;
+    const x = Math.floor((e.clientX - rect.left) / cellPx);
+    const y = Math.floor((e.clientY - rect.top) / cellPx);
     if (x < 0 || x >= gridSize || y < 0 || y >= gridSize) return null;
     return { x, y };
 }
@@ -108,7 +113,7 @@ export function renderPad() {
 function clearPad() {
     for (let i = pad.start; i < pad.end; i++) cpu.mem.set(i, 0);
     ctx.fillStyle = colors.canvas;
-    ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+    ctx.fillRect(0, 0, canvasSize, canvasSize);
     renderPad();
     if (_onSync) _onSync();
 }
