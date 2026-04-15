@@ -23,9 +23,10 @@ export function updateRunBtnColor() {
     btnRun.style.color = btnRun.dataset.state === "run" ? colors.gr : colors.rd;
 }
 
-function getSpeedMs() {
-    const hz = parseInt(speedSel.value) || 4;
-    return Math.round(1000 / hz);
+const BATCH_THRESHOLD = 128;
+
+function getSpeedHz() {
+    return parseInt(speedSel.value) || 4;
 }
 
 function setRunUI(running) {
@@ -38,27 +39,32 @@ function setRunUI(running) {
 }
 
 function tick() {
-    if (!_skipBpOnce) {
-        const execLine = _getExecLine?.();
-        if (_checkBp?.(execLine)) {
+    const hz = getSpeedHz();
+    const batch = hz > BATCH_THRESHOLD ? Math.round(hz / 60) : 1;
+
+    for (let i = 0; i < batch; i++) {
+        if (!_skipBpOnce) {
+            const execLine = _getExecLine?.();
+            if (_checkBp?.(execLine)) {
+                stopRun();
+                return;
+            }
+        }
+        _skipBpOnce = false;
+        let cost;
+        try {
+            cost = _onStep();
+        } catch (e) {
+            console.error("Step error:", e);
+            stopRun();
+            return;
+        }
+        if (!cost) {
             stopRun();
             return;
         }
     }
-    _skipBpOnce = false;
-    let cost;
-    try {
-        cost = _onStep();
-    } catch (e) {
-        console.error("Step error:", e);
-        stopRun();
-        return;
-    }
-    if (!cost) {
-        stopRun();
-        return;
-    }
-    runTimer = setTimeout(tick, getSpeedMs() * cost);
+    runTimer = setTimeout(tick, hz > BATCH_THRESHOLD ? 16 : Math.round(1000 / hz));
 }
 
 async function startRun() {
@@ -112,13 +118,16 @@ export function setupControls({ onStep, onReset, renderAll, checkBp, getExecLine
         // Skip BP check on step — user explicitly requested one step
         const cost = _onStep();
         if (cpu.state === CpuState.RUNNING && cost > 0) {
-            stepTimer = setTimeout(() => {
-                stepTimer = null;
-                if (!isRunning()) {
-                    cpu.pause();
-                    _renderCPU();
-                }
-            }, getSpeedMs() * cost);
+            stepTimer = setTimeout(
+                () => {
+                    stepTimer = null;
+                    if (!isRunning()) {
+                        cpu.pause();
+                        _renderCPU();
+                    }
+                },
+                Math.round(1000 / getSpeedHz()),
+            );
         }
     });
 
@@ -127,7 +136,7 @@ export function setupControls({ onStep, onReset, renderAll, checkBp, getExecLine
     speedSel.addEventListener("change", () => {
         if (runTimer) {
             clearTimeout(runTimer);
-            runTimer = setTimeout(tick, getSpeedMs());
+            runTimer = setTimeout(tick, Math.round(1000 / getSpeedHz()));
         }
     });
 }
