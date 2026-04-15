@@ -102,6 +102,7 @@ const _RE_FLOAT_SPECIAL = /^([+-]?)(inf|nan)(_\w+)?$/i;
 const _RE_BRACKET = /^\[(.+)\]$/;
 const _RE_REG_OFFSET = /^([A-Za-z]+)\s*([+-])\s*(\d+)$/;
 const _RE_REG_ONLY = /^([A-Za-z]+)$/;
+const _RE_LABEL_OFFSET = /^([.A-Za-z]\w*)\s*([+-])\s*(\d+)$/;
 
 function _parseBracketOperand(inner, line) {
     inner = inner.trim();
@@ -112,13 +113,21 @@ function _parseBracketOperand(inner, line) {
         const sign = m[2];
         let offsetVal = parseInt(m[3], 10);
         if (sign === "-") offsetVal = -offsetVal;
-        if (!(regName in Reg)) {
-            throw new AsmError(`Invalid register in address: ${m[1]}`, line);
+        if (regName in Reg) {
+            if (offsetVal < -16 || offsetVal > 15) {
+                throw new AsmError("offset must be a value between -16...+15", line);
+            }
+            return { tag: TAG_REGADDR, regCode: Reg[regName], offset: offsetVal };
         }
-        if (offsetVal < -16 || offsetVal > 15) {
-            throw new AsmError("offset must be a value between -16...+15", line);
-        }
-        return { tag: TAG_REGADDR, regCode: Reg[regName], offset: offsetVal };
+    }
+
+    m = _RE_LABEL_OFFSET.exec(inner);
+    if (m) {
+        const name = m[1];
+        const sign = m[2];
+        let offsetVal = parseInt(m[3], 10);
+        if (sign === "-") offsetVal = -offsetVal;
+        return { tag: TAG_ADDR_LABEL, name: name.toLowerCase(), offset: offsetVal };
     }
 
     m = _RE_REG_ONLY.exec(inner);
@@ -136,7 +145,7 @@ function _parseBracketOperand(inner, line) {
     }
 
     if (_RE_LABEL.test(inner)) {
-        return { tag: TAG_ADDR_LABEL, name: inner.toLowerCase() };
+        return { tag: TAG_ADDR_LABEL, name: inner.toLowerCase(), offset: 0 };
     }
 
     throw new AsmError(`Invalid address: ${inner}`, line);

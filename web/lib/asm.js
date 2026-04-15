@@ -170,21 +170,19 @@ function _pass1HandlePage(st, pline) {
     if (!st.seenPages.has(pageNum)) {
         st.seenPages.add(pageNum);
         st.pageCodes[pageNum] = [];
+        st.pageCursors[pageNum] = 0;
     }
     st.currentPage = pageNum;
     st.pageLocs[pageNum] = pline.lineNo;
     if (pline.operands.length > 1) {
         const targetOffset = pline.operands[1].value;
         const currentLen = st.pageCodes[pageNum].length;
-        if (targetOffset < currentLen) {
-            throw new AsmError(
-                `@page ${pageNum}: offset ${targetOffset} is before current position ${currentLen}`,
-                pline.lineNo,
-            );
+        if (targetOffset > currentLen) {
+            for (let i = currentLen; i < targetOffset; i++) {
+                st.pageCodes[pageNum].push(0);
+            }
         }
-        for (let i = currentLen; i < targetOffset; i++) {
-            st.pageCodes[pageNum].push(0);
-        }
+        st.pageCursors[pageNum] = targetOffset;
     }
 }
 
@@ -196,6 +194,7 @@ function _collectLabelPatches(operands, pline, pos, arch, page, isJump) {
         const op = operands[i];
         if (op.tag !== TAG_LABEL && op.tag !== TAG_ADDR_LABEL && op.tag !== TAG_PAGE_LABEL) continue;
         const isPageRef = op.tag === TAG_PAGE_LABEL;
+        const lblOff = op.offset || 0;
         const mk = (patchPos, ref = isPageRef) => ({
             page,
             pos: patchPos,
@@ -203,6 +202,7 @@ function _collectLabelPatches(operands, pline, pos, arch, page, isJump) {
             isPageRef: ref,
             isJump,
             lineNo: pline.lineNo,
+            labelOffset: lblOff,
         });
 
         if (isFpData) {
@@ -231,6 +231,7 @@ function _collectLabelPatches(operands, pline, pos, arch, page, isJump) {
 function _pass1(parsed, arch) {
     const st = {
         pageCodes: { 0: [] },
+        pageCursors: { 0: 0 },
         currentPage: 0,
         seenPages: new Set([0]),
         hasPageDirective: false,
@@ -242,7 +243,7 @@ function _pass1(parsed, arch) {
 
     for (const pline of parsed) {
         if (pline.label !== null) {
-            const pos = st.pageCodes[st.currentPage].length;
+            const pos = st.pageCursors[st.currentPage];
             labelInfo[pline.label] = { page: st.currentPage, offset: pos };
         }
 
@@ -254,7 +255,8 @@ function _pass1(parsed, arch) {
         }
 
         const operands = pline.operands || [];
-        const pos = st.pageCodes[st.currentPage].length;
+        const page = st.currentPage;
+        const pos = st.pageCursors[page];
 
         const encoded = _encodeInstruction(
             pline.mnemonic,
@@ -267,12 +269,25 @@ function _pass1(parsed, arch) {
         );
 
         if (pline.mnemonic !== "DB") {
-            pageMapping.push({ page: st.currentPage, offset: pos, lineNo: pline.lineNo });
+            pageMapping.push({ page, offset: pos, lineNo: pline.lineNo });
         }
 
         const isJump = _JUMP_MNEMONICS.has(pline.mnemonic);
-        labelPatches.push(..._collectLabelPatches(operands, pline, pos, arch, st.currentPage, isJump));
-        st.pageCodes[st.currentPage].push(...encoded);
+        labelPatches.push(..._collectLabelPatches(operands, pline, pos, arch, page, isJump));
+
+        const codes = st.pageCodes[page];
+        const end = pos + encoded.length;
+        if (end <= codes.length) {
+            for (let i = 0; i < encoded.length; i++) codes[pos + i] = encoded[i];
+        } else {
+            if (pos < codes.length) {
+                for (let i = 0; i < codes.length - pos; i++) codes[pos + i] = encoded[i];
+                for (let i = codes.length - pos; i < encoded.length; i++) codes.push(encoded[i]);
+            } else {
+                codes.push(...encoded);
+            }
+        }
+        st.pageCursors[page] = end;
     }
 
     return {
@@ -312,12 +327,16 @@ function _pass2(st) {
             throw new AsmError(`Undefined label: ${labelName}`, lineNo);
         }
         const { page: labelPage, offset: labelOffset } = st.labelInfo[labelName];
+        const resolved = labelOffset + (patch.labelOffset || 0);
 
         if (isPageRef) {
             st.pageCodes[patchPage][patchPos] = labelPage;
         } else {
-            if (labelOffset < 0 || labelOffset > 255) {
-                throw new AsmError(`${labelOffset} must have a value between 0-255`, lineNo);
+            if (resolved < 0 || resolved > 255) {
+                throw new AsmError(
+                    `[${labelName} + ${patch.labelOffset}]: resolved address ${resolved} out of range 0-255`,
+                    lineNo,
+                );
             }
             if (isJump && labelPage !== patchPage) {
                 if (patchPage === 0) {
@@ -329,7 +348,7 @@ function _pass2(st) {
                     throw new AsmError(`cross-page jump from page ${patchPage} to page ${labelPage}`, lineNo);
                 }
             }
-            st.pageCodes[patchPage][patchPos] = labelOffset;
+            st.pageCodes[patchPage][patchPos] = resolved;
         }
     }
 }

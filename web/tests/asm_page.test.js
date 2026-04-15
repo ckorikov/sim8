@@ -212,8 +212,30 @@ describe("@page errors", () => {
         expect(asmError(`HLT\n@page 1\nDB ${data}`).message).toMatch(/overflow/i);
     });
 
-    it("offset before current position → error", () => {
-        expect(asmError("HLT\nMOV A, 1\n@page 0, 1").message).toContain("before current position");
+    it("backward seek overwrites existing bytes", () => {
+        // HLT + MOV A,1 = [0, 6, 0, 1] → 4 bytes
+        // @page 0, 1 → cursor at 1; DB 0xFF overwrites byte 1
+        const c = asm("HLT\nMOV A, 1\n@page 0, 1\nDB 0xFF\n@page 1\nDB 0");
+        expect(c[0]).toBe(0); // HLT untouched
+        expect(c[1]).toBe(0xff); // overwritten
+        expect(c[2]).toBe(0); // original MOV A operand
+        expect(c[3]).toBe(1); // original MOV constant
+    });
+
+    it("backward seek then forward append", () => {
+        // DB 1,2,3,4 → [1,2,3,4] (len 4)
+        // @page 0, 1 → cursor at 1; DB 0xAA,0xBB,0xCC,0xDD writes at 1-4
+        const c = asm("DB 1, 2, 3, 4\n@page 0, 1\nDB 0xAA, 0xBB, 0xCC, 0xDD\n@page 1\nDB 0");
+        expect(c[0]).toBe(1); // untouched
+        expect(c[1]).toBe(0xaa);
+        expect(c[2]).toBe(0xbb);
+        expect(c[3]).toBe(0xcc);
+        expect(c[4]).toBe(0xdd); // appended
+    });
+
+    it("label after backward seek gets correct offset", () => {
+        const c = asm("DB 1, 2, 3\n@page 0, 1\nmarker: DB 42\n@page 1\nDB 0");
+        expect(c[1]).toBe(42);
     });
 });
 

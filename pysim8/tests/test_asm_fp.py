@@ -655,7 +655,7 @@ class TestIsaEdges:
         padding = "DB " + ", ".join(["0"] * 256)
         source = f"{padding}\ntarget:\nHLT\nJMP target\n"
         e = asm_error(source, arch=2)
-        assert "must have a value" in e.message.lower()
+        assert "out of range" in e.message.lower()
 
     def test_operand_matches_fp_imm(self) -> None:
         """FP_IMM8/FP_IMM16 matching (line 67-68)."""

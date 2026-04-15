@@ -90,9 +90,10 @@ class OpLabel:
 
 @dataclass(frozen=True, slots=True)
 class OpAddrLabel:
-    """Unresolved label inside brackets: [label] → direct address in pass 2."""
+    """Unresolved label inside brackets: [label] or [label ± N] → direct address in pass 2."""
 
     name: str
+    offset: int = 0
 
 
 @dataclass(frozen=True, slots=True)

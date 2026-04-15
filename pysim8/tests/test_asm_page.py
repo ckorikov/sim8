@@ -302,11 +302,41 @@ class TestPageErrors:
         code = asm(source)
         assert code[0:7] == [6, 0, 42, 6, 1, 10, 0]  # MOV A,42 + MOV B,10 + HLT
 
-    def test_offset_before_current_error(self) -> None:
-        """@page N, M with M < current position → error."""
-        source = "HLT\nMOV A, 1\n@page 0, 1"
-        e = asm_error(source)
-        assert "before current position" in e.message
+    def test_backward_seek_overwrites(self) -> None:
+        """@page N, M with M < current position overwrites existing bytes."""
+        # HLT=0x00, MOV A,1 = [6,0,1] → 4 bytes at offsets 0-3
+        # @page 0, 1 seeks back to offset 1, DB 0xFF overwrites byte 1
+        source = "HLT\nMOV A, 1\n@page 0, 1\nDB 0xFF\n@page 1\nDB 0"
+        code = asm(source)
+        assert code[0] == 0  # HLT untouched
+        assert code[1] == 0xFF  # overwritten (was MOV opcode 6)
+        assert code[2] == 0  # original MOV reg A (0)
+        assert code[3] == 1  # original MOV constant
+
+    def test_backward_seek_then_forward(self) -> None:
+        """Backward seek, write, then continue appending."""
+        # DB 1,2,3,4 → [1,2,3,4] (4 bytes)
+        # @page 0, 1 → cursor at 1
+        # DB 0xAA → overwrites byte 1 → cursor at 2
+        # DB 0xBB → overwrites byte 2 → cursor at 3
+        # DB 0xCC → overwrites byte 3 → cursor at 4 (== len, next is append)
+        # DB 0xDD → appends → byte 4
+        source = "DB 1, 2, 3, 4\n@page 0, 1\nDB 0xAA, 0xBB, 0xCC, 0xDD\n@page 1\nDB 0"
+        code = asm(source)
+        assert code[0] == 1  # untouched
+        assert code[1] == 0xAA
+        assert code[2] == 0xBB
+        assert code[3] == 0xCC
+        assert code[4] == 0xDD  # appended
+
+    def test_backward_seek_label(self) -> None:
+        """Label placed after backward seek gets correct offset."""
+        source = "DB 1, 2, 3\n@page 0, 1\nmarker: DB 42\n@page 1\nDB 0"
+        code = asm(source)
+        assert code[1] == 42
+        # Check that label resolved to offset 1
+        result = assemble(source)
+        assert result.labels["marker"] == 1
 
 
 class TestPageOffset:

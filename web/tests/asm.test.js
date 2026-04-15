@@ -132,6 +132,32 @@ describe("labels", () => {
         expect(r.labels["data"]).toBe(3);
     });
 
+    it("[label + N] resolves to label offset + N", () => {
+        const r1 = assemble("JMP s\ndata: DB 10, 20\ns: MOV A, [data + 1]\nHLT");
+        const r2 = assemble("JMP s\ndata: DB 10, 20\ns: MOV A, [3]\nHLT");
+        expect(r1.code).toEqual(r2.code);
+    });
+
+    it("[label - N] resolves to label offset - N", () => {
+        const r1 = assemble("DB 99\ndata: DB 10\nMOV A, [data - 1]\nHLT");
+        const r2 = assemble("DB 99\ndata: DB 10\nMOV A, [0]\nHLT");
+        expect(r1.code).toEqual(r2.code);
+    });
+
+    it("[label + 0] ≡ [label]", () => {
+        const r1 = assemble("JMP s\nx: DB 7\ns: MOV A, [x + 0]\nHLT");
+        const r2 = assemble("JMP s\nx: DB 7\ns: MOV A, [x]\nHLT");
+        expect(r1.code).toEqual(r2.code);
+    });
+
+    it("[label + N] overflow is error", () => {
+        expect(asmError("DB 0\nlbl: DB 0\nMOV A, [lbl + 255]").message).toMatch(/out of range/i);
+    });
+
+    it("[label - N] underflow is error", () => {
+        expect(asmError("lbl: DB 0\nMOV A, [lbl - 1]").message).toMatch(/out of range/i);
+    });
+
     it("multiple labels", () => {
         const r = assemble("x: HLT\ny: HLT\nz: HLT");
         expect(r.labels["x"]).toBe(0);

@@ -87,7 +87,7 @@ def parse_number(token: str, line: int) -> int:
     return val
 
 
-def _check_byte_range(value: int, line: int) -> int:
+def _validate_byte_range(value: int, line: int) -> int:
     """Validate value is in -128..255 and convert negatives to two's complement."""
     if value < -128 or value > 255:
         raise ParseError(f"{value} must have a value between -128 and 255", line)
@@ -101,8 +101,11 @@ _RE_REG_OFFSET = re.compile(r"^([A-Za-z]+)\s*([+-])\s*(\d+)$")
 _RE_REG_ONLY = re.compile(r"^([A-Za-z]+)$")
 
 
+_RE_LABEL_OFFSET = re.compile(r"^([.A-Za-z]\w*)\s*([+-])\s*(\d+)$")
+
+
 def _parse_bracket_operand(inner: str, line: int) -> OpAddr | OpRegAddr | OpAddrLabel:
-    """Parse content inside brackets: [addr], [reg], [reg±offset]."""
+    """Parse content inside brackets: [addr], [reg], [reg±offset], [label±N]."""
     inner = inner.strip()
 
     if m := _RE_REG_OFFSET.match(inner):
@@ -111,11 +114,18 @@ def _parse_bracket_operand(inner: str, line: int) -> OpAddr | OpRegAddr | OpAddr
         offset_val = int(m.group(3))
         if sign == "-":
             offset_val = -offset_val
-        if reg_name not in REGISTERS:
-            raise ParseError(f"Invalid register in address: {m.group(1)}", line)
-        if offset_val < -16 or offset_val > 15:
-            raise ParseError("offset must be a value between -16...+15", line)
-        return OpRegAddr(REGISTERS[reg_name], offset_val)
+        if reg_name in REGISTERS:
+            if offset_val < -16 or offset_val > 15:
+                raise ParseError("offset must be a value between -16...+15", line)
+            return OpRegAddr(REGISTERS[reg_name], offset_val)
+
+    if m := _RE_LABEL_OFFSET.match(inner):
+        name = m.group(1)
+        sign = m.group(2)
+        offset_val = int(m.group(3))
+        if sign == "-":
+            offset_val = -offset_val
+        return OpAddrLabel(name.lower(), offset_val)
 
     if m := _RE_REG_ONLY.match(inner):
         reg_name = m.group(1).upper()
@@ -124,7 +134,7 @@ def _parse_bracket_operand(inner: str, line: int) -> OpAddr | OpRegAddr | OpAddr
 
     val = _try_parse_number(inner)
     if val is not None:
-        _check_byte_range(val, line)
+        _validate_byte_range(val, line)
         return OpAddr(val)
 
     if _RE_LABEL.match(inner):
@@ -169,7 +179,7 @@ def _try_const(token: str, line: int) -> Operand | None:
         raise ParseError("Only one character is allowed", line)
     val = _try_parse_number(token)
     if val is not None:
-        _check_byte_range(val, line)
+        _validate_byte_range(val, line)
         return OpConst(val)
     return None
 
@@ -348,7 +358,7 @@ def _parse_db_operands(raw: str, line: int, arch: int = 1) -> list[Operand]:
 
         has_int = True
         val = parse_number(part, line)
-        val = _check_byte_range(val, line)
+        val = _validate_byte_range(val, line)
         operands.append(OpConst(val))
     return operands
 

@@ -90,6 +90,7 @@ class LabelPatch:
     is_page_ref: bool
     is_jump: bool
     loc: SourceLoc
+    label_offset: int = 0
 
 
 # ── Pass 1 state ─────────────────────────────────────────────────
@@ -100,6 +101,7 @@ class _Pass1State:
     """Mutable state accumulated during Pass 1."""
 
     page_codes: dict[int, list[int]] = field(default_factory=lambda: {0: []})
+    page_cursors: dict[int, int] = field(default_factory=lambda: {0: 0})
     current_page: int = 0
     seen_pages: set[int] = field(default_factory=lambda: {0})
     has_page_directive: bool = False
@@ -127,6 +129,7 @@ def _pass1_handle_page(
     if page_num not in state.seen_pages:
         state.seen_pages.add(page_num)
         state.page_codes[page_num] = []
+        state.page_cursors[page_num] = 0
 
     state.current_page = page_num
     state.page_locs[page_num] = loc
@@ -136,13 +139,9 @@ def _pass1_handle_page(
             raise AssemblerError("@page: internal error (bad offset operand)", orig_line, filename=filename)
         target_offset = operands[1].value
         current_len = len(state.page_codes[page_num])
-        if target_offset < current_len:
-            raise AssemblerError(
-                f"@page {page_num}: offset {target_offset} is before current position {current_len}",
-                orig_line,
-                filename=filename,
-            )
-        state.page_codes[page_num].extend([0] * (target_offset - current_len))
+        if target_offset > current_len:
+            state.page_codes[page_num].extend([0] * (target_offset - current_len))
+        state.page_cursors[page_num] = target_offset
 
 
 def _label_patch_pos(
@@ -185,7 +184,8 @@ def _pass1_collect_patches(
             state.patches.append(LabelPatch(state.current_page, pos + 3, op.name, True, is_jump, loc))
             continue
         patch_pos = _label_patch_pos(operands, i, mnemonic, pos, arch)
-        state.patches.append(LabelPatch(state.current_page, patch_pos, op.name, is_page_ref, is_jump, loc))
+        lbl_off = op.offset if isinstance(op, OpAddrLabel) else 0
+        state.patches.append(LabelPatch(state.current_page, patch_pos, op.name, is_page_ref, is_jump, loc, lbl_off))
 
 
 def _pass1(parsed: list[ParsedLine], prep: PreprocessResult, arch: int) -> _Pass1State:
@@ -196,7 +196,7 @@ def _pass1(parsed: list[ParsedLine], prep: PreprocessResult, arch: int) -> _Pass
         loc = prep.line_map.get(pline.line_no, (None, pline.line_no))
 
         if pline.label is not None:
-            pos = len(state.page_codes[state.current_page])
+            pos = state.page_cursors[state.current_page]
             state.label_info[pline.label] = (state.current_page, pos)
 
         if pline.mnemonic is None:
@@ -207,7 +207,8 @@ def _pass1(parsed: list[ParsedLine], prep: PreprocessResult, arch: int) -> _Pass
             continue
 
         operands = pline.operands if pline.operands is not None else []
-        pos = len(state.page_codes[state.current_page])
+        page = state.current_page
+        pos = state.page_cursors[page]
 
         try:
             encoded = _encode_instruction(
@@ -223,7 +224,7 @@ def _pass1(parsed: list[ParsedLine], prep: PreprocessResult, arch: int) -> _Pass
             raise AssemblerError(e.message, orig_line, filename=filename) from e
 
         if pline.mnemonic != "DB":
-            state.page_mapping[(state.current_page, pos)] = loc
+            state.page_mapping[(page, pos)] = loc
 
         _pass1_collect_patches(
             state,
@@ -235,7 +236,16 @@ def _pass1(parsed: list[ParsedLine], prep: PreprocessResult, arch: int) -> _Pass
             arch,
         )
 
-        state.page_codes[state.current_page].extend(encoded)
+        codes = state.page_codes[page]
+        end = pos + len(encoded)
+        if end <= len(codes):
+            codes[pos:end] = encoded
+        else:
+            if pos < len(codes):
+                codes[pos:] = encoded
+            else:
+                codes.extend(encoded)
+        state.page_cursors[page] = end
 
     return state
 
@@ -243,7 +253,7 @@ def _pass1(parsed: list[ParsedLine], prep: PreprocessResult, arch: int) -> _Pass
 # ── Page overflow check ──────────────────────────────────────────
 
 
-def _check_page_overflow(state: _Pass1State) -> None:
+def _validate_page_overflow(state: _Pass1State) -> None:
     """Check page size limits (only when @page directives are present)."""
     if not state.has_page_directive:
         return
@@ -274,13 +284,14 @@ def _pass2(state: _Pass1State) -> None:
         if label_name not in state.label_info:
             raise AssemblerError(f"Undefined label: {label_name}", orig_line, filename=filename)
         label_page, label_offset = state.label_info[label_name]
+        resolved = label_offset + patch.label_offset
 
         if is_page_ref:
             state.page_codes[patch_page][patch_pos] = label_page
             continue
-        if label_offset < 0 or label_offset > 255:
+        if resolved < 0 or resolved > 255:
             raise AssemblerError(
-                f"{label_offset} must have a value between 0-255",
+                f"[{label_name} + {patch.label_offset}]: resolved address {resolved} out of range 0-255",
                 orig_line,
                 filename=filename,
             )
@@ -296,7 +307,7 @@ def _pass2(state: _Pass1State) -> None:
                 orig_line,
                 filename=filename,
             )
-        state.page_codes[patch_page][patch_pos] = label_offset
+        state.page_codes[patch_page][patch_pos] = resolved
 
 
 # ── Build output ─────────────────────────────────────────────────
@@ -363,7 +374,7 @@ def assemble(
         raise AssemblerError(e.message, orig_line, filename=filename) from e
 
     state = _pass1(parsed, prep, arch)
-    _check_page_overflow(state)
+    _validate_page_overflow(state)
     _pass2(state)
 
     return _build_output(state)

@@ -28,7 +28,7 @@ Forward label references (including `{label}`) may be left unresolved during pas
 **Pass 2 — Label Resolution:**
 
 Resolve all label references in operands:
-- `label` and `[label]` → page-local offset (0–255)
+- `label`, `[label]`, `[label ± N]` → page-local offset (0–255)
 - `{label}` → page number (0–255); see §5.11
 
 Cross-page jump validation: JMP/CALL to a label on a different page is an error (see §5.9).
@@ -57,6 +57,7 @@ The assembler produces:
 - Forbidden names: `A`, `B`, `C`, `D`, `SP`, `DP`, `FA`, `FB`, `FC`, `FD`, `FHA`, `FHB`, `FHC`, `FHD`, `FHE`, `FHF`, `FHG`, `FHH`, `FQA`, `FQB`, `FQC`, `FQD`, `FQE`, `FQF`, `FQG`, `FQH`, `FQI`, `FQJ`, `FQK`, `FQL`, `FQM`, `FQN`, `FQO`, `FQP`, `FOA`, `FOB`, `FOC`, `FOD`, `FOE`, `FOF`, `FOG`, `FOH`, `FOI`, `FOJ`, `FOK`, `FOL`, `FOM`, `FON`, `FOO`, `FOP` (conflict with register names; `FC`/`FD` and phys 2-3 sub-register names are reserved for future expansion)
 - Forward references allowed — a label can be used before its definition
 - Labels can be used inside brackets: `[label]` is equivalent to `[addr]` where addr is the label's resolved page-local offset. Uses the same direct addressing opcode as `[number]`
+- Label offset arithmetic: `[label + N]` and `[label - N]` add or subtract a constant from the resolved offset. N is a non-negative integer. The result must be 0–255; out-of-range is an assembler error
 - Labels can be used inside curly braces: `{label}` resolves to the page number where the label is defined (see §5.11)
 - Each label stores `(page, offset)` internally: page = current page at definition point, offset = position within that page
 - In operand position, `label` and `[label]` resolve to the page-local **offset** (0–255); `{label}` resolves to the **page number** (0–255)
@@ -327,7 +328,7 @@ The `@page` directive switches the assembler's output cursor to page N, optional
 **Rules:**
 
 - N = 0–255. `@page N` resumes output from the page's current position (initially 0).
-- M (offset) is optional, 0–255. When specified, the page cursor advances to offset M; the gap is zero-filled. M must be ≥ the page's current position.
+- M (offset) is optional, 0–255. When specified, the page cursor moves to offset M. If M > current length, the gap is zero-filled. If M < current length, the cursor moves backward; subsequent bytes overwrite existing data at that position.
 - The directive must occupy its own line (like `@include`). A label on the same line is an error.
 - Trailing comments are allowed: `@page 1 ; matrix data`.
 - Page order is arbitrary: `@page 3` then `@page 1` is valid.
@@ -411,7 +412,6 @@ All errors include a source location in `filename:line` format (1-based line num
 | `@include: fetch failed: X` | URL fetch failed (network error, non-2xx response, etc.) |
 | `@page value must be 0-255` | `@page` page number out of range |
 | `@page offset must be 0-255` | `@page` offset out of range |
-| `@page N: offset M is before current position K` | Offset would move cursor backward |
 | `@page: missing page number` | `@page` without an argument |
 | `@page: invalid syntax` | Malformed `@page` directive (non-numeric, extra tokens) |
 | `@page: invalid offset` | Offset is not a valid number |
