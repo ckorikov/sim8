@@ -304,9 +304,11 @@ export const VU_ASYNC_OPS = new Set([
     Op.VCMP,
     Op.VSEL,
     Op.VMOV,
+    Op.VGATHER,
+    Op.VSCATTER,
 ]);
 
 export const VU_ARITH_OPS = new Set([Op.VADD, Op.VSUB, Op.VMUL, Op.VDIV, Op.VMAX, Op.VMIN]);
 export const VU_UNARY_OPS = new Set([Op.VSQRT, Op.VNEG, Op.VABS]);
-export const VU_VV_ONLY_OPS = new Set([Op.VDOT, Op.VCMP, Op.VSEL]);
+export const VU_VV_ONLY_OPS = new Set([Op.VDOT, Op.VCMP, Op.VSEL, Op.VGATHER, Op.VSCATTER]);
 export const VU_INT_FMTS = new Set([VU_FMT_U, VU_FMT_I]);

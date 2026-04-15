@@ -15,6 +15,7 @@ import {
     VU_VV_ONLY_OPS,
     VU_INT_FMTS,
     VU_FMT_ELEM_SIZE,
+    VU_MODE_VV,
     VU_MODE_VS,
     VU_MODE_VI,
     VU_MODE_R,
@@ -24,19 +25,22 @@ import {
 
 // ── VU static helpers (module-level) ───────────────────────────────
 
-const _NO_S2_OPS = new Set([Op.VSQRT, Op.VNEG, Op.VABS, Op.VMOV, Op.VFILL]);
+const _NO_S2_OPS = new Set([Op.VSQRT, Op.VNEG, Op.VABS, Op.VMOV, Op.VFILL, Op.VGATHER, Op.VSCATTER]);
 
 /** Destination auto-increment: reduction/dot writes one element, others write the full vector. */
 function _vuDstInc(op, mode, vl, sz) {
     if (op === Op.VDOT) return sz;
     if (op === Op.VCMP) return vl;
+    if (op === Op.VGATHER) return 0; // data-dependent, user must VSET
     if (mode === VU_MODE_R) return sz;
     return vl * sz;
 }
 
 /** Source-1 auto-increment: zero for VFILL/VSEL (no src1 consumed), else full vector. */
 function _vuS1Inc(op, vl, sz) {
-    return op === Op.VFILL || op === Op.VSEL ? 0 : vl * sz;
+    if (op === Op.VFILL || op === Op.VSEL) return 0;
+    if (op === Op.VSCATTER) return 0; // data-dependent, user must VSET
+    return vl * sz;
 }
 
 /** Source-2 auto-increment: zero for unary ops, scalar/imm modes, or reduce; else full vector. */
@@ -223,9 +227,9 @@ function _validateVfm(opcode, fmt, mode, cond, regsByte) {
 }
 
 function _vuValidMode(opcode, mode) {
-    if (VU_VV_ONLY_OPS.has(opcode)) return mode === 0;
-    if (VU_UNARY_OPS.has(opcode)) return mode === 0;
-    if (opcode === Op.VMOV) return mode === 0 || mode === VU_MODE_VI;
+    if (VU_VV_ONLY_OPS.has(opcode)) return mode === VU_MODE_VV;
+    if (VU_UNARY_OPS.has(opcode)) return mode === VU_MODE_VV;
+    if (opcode === Op.VMOV) return mode === VU_MODE_VV || mode === VU_MODE_VI;
     if (opcode === Op.VFILL) return mode === VU_MODE_VI;
     return true;
 }
@@ -242,6 +246,7 @@ function _vuAutoInc(vu, op, mode, dstCode, s1Code, s2Code, vl, sz) {
             increments[code] = Math.max(increments[code] || 0, inc);
         }
     }
+    // VGATHER/VSCATTER: VM does NOT advance (mask is reusable pattern)
     for (const code of Object.keys(increments)) {
         vu.regs.incPtr(Number(code), increments[code]);
     }

@@ -513,3 +513,259 @@ describe("VFM validation", () => {
         expect(cpu.state).toBe(CpuState.FAULT);
     });
 });
+
+// ── VGATHER / VSCATTER ──────────────────────────────────────────────
+
+describe("VGATHER", () => {
+    let cpu;
+    beforeEach(() => {
+        cpu = makeCPU();
+    });
+
+    it("compress: picks every 4th byte (stride-4 mask)", () => {
+        // Source: 8 BGRA bytes at 256, Mask at 280, Dest at 300
+        const code = [
+            ...vsetVL(8),
+            ...vsetPtr(0, 256), // VA = source
+            ...vsetPtr(1, 300), // VB = dest
+            ...vsetPtr(3, 280), // VM = mask
+            ...vuAsync(Op.VGATHER, 5, 0, 1, 0, 0), // VGATHER.U VB, VA
+            Op.VWAIT,
+            Op.HLT,
+        ];
+        cpu.load(new Uint8Array(code));
+        // BGRA pixels
+        cpu.mem.set(256, 10);
+        cpu.mem.set(257, 20);
+        cpu.mem.set(258, 30);
+        cpu.mem.set(259, 40);
+        cpu.mem.set(260, 50);
+        cpu.mem.set(261, 60);
+        cpu.mem.set(262, 70);
+        cpu.mem.set(263, 80);
+        // Mask: select every 4th
+        cpu.mem.set(280, 0xff);
+        cpu.mem.set(281, 0);
+        cpu.mem.set(282, 0);
+        cpu.mem.set(283, 0);
+        cpu.mem.set(284, 0xff);
+        cpu.mem.set(285, 0);
+        cpu.mem.set(286, 0);
+        cpu.mem.set(287, 0);
+
+        cpu.run(100);
+
+        expect(cpu.state).toBe(CpuState.HALTED);
+        expect(cpu.mem.get(300)).toBe(10);
+        expect(cpu.mem.get(301)).toBe(50);
+        expect(cpu.mem.get(302)).toBe(0); // untouched
+    });
+
+    it("compress: all-ones mask copies everything", () => {
+        const code = [
+            ...vsetVL(4),
+            ...vsetPtr(0, 256),
+            ...vsetPtr(1, 300),
+            ...vsetPtr(3, 280),
+            ...vuAsync(Op.VGATHER, 5, 0, 1, 0, 0),
+            Op.VWAIT,
+            Op.HLT,
+        ];
+        cpu.load(new Uint8Array(code));
+        for (let i = 0; i < 4; i++) cpu.mem.set(256 + i, 10 + i);
+        for (let i = 0; i < 4; i++) cpu.mem.set(280 + i, 0xff);
+
+        cpu.run(100);
+
+        expect(cpu.state).toBe(CpuState.HALTED);
+        for (let i = 0; i < 4; i++) expect(cpu.mem.get(300 + i)).toBe(10 + i);
+    });
+
+    it("compress: all-zeros mask writes nothing", () => {
+        const code = [
+            ...vsetVL(4),
+            ...vsetPtr(0, 256),
+            ...vsetPtr(1, 300),
+            ...vsetPtr(3, 280),
+            ...vuAsync(Op.VGATHER, 5, 0, 1, 0, 0),
+            Op.VWAIT,
+            Op.HLT,
+        ];
+        cpu.load(new Uint8Array(code));
+        for (let i = 0; i < 4; i++) cpu.mem.set(256 + i, 99);
+        // mask all zeros (default)
+
+        cpu.run(100);
+
+        expect(cpu.state).toBe(CpuState.HALTED);
+        expect(cpu.mem.get(300)).toBe(0); // untouched
+    });
+
+    it("auto-increment: VA += VL, VB and VM unchanged", () => {
+        const code = [
+            ...vsetVL(4),
+            ...vsetPtr(0, 256),
+            ...vsetPtr(1, 300),
+            ...vsetPtr(3, 280),
+            ...vuAsync(Op.VGATHER, 5, 0, 1, 0, 0),
+            Op.VWAIT,
+            Op.HLT,
+        ];
+        cpu.load(new Uint8Array(code));
+        for (let i = 0; i < 4; i++) cpu.mem.set(280 + i, 0xff);
+
+        cpu.run(100);
+
+        expect(cpu.vu.regs.va).toBe(260); // VA += 4
+        expect(cpu.vu.regs.vb).toBe(300); // VB unchanged (data-dependent)
+        expect(cpu.vu.regs.vm).toBe(280); // VM unchanged (reusable pattern)
+    });
+
+    it("VL=0 is no-op", () => {
+        const code = [
+            ...vsetVL(0),
+            ...vsetPtr(0, 256),
+            ...vsetPtr(1, 300),
+            ...vuAsync(Op.VGATHER, 5, 0, 1, 0, 0),
+            Op.VWAIT,
+            Op.HLT,
+        ];
+        cpu.load(new Uint8Array(code));
+        cpu.run(100);
+        expect(cpu.state).toBe(CpuState.HALTED);
+    });
+
+    it("multi-window: VL=16 spans 2 windows, compactIdx persists", () => {
+        // 16 bytes source, mask selects every other byte (8 selected)
+        const code = [
+            ...vsetVL(16),
+            ...vsetPtr(0, 256), // VA = source
+            ...vsetPtr(1, 300), // VB = dest
+            ...vsetPtr(3, 400), // VM = mask
+            ...vuAsync(Op.VGATHER, 5, 0, 1, 0, 0),
+            Op.VWAIT,
+            Op.HLT,
+        ];
+        cpu.load(new Uint8Array(code));
+        for (let i = 0; i < 16; i++) cpu.mem.set(256 + i, 10 + i);
+        // Mask: every other byte
+        for (let i = 0; i < 16; i++) cpu.mem.set(400 + i, i % 2 === 0 ? 0xff : 0);
+
+        cpu.run(200);
+
+        expect(cpu.state).toBe(CpuState.HALTED);
+        // Selected: indices 0,2,4,6,8,10,12,14 → values 10,12,14,16,18,20,22,24
+        for (let i = 0; i < 8; i++) {
+            expect(cpu.mem.get(300 + i)).toBe(10 + i * 2);
+        }
+    });
+});
+
+describe("VSCATTER", () => {
+    let cpu;
+    beforeEach(() => {
+        cpu = makeCPU();
+    });
+
+    it("expand: spreads packed bytes into stride-4 positions", () => {
+        // Packed source: [10, 50] at 256, Mask at 280, Dest at 300
+        const code = [
+            ...vsetVL(8),
+            ...vsetPtr(0, 256), // VA = packed source
+            ...vsetPtr(1, 300), // VB = dest
+            ...vsetPtr(3, 280), // VM = mask
+            ...vuAsync(Op.VSCATTER, 5, 0, 1, 0, 0), // VSCATTER.U VB, VA
+            Op.VWAIT,
+            Op.HLT,
+        ];
+        cpu.load(new Uint8Array(code));
+        cpu.mem.set(256, 10);
+        cpu.mem.set(257, 50);
+        // Mask: positions 0 and 4
+        cpu.mem.set(280, 0xff);
+        cpu.mem.set(281, 0);
+        cpu.mem.set(282, 0);
+        cpu.mem.set(283, 0);
+        cpu.mem.set(284, 0xff);
+        cpu.mem.set(285, 0);
+        cpu.mem.set(286, 0);
+        cpu.mem.set(287, 0);
+
+        cpu.run(100);
+
+        expect(cpu.state).toBe(CpuState.HALTED);
+        expect(cpu.mem.get(300)).toBe(10);
+        expect(cpu.mem.get(301)).toBe(0);
+        expect(cpu.mem.get(302)).toBe(0);
+        expect(cpu.mem.get(303)).toBe(0);
+        expect(cpu.mem.get(304)).toBe(50);
+    });
+
+    it("round-trip: gather then scatter restores original", () => {
+        // Source BGRA: [10,20,30,40, 50,60,70,80] at 256
+        // Gather to 300, then scatter back to 400
+        const code = [
+            ...vsetVL(8),
+            ...vsetPtr(0, 256), // VA = BGRA source
+            ...vsetPtr(1, 300), // VB = gather dest
+            ...vsetPtr(3, 280), // VM = mask
+            ...vuAsync(Op.VGATHER, 5, 0, 1, 0, 0),
+            Op.VWAIT,
+            // Now scatter: packed at 300 → expanded at 400
+            ...vsetPtr(0, 300), // VA = packed
+            ...vsetPtr(1, 400), // VB = dest
+            ...vsetPtr(3, 280), // VM = same mask
+            ...vuAsync(Op.VSCATTER, 5, 0, 1, 0, 0),
+            Op.VWAIT,
+            Op.HLT,
+        ];
+        cpu.load(new Uint8Array(code));
+        cpu.mem.set(256, 10);
+        cpu.mem.set(257, 20);
+        cpu.mem.set(258, 30);
+        cpu.mem.set(259, 40);
+        cpu.mem.set(260, 50);
+        cpu.mem.set(261, 60);
+        cpu.mem.set(262, 70);
+        cpu.mem.set(263, 80);
+        cpu.mem.set(280, 0xff);
+        cpu.mem.set(281, 0);
+        cpu.mem.set(282, 0);
+        cpu.mem.set(283, 0);
+        cpu.mem.set(284, 0xff);
+        cpu.mem.set(285, 0);
+        cpu.mem.set(286, 0);
+        cpu.mem.set(287, 0);
+
+        cpu.run(200);
+
+        expect(cpu.state).toBe(CpuState.HALTED);
+        // Gathered: [10, 50]
+        expect(cpu.mem.get(300)).toBe(10);
+        expect(cpu.mem.get(301)).toBe(50);
+        // Scattered back: positions 0,4 get 10,50
+        expect(cpu.mem.get(400)).toBe(10);
+        expect(cpu.mem.get(401)).toBe(0);
+        expect(cpu.mem.get(404)).toBe(50);
+    });
+
+    it("auto-increment: VB += VL, VA and VM unchanged", () => {
+        const code = [
+            ...vsetVL(4),
+            ...vsetPtr(0, 256),
+            ...vsetPtr(1, 300),
+            ...vsetPtr(3, 280),
+            ...vuAsync(Op.VSCATTER, 5, 0, 1, 0, 0),
+            Op.VWAIT,
+            Op.HLT,
+        ];
+        cpu.load(new Uint8Array(code));
+        for (let i = 0; i < 4; i++) cpu.mem.set(280 + i, 0xff);
+
+        cpu.run(100);
+
+        expect(cpu.vu.regs.va).toBe(256); // VA unchanged (data-dependent src)
+        expect(cpu.vu.regs.vb).toBe(304); // VB += 4
+        expect(cpu.vu.regs.vm).toBe(280); // VM unchanged
+    });
+});

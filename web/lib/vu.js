@@ -33,6 +33,7 @@ const VuState = Object.freeze({
     BUSY: "BUSY",
 });
 
+const _GATHER_OPS = new Set([Op.VGATHER, Op.VSCATTER]);
 const _FP_FMTS = new Set([0, 1, 2, 3, 4]); // F, H, BF, O3, O2
 const _FMT_NAMES = ["F", "H", "BF", "O3", "O2", "U", "I"];
 const _hex16 = (v) => v.toString(16).toUpperCase().padStart(4, "0");
@@ -283,6 +284,7 @@ class VuCommand {
         this.s1Code = s1Code;
         this.s2Code = s2Code;
         this._progress = 0;
+        this._compactIdx = 0;
     }
 }
 
@@ -399,6 +401,10 @@ export class VectorUnit {
             this._execCmp(mem, cmd, startIdx, endIdx, elemSize, fmt);
         } else if (op === Op.VSEL) {
             this._execSel(mem, cmd, startIdx, endIdx, elemSize, fmt, rm);
+        } else if (op === Op.VGATHER) {
+            this._execGather(mem, cmd, startIdx, endIdx, elemSize);
+        } else if (op === Op.VSCATTER) {
+            this._execScatter(mem, cmd, startIdx, endIdx, elemSize);
         } else if (VU_UNARY_OPS.has(op)) {
             this._execUnary(mem, cmd, startIdx, endIdx, elemSize, fmt, rm);
         } else if (VU_ARITH_OPS.has(op)) {
@@ -420,16 +426,16 @@ export class VectorUnit {
     _checkOob(cmd, sz) {
         const vl = cmd.vl;
         if (cmd.dstAddr + this._dstFootprint(cmd, sz) > MEM_SIZE) return true;
-        // s1 footprint (VFILL and VSEL don't read s1 as vector)
-        if (cmd.op !== Op.VFILL && cmd.op !== Op.VSEL) {
+        // s1 footprint (VFILL/VSEL don't read s1; VSCATTER reads data-dependent count)
+        if (cmd.op !== Op.VFILL && cmd.op !== Op.VSEL && cmd.op !== Op.VSCATTER) {
             if (cmd.s1Addr + vl * sz > MEM_SIZE) return true;
         }
-        // s2 footprint for VV mode
-        if (cmd.mode === VU_MODE_VV) {
+        // s2 footprint for VV mode (not for VGATHER/VSCATTER which are unary)
+        if (cmd.mode === VU_MODE_VV && !_GATHER_OPS.has(cmd.op)) {
             if (cmd.s2Addr + vl * sz > MEM_SIZE) return true;
         }
-        // Mask pointer for VCMP/VSEL
-        if (cmd.op === Op.VCMP || cmd.op === Op.VSEL) {
+        // Mask pointer for VCMP/VSEL/VGATHER/VSCATTER
+        if (cmd.op === Op.VCMP || cmd.op === Op.VSEL || _GATHER_OPS.has(cmd.op)) {
             if (cmd.maskAddr + vl > MEM_SIZE) return true;
         }
         return false;
@@ -440,6 +446,38 @@ export class VectorUnit {
             for (let b = 0; b < sz; b++) {
                 mem.set(cmd.dstAddr + i * sz + b, mem.get(cmd.s1Addr + i * sz + b));
             }
+        }
+    }
+
+    _execGather(mem, cmd, startIdx, endIdx, sz) {
+        for (let i = startIdx; i < endIdx; i++) {
+            if (mem.get(cmd.maskAddr + i) === 0) continue;
+            const dstOff = cmd.dstAddr + cmd._compactIdx * sz;
+            if (dstOff + sz > MEM_SIZE) {
+                this.fault = ErrorCode.VU_OOB;
+                this.flush();
+                return;
+            }
+            for (let b = 0; b < sz; b++) {
+                mem.set(dstOff + b, mem.get(cmd.s1Addr + i * sz + b));
+            }
+            cmd._compactIdx++;
+        }
+    }
+
+    _execScatter(mem, cmd, startIdx, endIdx, sz) {
+        for (let i = startIdx; i < endIdx; i++) {
+            if (mem.get(cmd.maskAddr + i) === 0) continue;
+            const srcOff = cmd.s1Addr + cmd._compactIdx * sz;
+            if (srcOff + sz > MEM_SIZE) {
+                this.fault = ErrorCode.VU_OOB;
+                this.flush();
+                return;
+            }
+            for (let b = 0; b < sz; b++) {
+                mem.set(cmd.dstAddr + i * sz + b, mem.get(srcOff + b));
+            }
+            cmd._compactIdx++;
         }
     }
 

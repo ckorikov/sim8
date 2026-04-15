@@ -83,6 +83,8 @@ export const MNEMONIC_INFO = Object.freeze({
     VCMP: "Vector compare → byte mask at [VM]",
     VSEL: "Vector select: dst[i] = mask[i] ? dst[i] : alt[i]",
     VMOV: "Vector memory copy or broadcast fill (vi mode / VFILL alias)",
+    VGATHER: "Mask compress: pack elements where VM[i]!=0 into contiguous dst",
+    VSCATTER: "Mask expand: unpack contiguous src into dst at positions where VM[i]!=0",
 });
 
 // ── Integer flag effects ──────────────────────────────────────────────────────
