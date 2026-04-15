@@ -177,9 +177,9 @@ _VU_MODE_TO_SUFFIX: dict[int, str] = {v: k.lower() for k, v in VU_SUFFIX_TO_MODE
 _VU_COND_TO_SUFFIX: dict[int, str] = {v: k for k, v in VU_CMP_SUFFIX.items()}
 
 # Instructions with no mode suffix (single valid mode)
-_VU_SINGLE_MODE = frozenset({"VDOT", "VSQRT", "VNEG", "VABS", "VSEL", "VMOV", "VFILL"})
+_VU_SINGLE_MODE = frozenset({"VDOT", "VSQRT", "VNEG", "VABS", "VSEL", "VMOV", "VFILL", "VGATHER", "VSCATTER"})
 # Instructions with only dst, src1 operands
-_VU_DST_SRC1_ONLY = frozenset({"VSQRT", "VNEG", "VABS", "VMOV"})
+_VU_DST_SRC1_ONLY = frozenset({"VSQRT", "VNEG", "VABS", "VMOV", "VGATHER", "VSCATTER"})
 
 
 def _disasm_vu_sync(opcode: int, raw: tuple[int, ...]) -> str | None:

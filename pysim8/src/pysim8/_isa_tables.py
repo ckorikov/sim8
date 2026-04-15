@@ -144,6 +144,8 @@ class Op(IntEnum):
     VSEL = 181
     VMOV = 182
     VFILL = 183
+    VGATHER = 184
+    VSCATTER = 185
 
 
 # ── Instruction data ─────────────────────────────────────────────────
@@ -286,6 +288,8 @@ ISA_VU_DATA: list[tuple[str, int, str, list[str], int, bool]] = [
     ("VSEL", 181, "VSEL", ["imm", "imm"], 1, False),
     ("VMOV", 182, "VMOV", ["imm", "imm"], 1, False),
     ("VFILL", 183, "VFILL", ["imm", "imm"], 1, False),
+    ("VGATHER", 184, "VGATHER", ["imm", "imm"], 1, False),
+    ("VSCATTER", 185, "VSCATTER", ["imm", "imm"], 1, False),
 ]
 
 # ── FP register data ─────────────────────────────────────────────────

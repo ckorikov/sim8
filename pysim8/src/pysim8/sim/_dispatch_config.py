@@ -4,7 +4,6 @@
 
 from .._isa_tables import Op
 
-
 DISPATCH_CONFIG: list[tuple] = [
     (Op.MOV_REG_REG, "direct", "_h_mov_reg_reg"),
     (Op.MOV_REG_ADDR, "direct", "_h_mov_reg_addr"),

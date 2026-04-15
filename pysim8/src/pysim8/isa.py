@@ -394,7 +394,7 @@ VU_ARITH_OPS: frozenset[int] = frozenset(
         Op.VMIN,
     }
 )
-VU_UNARY_OPS: frozenset[int] = frozenset({Op.VSQRT, Op.VNEG, Op.VABS})
+VU_UNARY_OPS: frozenset[int] = frozenset({Op.VSQRT, Op.VNEG, Op.VABS, Op.VGATHER, Op.VSCATTER})
 VU_ASYNC_OPS: frozenset[int] = frozenset(
     {
         Op.VADD,
@@ -410,6 +410,8 @@ VU_ASYNC_OPS: frozenset[int] = frozenset(
         Op.VCMP,
         Op.VSEL,
         Op.VMOV,
+        Op.VGATHER,
+        Op.VSCATTER,
     }
 )
 VU_VV_ONLY_OPS: frozenset[int] = frozenset({Op.VDOT, Op.VCMP, Op.VSEL})

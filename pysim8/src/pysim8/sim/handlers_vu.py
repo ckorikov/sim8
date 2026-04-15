@@ -267,7 +267,7 @@ class HandlersVuMixin:
             fault()
 
     _VV_ONLY_OPS: frozenset[int] = frozenset({Op.VDOT, Op.VCMP, Op.VSEL})
-    _MODE0_ONLY_OPS: frozenset[int] = frozenset({Op.VSQRT, Op.VNEG, Op.VABS})
+    _MODE0_ONLY_OPS: frozenset[int] = frozenset({Op.VSQRT, Op.VNEG, Op.VABS, Op.VGATHER, Op.VSCATTER})
 
     @staticmethod
     def _valid_mode(opcode: int, mode: int) -> bool:
@@ -281,7 +281,7 @@ class HandlersVuMixin:
             return mode == VU_MODE_VI
         return True  # arithmetic: all modes valid
 
-    _NO_S2_OPS: frozenset[int] = frozenset({Op.VSQRT, Op.VNEG, Op.VABS, Op.VMOV, Op.VFILL})
+    _NO_S2_OPS: frozenset[int] = frozenset({Op.VSQRT, Op.VNEG, Op.VABS, Op.VMOV, Op.VFILL, Op.VGATHER, Op.VSCATTER})
 
     @staticmethod
     def _vu_dst_inc(op: int, mode: int, vl: int, sz: int) -> int:
@@ -290,6 +290,8 @@ class HandlersVuMixin:
             return sz
         if op == Op.VCMP:
             return vl
+        if op == Op.VGATHER:
+            return 0  # data-dependent, user must VSET
         if mode == VU_MODE_R:
             return sz
         return vl * sz
@@ -297,7 +299,9 @@ class HandlersVuMixin:
     @staticmethod
     def _vu_s1_inc(op: int, vl: int, sz: int) -> int:
         """Source-1 auto-increment: zero for VFILL/VSEL (no src1 consumed), else full vector."""
-        return 0 if op in (Op.VFILL, Op.VSEL) else vl * sz
+        if op in (Op.VFILL, Op.VSEL, Op.VSCATTER):
+            return 0  # VSCATTER: data-dependent, user must VSET
+        return vl * sz
 
     @staticmethod
     def _vu_s2_inc(op: int, mode: int, vl: int, sz: int) -> int:
@@ -378,6 +382,10 @@ class HandlersVuMixin:
             self._vu_win_vcmp(cmd, sz, start, end)
         elif op == Op.VSEL:
             self._vu_win_vsel(cmd, sz, start, end)
+        elif op == Op.VGATHER:
+            self._vu_win_gather(cmd, sz, start, end)
+        elif op == Op.VSCATTER:
+            self._vu_win_scatter(cmd, sz, start, end)
         elif op in VU_UNARY_OPS:
             self._vu_win_unary(cmd, sz, start, end)
         elif op in VU_ARITH_OPS:
@@ -419,6 +427,34 @@ class HandlersVuMixin:
                 off = i * sz
                 for b in range(sz):
                     self.mem[cmd.dst_addr + off + b] = self.mem[cmd.s2_addr + off + b]
+
+    def _vu_win_gather(self, cmd: VuCommand, sz: int, start: int, end: int) -> None:
+        """Mask compress: copy src elements where mask is nonzero into packed dst."""
+        for i in range(start, end):
+            if self.mem[cmd.mask_addr + i] == 0:
+                continue
+            dst_off = cmd.dst_addr + cmd.compact_idx * sz
+            if dst_off + sz > MEM_SIZE:
+                self._vu_queue.fault = ErrorCode.VU_OOB
+                self._vu_queue.flush()
+                return
+            for b in range(sz):
+                self.mem[dst_off + b] = self.mem[cmd.s1_addr + i * sz + b]
+            cmd.compact_idx += 1
+
+    def _vu_win_scatter(self, cmd: VuCommand, sz: int, start: int, end: int) -> None:
+        """Mask expand: scatter packed src elements into dst where mask is nonzero."""
+        for i in range(start, end):
+            if self.mem[cmd.mask_addr + i] == 0:
+                continue
+            src_off = cmd.s1_addr + cmd.compact_idx * sz
+            if src_off + sz > MEM_SIZE:
+                self._vu_queue.fault = ErrorCode.VU_OOB
+                self._vu_queue.flush()
+                return
+            for b in range(sz):
+                self.mem[cmd.dst_addr + i * sz + b] = self.mem[src_off + b]
+            cmd.compact_idx += 1
 
     def _vu_win_unary(self, cmd: VuCommand, sz: int, start: int, end: int) -> None:
         rm = self._vu_rounding_mode()
@@ -483,19 +519,24 @@ class HandlersVuMixin:
             return sz
         return cmd.vl * sz
 
+    _GATHER_OPS: frozenset[int] = frozenset({Op.VGATHER, Op.VSCATTER})
+
     def _vu_check_oob(self, cmd: VuCommand, sz: int) -> bool:
         """Check if any operand access is out of bounds."""
         vl = cmd.vl
         dst_bytes = self._vu_dst_footprint(cmd, sz)
         if cmd.dst_addr + dst_bytes > MEM_SIZE:
             return True
-        if cmd.s1_addr + vl * sz > MEM_SIZE:
-            return True
-        if cmd.mode == VU_MODE_VV:
+        # s1 footprint: VFILL/VSEL don't read s1; VSCATTER reads data-dependent count
+        if cmd.op not in (Op.VFILL, Op.VSEL, Op.VSCATTER):
+            if cmd.s1_addr + vl * sz > MEM_SIZE:
+                return True
+        # s2 footprint for VV mode (not for VGATHER/VSCATTER which are unary)
+        if cmd.mode == VU_MODE_VV and cmd.op not in self._GATHER_OPS:
             if cmd.s2_addr + vl * sz > MEM_SIZE:
                 return True
-        # Mask pointer for VCMP/VSEL
-        if cmd.op in (Op.VCMP, Op.VSEL):
+        # Mask pointer for VCMP/VSEL/VGATHER/VSCATTER
+        if cmd.op in (Op.VCMP, Op.VSEL) or cmd.op in self._GATHER_OPS:
             if cmd.mask_addr + vl > MEM_SIZE:
                 return True
         return False

@@ -27,6 +27,7 @@ class VuCommand:
     vl: int
     imm: int
     progress: int = 0  # elements processed so far (windowed execution)
+    compact_idx: int = 0  # packed index for VGATHER/VSCATTER
 
 
 class VuRegisters:
