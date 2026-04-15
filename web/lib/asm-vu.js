@@ -144,9 +144,11 @@ const _VU_MNEMONIC_TO_OP = {
     VSEL: Op.VSEL,
     VMOV: Op.VMOV,
     VFILL: Op.VMOV,
+    VGATHER: Op.VGATHER,
+    VSCATTER: Op.VSCATTER,
 };
 
-const _VU_SINGLE_MODE = new Set(["VDOT", "VSQRT", "VNEG", "VABS", "VSEL"]);
+const _VU_SINGLE_MODE = new Set(["VDOT", "VSQRT", "VNEG", "VABS", "VSEL", "VGATHER", "VSCATTER"]);
 
 function _resolveVuModeCond(mnemonic, modeSuffix, operands, line) {
     if (mnemonic === "VCMP") {
@@ -165,7 +167,7 @@ function _resolveVuModeCond(mnemonic, modeSuffix, operands, line) {
     const vuCount = _filterByTag(operands, TAG_VU_REG).length;
     if (hasGpr) return [VU_MODE_VS, 0];
     if (hasImm) return [VU_MODE_VI, 0];
-    if (vuCount <= 2) return [VU_MODE_R, 0];
+    if (vuCount <= 2 && mnemonic !== "VMOV") return [VU_MODE_R, 0];
     return [VU_MODE_VV, 0];
 }
 
