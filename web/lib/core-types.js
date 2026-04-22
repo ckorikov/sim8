@@ -86,6 +86,11 @@ export {
 const MEM_SIZE = 65536;
 export const PAGE_SIZE = 256;
 export const IO_START = 232;
+export const IO_DISPLAY_END = 252; // display chars: 232–251 (20 chars)
+export const IO_TX_DATA = 252; // W: write byte → terminal output
+export const IO_TX_STATUS = 253; // R: bit 0 = TX ready (always 1)
+export const IO_RX_DATA = 254; // R: next input byte; write 0 to consume
+export const IO_RX_STATUS = 255; // R: bit 0 = input available
 export const SP_INIT = 231;
 
 export const CpuState = Object.freeze({

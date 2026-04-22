@@ -1,5 +1,17 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { CpuState, ErrorCode, IO_START, SP_INIT, Memory, CPU } from "../lib/core.js";
+import {
+    CpuState,
+    ErrorCode,
+    IO_START,
+    IO_DISPLAY_END,
+    IO_TX_DATA,
+    IO_TX_STATUS,
+    IO_RX_DATA,
+    IO_RX_STATUS,
+    SP_INIT,
+    Memory,
+    CPU,
+} from "../lib/core.js";
 import { encodeFloat32, decodeFloat32 } from "../lib/fp.js";
 import { Op, Reg, encodeFpm, encodeRegaddr, FP_FMT_F, FP_FMT_H, FP_FMT_O3 } from "../lib/isa.js";
 
@@ -1278,7 +1290,34 @@ describe("display()", () => {
     });
 });
 
-// ── 14. CPU step counting ───────────────────────────────────────────
+// ── 14. Terminal I/O port constants ─────────────────────────────────
+
+describe("terminal I/O port constants", () => {
+    it("display range is 20 chars: IO_START=232, IO_DISPLAY_END=252", () => {
+        expect(IO_START).toBe(232);
+        expect(IO_DISPLAY_END).toBe(252);
+        expect(IO_DISPLAY_END - IO_START).toBe(20);
+    });
+
+    it("UART ports follow display range at 252-255", () => {
+        expect(IO_TX_DATA).toBe(252);
+        expect(IO_TX_STATUS).toBe(253);
+        expect(IO_RX_DATA).toBe(254);
+        expect(IO_RX_STATUS).toBe(255);
+    });
+
+    it("display() reads 20 chars, stops before UART ports", () => {
+        const cpu = new CPU();
+        cpu.mem.set(251, "X".charCodeAt(0)); // last display cell
+        cpu.mem.set(252, "Y".charCodeAt(0)); // first UART port — must not appear
+        const disp = cpu.display();
+        expect(disp.endsWith("X")).toBe(true);
+        expect(disp).not.toContain("Y");
+        expect(disp.length).toBeLessThanOrEqual(20);
+    });
+});
+
+// ── 15. CPU step counting ───────────────────────────────────────────
 
 describe("CPU step counting", () => {
     let cpu;

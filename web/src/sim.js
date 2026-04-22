@@ -6,13 +6,14 @@
 import { assembleAsync, AsmError } from "../lib/asm.js";
 import { CpuState } from "../lib/core.js";
 import { BY_CODE_FP, BY_CODE_VU } from "../lib/isa.js";
-import { cpu, asm, pad, refreshColors, IO_BASE, PAGE_SIZE } from "./state.js";
+import { cpu, asm, pad, refreshColors, IO_BASE, IO_DISPLAY_END } from "./state.js";
 import { renderCPU } from "./ui/cpu.js";
 import { renderFPU } from "./ui/fpu.js";
 import { renderVU } from "./ui/vu.js";
 import { renderMemory } from "./ui/mem.js";
 import { renderDisplay } from "./ui/display.js";
 import { renderPad, initPad } from "./ui/pad.js";
+import { initTerm, termPreStep, termPostStep, termEndFrame, resetTerm, applyTermTheme, fitTerm } from "./ui/term.js";
 import { renderLabels } from "./ui/labels.js";
 import { onToggle } from "./ui/marker-toggle.js";
 import { setupControls, stopRun, isRunning, updateRunBtnColor } from "./controls.js";
@@ -65,6 +66,7 @@ async function doAssemble() {
     clearDiagnostics();
 
     cpu.reset();
+    resetTerm({ clearScreen: false });
     asm.labels = {};
     asm.mapping = {};
     asm.lineMap = null;
@@ -101,7 +103,7 @@ async function doAssemble() {
 
 // ── Step / Reset ───────────────────────────────────────────────
 
-const _ioSnap = new Uint8Array(PAGE_SIZE - IO_BASE);
+const _ioSnap = new Uint8Array(IO_DISPLAY_END - IO_BASE); // display chars only (232-251)
 
 function ioChanged() {
     return _ioSnap.some((v, i) => cpu.mem.get(IO_BASE + i) !== v);
@@ -150,13 +152,19 @@ function stepCPU() {
 
     const opcode = cpu.mem.get(cpu.ip);
 
+    termPreStep();
+
     // VU ticks first — newly issued commands appear in queue for 1 UI frame
     const vuDid = cpu.vuTick();
     const cpuDid = cpu.step();
 
+    const txEmitted = termPostStep();
+
     if (!cpuDid && !vuDid && !cpu.vuWaiting) return 0;
 
-    for (const w of _activeWires(cpuDid, vuDid, opcode)) flashWire(w);
+    const wires = _activeWires(cpuDid, vuDid, opcode);
+    if (txEmitted && !wires.includes(WIRE_IO)) wires.push(WIRE_IO);
+    for (const w of wires) flashWire(w);
 
     renderAll();
     return 1;
@@ -169,6 +177,7 @@ function resetCPU() {
     } else {
         cpu.reset();
     }
+    resetTerm();
     renderAll();
 }
 
@@ -181,6 +190,7 @@ function getExecLine() {
 setupControls({
     onStep: stepCPU,
     onReset: resetCPU,
+    onBatchEnd: termEndFrame,
     renderAll,
     checkBp: (flatLine) => breakpoints.checkFlat(flatLine, asm.lineMap),
     getExecLine,
@@ -210,6 +220,7 @@ document.getElementById("btn-theme").addEventListener("click", () => {
     isDark = !isDark;
     localStorage.setItem("sim8-theme", isDark ? "dark" : "light");
     applyTheme(isDark);
+    applyTermTheme(isDark);
     refreshColors();
     renderAll();
     updateRunBtnColor();
@@ -220,14 +231,15 @@ document.getElementById("btn-theme").addEventListener("click", () => {
 
 renderAll();
 
-initPad(
-    () => adjustBlockPositions(initWires),
-    () => renderMemory(),
-);
-
-requestAnimationFrame(() => {
+function relayout() {
     adjustBlockPositions(initWires);
-});
+    fitTerm();
+}
+
+initPad(relayout, renderMemory);
+initTerm(relayout, isDark);
+resetTerm();
+requestAnimationFrame(relayout);
 
 setupSplitHandle(fitDiagram);
 

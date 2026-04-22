@@ -352,6 +352,21 @@ span.hw-label {
     text-shadow: 0 0 4px var(--a-green-a40);
 }
 
+/* ── Terminal ── */
+#term-body {
+    align-items: stretch;
+    padding: 0;
+}
+
+#term-body .xterm {
+    width: 100%;
+    padding: 6px 8px;
+}
+
+#term-body .xterm-viewport {
+    border-radius: 0;
+}
+
 /* ── Pad ── */
 #pad-canvas {
     display: block;

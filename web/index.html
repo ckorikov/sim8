@@ -13,6 +13,9 @@
         <link rel="stylesheet" href="tailwind.css" />
         <link rel="stylesheet" href="sim.css" />
         <script src="https://cdn.jsdelivr.net/npm/@antv/x6@2.19.2/dist/index.js"></script>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5/css/xterm.min.css" />
+        <script src="https://cdn.jsdelivr.net/npm/xterm@5/lib/xterm.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8/lib/xterm-addon-fit.min.js"></script>
     </head>
 
     <body class="h-screen flex flex-col overflow-hidden">
@@ -88,6 +91,14 @@
                 id="btn-pad"
             >
                 pad
+            </button>
+
+            <button
+                class="btn btn-xs btn-ghost rounded-sm"
+                style="border: 1px solid var(--t-border); color: var(--t-dim)"
+                id="btn-term"
+            >
+                term
             </button>
 
             <button
@@ -560,6 +571,24 @@
                         <div
                             class="hw-port"
                             id="port-disp-top"
+                            style="top: -4px; left: 50%; transform: translateX(-50%); background: var(--a-yellow)"
+                        ></div>
+                    </div>
+
+                    <!-- Terminal Block -->
+                    <div
+                        class="hw-block"
+                        id="blk-term"
+                        style="left: var(--s-cpu-x); width: var(--s-disp-w); display: none"
+                    >
+                        <div class="hw-hdr">
+                            <div class="dot" style="background: var(--a-green)"></div>
+                            terminal
+                        </div>
+                        <div class="hw-body" id="term-body"></div>
+                        <div
+                            class="hw-port"
+                            id="port-term-top"
                             style="top: -4px; left: 50%; transform: translateX(-50%); background: var(--a-yellow)"
                         ></div>
                     </div>

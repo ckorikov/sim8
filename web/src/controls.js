@@ -14,6 +14,7 @@ let stepTimer = null;
 
 let _onStep;
 let _onReset;
+let _onBatchEnd;
 let _renderCPU;
 let _checkBp;
 let _getExecLine;
@@ -64,6 +65,7 @@ function tick() {
             return;
         }
     }
+    _onBatchEnd?.();
     runTimer = setTimeout(tick, hz > BATCH_THRESHOLD ? 16 : Math.round(1000 / hz));
 }
 
@@ -95,9 +97,10 @@ export function isRunning() {
     return runTimer !== null;
 }
 
-export function setupControls({ onStep, onReset, renderAll, checkBp, getExecLine }) {
+export function setupControls({ onStep, onReset, onBatchEnd, renderAll, checkBp, getExecLine }) {
     _onStep = onStep;
     _onReset = onReset;
+    _onBatchEnd = onBatchEnd;
     _renderCPU = renderAll;
     _checkBp = checkBp;
     _getExecLine = getExecLine;
@@ -117,6 +120,7 @@ export function setupControls({ onStep, onReset, renderAll, checkBp, getExecLine
         }
         // Skip BP check on step — user explicitly requested one step
         const cost = _onStep();
+        _onBatchEnd?.();
         if (cpu.state === CpuState.RUNNING && cost > 0) {
             stepTimer = setTimeout(
                 () => {
