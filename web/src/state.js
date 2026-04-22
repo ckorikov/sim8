@@ -3,7 +3,17 @@
  * Single source of truth for CPU instance, assembly results, theme colors, and utilities.
  */
 
-import { CPU, IO_START, SP_INIT, PAGE_SIZE } from "../lib/core.js";
+import {
+    CPU,
+    IO_START,
+    IO_DISPLAY_END,
+    IO_TX_DATA,
+    IO_TX_STATUS,
+    IO_RX_DATA,
+    IO_RX_STATUS,
+    SP_INIT,
+    PAGE_SIZE,
+} from "../lib/core.js";
 
 // ── CPU instance ────────────────────────────────────────────────
 
@@ -13,7 +23,7 @@ export const cpu = new CPU({ arch: 3 });
 
 export const STACK_BASE = SP_INIT - 2;
 export const IO_BASE = IO_START;
-export { PAGE_SIZE };
+export { PAGE_SIZE, IO_DISPLAY_END, IO_TX_DATA, IO_TX_STATUS, IO_RX_DATA, IO_RX_STATUS };
 
 // ── Pad state (mutated by pad.js) ──────────────────────────────
 

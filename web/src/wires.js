@@ -17,6 +17,7 @@
  */
 
 import { colors, pad } from "./state.js";
+import { isTermActive } from "./ui/term.js";
 
 const WIRE_FLASH_MS = 350;
 export const WIRE_DATA = 0;
@@ -93,8 +94,8 @@ export function initWires() {
     const cpuR = document.getElementById("blk-cpu").getBoundingClientRect();
     const memR = document.getElementById("blk-mem").getBoundingClientRect();
     const fpuR = document.getElementById("blk-fpu").getBoundingClientRect();
-    const hasVu = !!document.getElementById("blk-vu");
-    const vuR = hasVu ? document.getElementById("blk-vu").getBoundingClientRect() : null;
+    const vuEl = document.getElementById("blk-vu");
+    const vuR = vuEl ? vuEl.getBoundingClientRect() : null;
 
     const cpuBottomY = Math.round(cpuR.bottom - cRect.top);
     const fpuBottomY = Math.round(fpuR.bottom - cRect.top);
@@ -110,11 +111,12 @@ export function initWires() {
     const BUS_X = Math.round((memRightX + vuLeftX) / 2);
 
     // Vertical bus: upper branch fixed by VU port, lower branch mirrors or extends for Pad
-    const vuPortY = hasVu ? Math.round(vuR.top - cRect.top + vuR.height * 0.5) : BUS_Y;
+    const vuPortY = vuR ? Math.round(vuR.top - cRect.top + vuR.height * 0.5) : BUS_Y;
     const upperArm = BUS_Y - Math.min(BUS_Y, vuPortY);
     let lowerArm = vuR ? Math.round(vuR.bottom - cRect.top) - BUS_Y : upperArm;
-    if (pad.visible && document.getElementById("blk-pad")) {
-        const padR = document.getElementById("blk-pad").getBoundingClientRect();
+    const padEl = pad.visible ? document.getElementById("blk-pad") : null;
+    if (padEl) {
+        const padR = padEl.getBoundingClientRect();
         lowerArm = Math.max(lowerArm, Math.round(padR.bottom - cRect.top) - BUS_Y);
     }
     // Without Pad, mirror arms; with Pad, lower extends independently
@@ -149,16 +151,15 @@ export function initWires() {
 
     // ── Helper: add a dashed X6 edge between two { x, y } points ──
     function addWire(from, to, color, label, opts = {}) {
-        const bidir = opts.bidir !== false;
         const labelOffset = opts.labelOffset || 0;
         const strokeWidth = opts.strokeWidth ?? 1.5;
         const lineAttrs = {
             stroke: color,
             strokeWidth,
             strokeDasharray: "6 3",
-            targetMarker: { name: "block", width: 6, height: 4, fill: color, stroke: color },
+            targetMarker: null,
+            sourceMarker: null,
         };
-        if (bidir) lineAttrs.sourceMarker = { name: "block", width: 6, height: 4, fill: color, stroke: color };
 
         graph.addEdge({
             source: { x: from.x, y: from.y },
@@ -189,26 +190,27 @@ export function initWires() {
 
     // ── Wire 0: WIRE_DATA — CPU bottom → horizontal bus (vertical drop) ──
     const cpuBot = portPos("port-cpu-bottom");
-    addWire(cpuBot, { x: cpuBot.x, y: BUS_Y }, colors.yl, null, { bidir: false });
+    addWire(cpuBot, { x: cpuBot.x, y: BUS_Y }, colors.yl, null);
 
     // ── Wire 1: WIRE_FP — FPU bottom → horizontal bus (vertical drop) ──
     const fpuBot = portPos("port-fpu-bottom");
-    addWire(fpuBot, { x: fpuBot.x, y: BUS_Y }, colors.yl, null, { bidir: false });
+    addWire(fpuBot, { x: fpuBot.x, y: BUS_Y }, colors.yl, null);
 
     // ── Wire 2: WIRE_VU_A — VU left ← vertical bus (horizontal stub) ──
-    if (hasVu) {
+    if (vuR) {
         const vuLeft = portPos("port-vu-left-a");
-        addWire({ x: BUS_X, y: vuLeft.y }, vuLeft, colors.yl, null, { bidir: true });
+        addWire({ x: BUS_X, y: vuLeft.y }, vuLeft, colors.yl, null);
     }
 
-    // ── Wire 3: WIRE_IO — Memory bottom → Display top ──
+    // ── Wire 3: WIRE_IO — Memory bottom → Display or Terminal top ──
     const memBot = portPos("port-mem-bottom");
-    const dispTop = portPos("port-disp-top");
-    addWire(memBot, dispTop, colors.yl, "i/o", { bidir: false, labelOffset: 20 });
+    const ioPortId = isTermActive() ? "port-term-top" : "port-disp-top";
+    const ioTop = portPos(ioPortId);
+    addWire(memBot, ioTop, colors.yl, "i/o", { labelOffset: 20 });
 
     // ── Wire 4: WIRE_PAD — Pad left ← vertical bus (horizontal stub) ──
     if (pad.visible && document.getElementById("port-pad-left")) {
         const padLeft = portPos("port-pad-left");
-        addWire({ x: BUS_X, y: padLeft.y }, padLeft, colors.yl, null, { bidir: true });
+        addWire({ x: BUS_X, y: padLeft.y }, padLeft, colors.yl, null);
     }
 }

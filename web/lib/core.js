@@ -20,6 +20,11 @@ import {
     ErrorCode,
     PAGE_SIZE,
     IO_START,
+    IO_DISPLAY_END,
+    IO_TX_DATA,
+    IO_TX_STATUS,
+    IO_RX_DATA,
+    IO_RX_STATUS,
     SP_INIT,
     FP_FMT_WIDTH,
     decode,
@@ -30,7 +35,19 @@ import { fpHandlers } from "./core-handlers-fp.js";
 import { vuHandlers } from "./core-handlers-vu.js";
 
 // Re-export public API from core-types so existing imports keep working
-export { CpuState, ErrorCode, PAGE_SIZE, IO_START, SP_INIT, Memory };
+export {
+    CpuState,
+    ErrorCode,
+    PAGE_SIZE,
+    IO_START,
+    IO_DISPLAY_END,
+    IO_TX_DATA,
+    IO_TX_STATUS,
+    IO_RX_DATA,
+    IO_RX_STATUS,
+    SP_INIT,
+    Memory,
+};
 
 // ── CPU ──────────────────────────────────────────────────────────────
 
@@ -260,7 +277,7 @@ export class CPU {
 
     display() {
         const chars = [];
-        for (let addr = IO_START; addr < PAGE_SIZE; addr++) {
+        for (let addr = IO_START; addr < IO_DISPLAY_END; addr++) {
             const b = this.mem.get(addr);
             chars.push(b >= 0x21 && b <= 0x7e ? String.fromCharCode(b) : " ");
         }
