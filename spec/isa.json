@@ -2113,20 +2113,20 @@
       "cost": 1,
       "since": 3,
       "asm": "VMOV.fmt vdst, vsrc",
-      "desc": "Async copy: vdst[i] = vsrc[i]; VI mode with immediate broadcasts a fill (VFILL alias)"
+      "desc": "Async memory transfer. vv: copy VL elements; vs: broadcast GPR (byte fmts only); vi: broadcast immediate; ms (.b suffix, mode 3): broadcast 1 element from mem[vsrc] to VL elements at vdst"
     },
     {
-      "op": "VFILL",
+      "op": "VCVT",
       "opcode": 183,
-      "mnemonic": "VFILL",
+      "mnemonic": "VCVT",
       "operands": [
         "imm",
         "imm"
       ],
       "cost": 1,
       "since": 3,
-      "asm": "VFILL.fmt vdst, imm",
-      "desc": "Alias for VMOV.VI: vdst[i] = imm (broadcast fill); opcode 183 reserved"
+      "asm": "VCVT.dstfmt.srcfmt vdst, vsrc",
+      "desc": "Element-wise format conversion: dst[i] = convert<dstfmt>(src[i]). 4-byte encoding [183, dst_vfm, src_vfm, reg_byte]. Mode r invalid (ERR_VU_FORMAT). vi mode appends src_elem_size immediate bytes."
     },
     {
       "op": "VGATHER",
@@ -2153,6 +2153,117 @@
       "since": 3,
       "asm": "VSCATTER.fmt vdst, vsrc",
       "desc": "Mask expand: unpack contiguous vsrc into vdst at positions where VM[i]!=0"
+    },
+    {
+      "op": "VFMADD",
+      "opcode": 186,
+      "mnemonic": "VFMADD",
+      "operands": [
+        "imm",
+        "imm"
+      ],
+      "cost": 1,
+      "since": 3,
+      "asm": "VFMADD.fmt vdst, vsrc1, vsrc2",
+      "desc": "Async fused multiply-add: vdst[i] += vsrc1[i] × vsrc2[i]; FP only (INT → FAULT); modes vv/vs/vi (vs/vi: byte FP only)"
+    },
+    {
+      "op": "VEXP",
+      "opcode": 187,
+      "mnemonic": "VEXP",
+      "operands": [
+        "imm",
+        "imm"
+      ],
+      "cost": 1,
+      "since": 3,
+      "asm": "VEXP.fmt vdst, vsrc",
+      "desc": "Async element-wise exp: vdst[i] = exp(vsrc[i]); unary; FP only (INT → FAULT)"
+    },
+    {
+      "op": "MSET_IMM16",
+      "opcode": 188,
+      "mnemonic": "MSET",
+      "operands": [
+        "imm",
+        "imm",
+        "imm"
+      ],
+      "cost": 1,
+      "since": 3,
+      "asm": "MSET mreg, imm16",
+      "desc": "MU register load 16-bit immediate (target codes 0=MA,1=MB,2=MC,3=MM,4=MN,5=MK)"
+    },
+    {
+      "op": "MSET_GPR",
+      "opcode": 189,
+      "mnemonic": "MSET",
+      "operands": [
+        "imm",
+        "imm"
+      ],
+      "cost": 1,
+      "since": 3,
+      "asm": "MSET mreg, regH, regL | reg",
+      "desc": "MU register load from GPR pair; single GPR form zero-extends to 16-bit (especially convenient for MM/MN/MK)"
+    },
+    {
+      "op": "MFSTAT",
+      "opcode": 190,
+      "mnemonic": "MFSTAT",
+      "operands": [
+        "imm"
+      ],
+      "cost": 1,
+      "since": 3,
+      "asm": "MFSTAT reg",
+      "desc": "Copy MFPSR (sticky FP exception flags) into GPR"
+    },
+    {
+      "op": "MFCLR",
+      "opcode": 191,
+      "mnemonic": "MFCLR",
+      "operands": [],
+      "cost": 1,
+      "since": 3,
+      "asm": "MFCLR",
+      "desc": "Clear MFPSR exception flags"
+    },
+    {
+      "op": "MWAIT",
+      "opcode": 192,
+      "mnemonic": "MWAIT",
+      "operands": [],
+      "cost": 1,
+      "since": 3,
+      "asm": "MWAIT",
+      "desc": "Drain MU command queue and surface deferred MU faults"
+    },
+    {
+      "op": "MMUL",
+      "opcode": 193,
+      "mnemonic": "MMUL",
+      "operands": [
+        "imm",
+        "imm"
+      ],
+      "cost": 1,
+      "since": 3,
+      "asm": "MMUL.fmt[.layout] mreg, mreg, mreg",
+      "desc": "Async matrix multiply: C[M,N] = A[M,K] @ B[K,N]; dimensions come from MM/MN/MK; fmt selects A/B source format; layout suffix `.abc` selects row/col-major layout of A/B/C and defaults to `.rrr`; C always stores 4-byte results (FP32 for floating formats, UINT32/INT32 for .U/.I); accumulator width is max(4 bytes, 2x source element width) and starts from zero"
+    },
+    {
+      "op": "MMAD",
+      "opcode": 194,
+      "mnemonic": "MMAD",
+      "operands": [
+        "imm",
+        "imm"
+      ],
+      "cost": 1,
+      "since": 3,
+      "asm": "MMAD.fmt[.layout] mreg, mreg, mreg",
+      "desc": "Async matrix multiply-accumulate: C[M,N] += A[M,K] @ B[K,N]; dimensions come from MM/MN/MK; fmt selects A/B source format; layout suffix `.abc` selects row/col-major layout of A/B/C and defaults to `.rrr`; C always stores 4-byte results (FP32 for floating formats, UINT32/INT32 for .U/.I); accumulator width is max(4 bytes, 2x source element width) and starts from stored 4-byte C"
     }
   ]
 }

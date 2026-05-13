@@ -1,6 +1,6 @@
 # 5. Assembler Specification
 
-> Architecture v2 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Memory Model & Addressing](mem.md), [Instruction Encoding](isa.md#18-instruction-encoding-format), [FPU](fp.md)
+> Architecture v3 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Memory Model](mem.md), [Instruction Encoding](isa.md#18-instruction-encoding-format), [FPU](fp.md), [Vector Unit](vu.md)
 
 ## 5.1 Assembly Pipeline
 
@@ -95,7 +95,7 @@ FP registers are used with FP instructions only (opcodes 128-162). FP register n
 
 See [FPU](fp.md) for the full register model and aliasing rules.
 
-**DP (Data Page):** Controls which 256-byte page is accessed by all data addressing: both `[addr]` (direct) and `[reg±offset]` (indirect). It does not affect control flow (jumps/CALL/RET) or the fact that PUSH/POP always write to the stack on page 0. **Console I/O is memory-mapped on page 0**, so to access `[232]..[255]` as I/O via direct addressing, software must use `DP=0`. See [Memory Model & Addressing](mem.md).
+**DP (Data Page):** Controls which 256-byte page is accessed by all data addressing: both `[addr]` (direct) and `[reg±offset]` (indirect). It does not affect control flow (jumps/CALL/RET) or the fact that PUSH/POP always write to the stack on page 0. Memory-mapped I/O (display 0xE8–0xFB, UART 0xFC–0xFF) lives on page 0 — software must use `DP=0` to reach it. See [Memory Model & Addressing](mem.md).
 
 **SP in indirect addressing:** `[SP±offset]` always uses page 0, regardless of DP. This ensures stack-relative access is consistent with PUSH/POP.
 
@@ -416,7 +416,100 @@ All errors include a source location in `filename:line` format (1-based line num
 | `@page: invalid syntax` | Malformed `@page` directive (non-numeric, extra tokens) |
 | `@page: invalid offset` | Offset is not a valid number |
 | `@include: binary file spans beyond page 255` | Cross-page binary include would exceed page 255 |
-
 | `Page N overflow: X bytes exceeds 256` | Page content exceeds 256 bytes |
 | `jump target 'X' is on page N, but IP executes only on page 0` | JMP/CALL from page 0 to a label on page > 0 |
 | `cross-page jump from page N to page M` | JMP/CALL from page N to a label on a different page (N > 0) |
+| `VU format suffix required` | VU data instruction used without format suffix (e.g., `VADD VC, VA, VB`) |
+| `Invalid VU format suffix: X` | Unknown VU format suffix (not .F/.H/.BF/.O3/.O2/.U/.I) |
+| `VCMP requires condition suffix` | VCMP used without condition (e.g., `VCMP.U VM, VA, VB` — missing .EQ/.LT/etc.) |
+| `Invalid VU condition suffix: X` | Unknown condition suffix (not .EQ/.NE/.LT/.LE/.GT/.GE) |
+| `Invalid VU mode for instruction: X` | Explicit mode suffix not valid for that instruction (e.g., VDOT.vv) |
+| `VSET target must be VA/VB/VC/VM/VL` | Unknown VU register name as VSET target |
+| `VSET immediate out of range` | 16-bit VSET immediate > 65535 |
+| `VSET composite operand out of range` | VSET hi-byte or lo-byte out of 0–255 |
+| `VCVT requires two format suffixes` | VCVT used with only one format suffix |
+| `VCVT does not support reduction mode` | Explicit `.r` mode suffix on VCVT |
+
+---
+
+## 5.12 VU Assembly Syntax
+
+VU instructions use format suffixes (and optionally mode/condition suffixes) to select the element format and addressing mode. For full VU architecture and instruction semantics, see [Vector Unit](vu.md).
+
+### VU Register Operands
+
+| Register | Description |
+|----------|-------------|
+| VA, VB, VC | 16-bit address pointers (source/destination) |
+| VM | 16-bit mask pointer |
+| VL | 16-bit element count |
+
+VU registers are used with VU instructions only (opcodes 163–187). VL is set by VSET; VA/VB/VC/VM may be set by VSET or read by VSET with a GPR source.
+
+### Format Suffixes
+
+All VU data instructions require a format suffix:
+
+| Suffix | Format |
+|--------|--------|
+| `.F` | float32 |
+| `.H` | float16 |
+| `.BF` | bfloat16 |
+| `.O3` | OFP8 E4M3 |
+| `.O2` | OFP8 E5M2 |
+| `.U` | UINT8 |
+| `.I` | INT8 |
+
+### Mode Inference
+
+The addressing mode is inferred from operand types — no explicit mode suffix is needed in most cases:
+
+| Operands | Mode | Example |
+|----------|------|---------|
+| 3 VU registers | vv (vector-vector) | `VADD.F VC, VA, VB` |
+| 2 VU regs + GPR (A–D) | vs (scalar broadcast) | `VADD.F.vs VC, VA, B` |
+| 2 VU regs + immediate | vi (immediate broadcast) | `VADD.F VC, VA, 1` |
+| 2 VU registers | r (reduction) | `VADD.F VC, VA` |
+
+Mode suffix (`.vv`, `.vs`, `.vi`, `.r`) can be written explicitly as an optional third suffix after the format suffix. Mismatched explicit mode causes an assembler error.
+
+### VCMP — Condition Suffix
+
+VCMP requires a mandatory condition suffix after the format:
+
+```asm
+VCMP.U.LT VM, VA, VB   ; VM[i] = (VA[i] < VB[i]) ? 1 : 0
+VCMP.F.GE VM, VA, VB
+```
+
+Supported conditions: `.EQ`, `.NE`, `.LT`, `.LE`, `.GT`, `.GE`
+
+### VCVT — Dual Format Suffix
+
+VCVT requires two format suffixes: first is destination, second is source.
+
+```asm
+VCVT.H.F  VC, VA        ; float32 → float16 (FCVT analogue)
+VCVT.F.U  VC, VA        ; UINT8 → float32 (FITOF analogue)
+VCVT.U.F  VC, VA        ; float32 → UINT8 saturating (FFTOI analogue)
+VCVT.F.U  VC, 42        ; vi: uint8(42) → float32, broadcast VL times
+VCVT.H.F.vs VC, VB      ; vs: convert scalar float32 at mem[VB] → float16, broadcast
+```
+
+Mode r is not valid for VCVT (no reduction operator for a conversion).
+
+### VSET
+
+```asm
+VSET VL, 0, 100        ; VL = 0×256 + 100 = 100 (composite hi, lo)
+VSET VA, 1, 0          ; VA = 0x0100
+VSET VB, A             ; VB = (B-reg high byte) × 256 + (A-reg low byte)
+```
+
+### Synchronization
+
+```asm
+VWAIT                   ; drain VU queue; propagate any deferred faults
+VFSTAT                  ; read VFPSR → register A
+VFCLR                   ; clear VFPSR
+```

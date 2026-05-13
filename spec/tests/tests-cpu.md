@@ -1,6 +1,6 @@
 # 6. Test Specification
 
-> Architecture v2 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Memory Model & Addressing](mem.md), [Assembler](asm.md), [Microarchitecture](uarch.md), [FPU](fp.md), [FP Tests](tests-fp.md)
+> Architecture v3 | Part of [Technical Specification](../spec.md) | See also: [ISA](../isa.md), [Memory Model & Addressing](../mem.md), [Assembler](../asm.md), [Microarchitecture](../uarch.md), [FPU](../fp.md), [FP Tests](tests-fp.md)
 
 ## 6.1 Test Methodology
 
@@ -556,21 +556,11 @@ These forms must not execute successfully. They may be rejected at assembly time
 
 ## 6.15 Memory-Mapped I/O
 
-Console display region: addresses 232-255 (0xE8-0xFF).
+I/O tests have moved to dedicated files:
 
-| # | Source | Verify | Description |
-|---|--------|--------|-------------|
-| 106 | `MOV [232], 72` | mem[232]=72 | Write 'H' to first display cell |
-|     | `MOV [233], 105` | mem[233]=105 | Write 'i' to second cell |
-|     | `HLT` | display = "Hi" | |
-| 107 | `MOV A, 65` | | |
-|     | `MOV [0xFF], A` | mem[255]=65 | Write to last display cell |
-|     | `HLT` | | |
-| 108 | `MOV A, [232]` | A = mem[232] | Read from display region |
-|     | `HLT` | | (region is readable) |
-| 109 | `MOV DP, 5` | | DP=5 (not page 0) |
-|     | `MOV [232], 72` | mem[1512]=72 | Writes to page 5 (5×256+232), NOT I/O |
-|     | `HLT` | display unchanged | I/O only accessible when DP=0 |
+- Display cells (0xE8–0xFB): [tests-io-display.md](tests-io-display.md)
+- UART terminal (0xFC–0xFF): [tests-io-uart.md](tests-io-uart.md)
+- Pixel pad: [tests-io-pad.md](tests-io-pad.md)
 
 ---
 

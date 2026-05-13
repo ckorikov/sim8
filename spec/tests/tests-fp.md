@@ -1,6 +1,6 @@
 # 8. FP Test Specification
 
-> Architecture v2 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Memory Model & Addressing](mem.md), [Assembler](asm.md), [Microarchitecture](uarch.md), [FPU](fp.md), [Integer Tests](tests.md)
+> Architecture v3 | Part of [Technical Specification](../spec.md) | See also: [ISA](../isa.md), [Memory Model & Addressing](../mem.md), [Assembler](../asm.md), [Microarchitecture](../uarch.md), [FPU](../fp.md), [CPU Tests](tests-cpu.md)
 
 ## 8.1 Test Methodology
 

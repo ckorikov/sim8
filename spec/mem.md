@@ -1,6 +1,6 @@
 # 2. Memory Model & Addressing
 
-> Architecture v3 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [CPU Architecture](cpu.md), [Microarchitecture](uarch.md), [Assembler](asm.md), [Tests](tests.md), [FP Tests](tests-fp.md), [FPU](fp.md), [Vector Unit](vector.md)
+> Architecture v3 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [CPU Architecture](cpu.md), [Microarchitecture](uarch.md), [Assembler](asm.md), [CPU Tests](tests/tests-cpu.md), [FP Tests](tests/tests-fp.md), [FPU](fp.md), [Vector Unit](vu.md), [I/O Display](io-display.md), [I/O UART](io-uart.md), [I/O Pad](io-pad.md)
 
 This document is a focused reference for **memory layout**, **paged addressing via DP**, and **effective address calculation**.
 
@@ -39,61 +39,21 @@ Page 0 is special: it contains **code**, **stack**, and the **console I/O window
 
 ## I/O (Memory-Mapped Console)
 
-The simulator exposes a **character display** and a **UART-style terminal** as memory-mapped I/O windows on page 0, offsets 232–255.
-
-- Location: **page 0 only**, offsets **232–255** (0xE8–0xFF)
-- Active only when `DP = 0`; when `DP≠0`, these offsets access normal data memory on that page
+The simulator exposes memory-mapped I/O on page 0, offsets 232–255.
 
 ### DP interaction (important)
 
-The I/O window exists **only on page 0**.
+The I/O window exists **only on page 0**. Software must use `DP=0` and addresses `[232]..[255]` to reach I/O. With `DP≠0`, those offsets address normal data memory on the active page — no I/O effect.
 
-- To access I/O, software must use `DP=0` and addresses `[232]..[255]`.
-- When `DP≠0`, `[232]..[255]` access normal data memory on that page, not I/O.
+### I/O Devices
 
-### Display (offsets 232–251)
+| Region | Offsets | Size | Spec |
+|--------|---------|------|------|
+| Display cells | 0xE8–0xFB | 20 | [I/O Display](io-display.md) |
+| UART terminal | 0xFC–0xFF | 4 | [I/O UART](io-uart.md) |
+| Pixel pad | configurable | N×N | [I/O Pad](io-pad.md) |
 
-| Region | Offsets | Size | Notes |
-| --- | ---: | ---: | --- |
-| Display cells | 0xE8–0xFB | 20 | Positional character output |
-
-- Each byte is interpreted as an ASCII character code (32–126 printable, others blank)
-- Left-to-right in increasing address order
-- On reset, displays as blanks
-
-### UART Terminal (offsets 252–255)
-
-A UART-style port for streaming character I/O. Active alongside or in place of the display (switchable in the UI).
-
-| Offset | Hex | Name | R/W | Description |
-| ---: | --- | --- | --- | --- |
-| 252 | 0xFC | `IO_TX_DATA` | W | Write a byte → sends character to terminal |
-| 253 | 0xFD | `IO_TX_STATUS` | R | bit 0 = TX ready (always 1; reserved for baud-rate emulation) |
-| 254 | 0xFE | `IO_RX_DATA` | R/W | Read = next input byte (0 if empty); write 0 to signal consumed |
-| 255 | 0xFF | `IO_RX_STATUS` | R | bit 0 = input byte available |
-
-**TX protocol:** each write to `IO_TX_DATA` (0xFC) sends exactly one byte to the terminal output, regardless of whether the value changed. The cell is cleared to 0 by the simulator after emission.
-
-**RX protocol:** when input is available, `IO_RX_STATUS` (bit 0) is 1 and `IO_RX_DATA` holds the next byte. After reading `IO_RX_DATA`, the program must write 0 to it to signal consumption; the simulator then stages the next byte.
-
-**Typical driver:**
-
-```asm
-putchar:                     ; send byte in A to terminal
-    MOV B, [0xFD]            ; check TX_STATUS
-    AND B, 1
-    JZ putchar               ; spin (future baud-rate emulation)
-    MOV [0xFC], A            ; TX_DATA = byte
-    RET
-
-getchar:                     ; blocking read → result in A
-    MOV A, [0xFF]            ; check RX_STATUS
-    AND A, 1
-    JZ getchar               ; spin until data available
-    MOV A, [0xFE]            ; read RX_DATA
-    MOV [0xFE], 0            ; signal consumed
-    RET
-```
+See the individual I/O spec files for protocol details.
 
 ## Effective Address Calculation
 
@@ -189,7 +149,7 @@ There is no cache coherence or memory ordering guarantee between CPU and VU memo
 
 ### I/O Region
 
-The VU can access the page-0 I/O region (0x00E8–0x00FF). Writing to the display cells (0xE8–0xFB) from the VU updates the memory-mapped display, same as CPU writes. The UART ports (0xFC–0xFF) are not meaningful for VU access.
+The VU can access the page-0 I/O region (0x00E8–0x00FF). Writing to the display cells (0xE8–0xFB) from the VU updates the memory-mapped display, same as CPU writes. The UART ports (0xFC–0xFF) are not triggered by VU access (memory-only). See [I/O Display](io-display.md) and [I/O UART](io-uart.md).
 
 ### Address Overflow
 

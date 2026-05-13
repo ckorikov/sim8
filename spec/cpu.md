@@ -1,6 +1,6 @@
 # 3. CPU Architecture
 
-> Architecture v3 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Memory Model & Addressing](mem.md), [Microarchitecture](uarch.md), [FPU](fp.md), [Vector Unit](vector.md)
+> Architecture v3 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Memory Model & Addressing](mem.md), [Microarchitecture](uarch.md), [FPU](fp.md), [Vector Unit](vu.md)
 
 ## 3.1 Processor States
 
@@ -41,7 +41,7 @@ IDLE ──step()──► RUNNING ──HLT──► HALTED
 
 **FP instruction validation:** FP instructions (opcodes 128-162) additionally validate the FPM byte during the Decode/Validate phase. An invalid FPM byte triggers FAULT(`ERR_FP_FORMAT`) before any FP register or memory modification. FP arithmetic exceptions (Invalid, DivZero, Overflow, Underflow, Inexact) are checked during Execute and always set the corresponding FPSR sticky flag — they never cause FAULT. See [FPU Exception Model](fp.md#77-fp-exception-model).
 
-**Vector instruction handling:** Synchronous vector instructions (VSET, VFSTAT, VFCLR, VWAIT; opcodes 163–169) follow the standard instruction cycle. Asynchronous vector instructions (opcodes 170–183) replace the Execute/Writeback phases with: Validate VFM byte → Resolve addresses from VA/VB/VC/VM/VL → Apply auto-increment → Push resolved command to VU queue (stall if full) → Advance IP. The VU executes commands independently. VWAIT blocks the CPU until the VU queue drains; if the VU encountered a fault, VWAIT transitions CPU to FAULT. See [Vector Unit](vector.md).
+**Vector instruction handling:** Synchronous vector instructions (VSET, VFSTAT, VFCLR, VWAIT; opcodes 163–169) follow the standard instruction cycle. Asynchronous vector instructions (opcodes 170–183) replace the Execute/Writeback phases with: Validate VFM byte → Resolve addresses from VA/VB/VC/VM/VL → Apply auto-increment → Push resolved command to VU queue (stall if full) → Advance IP. The VU executes commands independently. VWAIT blocks the CPU until the VU queue drains; if the VU encountered a fault, VWAIT transitions CPU to FAULT. See [Vector Unit](vu.md).
 
 **VU queue on reset:** Entering IDLE (reset) or FAULT flushes the VU command queue. All pending VU commands are discarded.
 
