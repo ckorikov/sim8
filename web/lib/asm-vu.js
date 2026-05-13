@@ -22,6 +22,7 @@ import {
     AsmError,
     TAG_REG,
     TAG_CONST,
+    TAG_FP_IMM,
     TAG_VU_REG,
     TAG_ADDR,
     TAG_REGADDR,
@@ -31,6 +32,8 @@ import {
 } from "./asm-parse.js";
 
 import { _lookupSuffix } from "./asm-core.js";
+
+import { floatToBytes } from "./fp.js";
 
 // ── VU instruction encoding ──────────────────────────────────────
 
@@ -167,7 +170,7 @@ function _resolveVuModeCond(mnemonic, modeSuffix, operands, line) {
 
     // Infer from operands
     const hasGpr = operands.some((op) => op.tag === TAG_REG);
-    const hasImm = operands.some((op) => op.tag === TAG_CONST);
+    const hasImm = operands.some((op) => op.tag === TAG_CONST || op.tag === TAG_FP_IMM);
     const vuCount = _filterByTag(operands, TAG_VU_REG).length;
     if (hasGpr) {
         throw new AsmError(
@@ -259,13 +262,18 @@ function _encodeVuAsync(mnemonic, suffixes, operands, line) {
     if (mnemonic === "VCMP") result.push(cond);
 
     if (mode === VU_MODE_VI) {
-        const immOps = _filterByTag(operands, TAG_CONST);
-        if (immOps.length === 0) {
+        const immOp = operands.find((op) => op.tag === TAG_CONST) || operands.find((op) => op.tag === TAG_FP_IMM);
+        if (!immOp) {
             throw new AsmError(`${mnemonic} requires an immediate operand`, line);
         }
-        const immVal = immOps[0].value;
         const elemSize = VU_FMT_ELEM_SIZE[fmt] || 1;
-        result.push(...Array.from({ length: elemSize }, (_, i) => (immVal >> (8 * i)) & 0xff));
+        if (immOp.tag === TAG_FP_IMM) {
+            const { data } = floatToBytes(immOp.value, fmt);
+            result.push(...data);
+        } else {
+            const immVal = immOp.value;
+            result.push(...Array.from({ length: elemSize }, (_, i) => (immVal >> (8 * i)) & 0xff));
+        }
     }
 
     return result;
