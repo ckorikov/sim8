@@ -256,10 +256,6 @@ function _vuCmp(a, b, cond, fmt) {
     return _compare(a, b, cond) ? 0xff : 0x00;
 }
 
-function _vuDot(valuesA, valuesB) {
-    return valuesA.reduce((acc, a, i) => acc + a * valuesB[i], 0.0);
-}
-
 // ── VuRegisters ───────────────────────────────────────────────────
 
 class VuRegisters {
@@ -597,12 +593,31 @@ export class VectorUnit {
     }
 
     _execDot(mem, cmd, sz, fmt, rm) {
-        const vl = cmd.vl;
-        const valuesA = Array.from({ length: vl }, (_, i) => _readElem(mem, cmd.s1Addr + i * sz, fmt));
-        const valuesB = Array.from({ length: vl }, (_, i) => _readElem(mem, cmd.s2Addr + i * sz, fmt));
-        const result = _vuDot(valuesA, valuesB);
-        const wExc = _writeElem(mem, cmd.dstAddr, fmt, result, rm);
-        this.regs.vfpsr |= _excToFlags(wExc);
+        let acc = 0.0; // float64 accumulator: intermediate precision >= source
+        let flags = 0;
+        for (let i = 0; i < cmd.vl; i++) {
+            const a = Number(_readElem(mem, cmd.s1Addr + i * sz, fmt));
+            const b = Number(_readElem(mem, cmd.s2Addr + i * sz, fmt));
+            if (
+                Number.isNaN(a) ||
+                Number.isNaN(b) ||
+                (a === 0 && !Number.isFinite(b)) ||
+                (!Number.isFinite(a) && b === 0)
+            ) {
+                flags |= 0x01; // NV
+                acc = NaN;
+                continue;
+            }
+            const prod = a * b;
+            if (!Number.isFinite(acc) && !Number.isFinite(prod) && acc !== prod) {
+                flags |= 0x01; // NV: inf - inf
+                acc = NaN;
+                continue;
+            }
+            acc += prod;
+        }
+        flags |= _excToFlags(_writeElem(mem, cmd.dstAddr, fmt, acc, rm));
+        this.regs.vfpsr |= flags;
     }
 
     _execReduction(mem, cmd, sz, fmt, rm) {
