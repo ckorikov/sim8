@@ -54,8 +54,8 @@
     --s-mem-cell-font: 10px;
     --s-mem-hdr-w: 28px;
     --s-mem-row-w: 24px;
-    --s-disp-char-w: 20px;
-    --s-disp-char-h: 24px;
+    --s-disp-char-w: 22px;
+    --s-disp-char-h: 22px;
     --s-ri-label-font: 8px;
     --s-ri-label-pad: 3px 5px;
     --s-ri-val-font: 11px;
@@ -335,16 +335,24 @@ span.hw-label {
 }
 
 /* ── Console char ── */
+#disp-chars {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+    align-self: stretch;
+    gap: 1px;
+}
+
 .cc {
+    flex: none;
+    width: var(--s-disp-char-w);
+    height: var(--s-disp-char-h);
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: var(--s-disp-char-w);
-    height: var(--s-disp-char-h);
-    font-size: var(--s-block-font);
+    font-size: 13px;
     border: 1px solid var(--t-border);
     color: var(--t-dim);
-    flex-shrink: 0;
 }
 
 .cc.on {

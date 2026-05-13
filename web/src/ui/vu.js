@@ -2,7 +2,7 @@
  * Vector Unit block renderer: registers, queue, status dot, format toggle.
  */
 
-import { colors, hex, initFormatToggle, FPSR_FLAGS } from "../state.js";
+import { colors, hex, initFormatToggle, fpsrFlagsHtml } from "../state.js";
 import { VU_QUEUE_DEPTH } from "../../lib/vu.js";
 import { isHidden, bindToggleClicks } from "./marker-toggle.js";
 
@@ -19,6 +19,12 @@ const elDot = document.getElementById("vu-state-dot");
 const DOT_COLORS = { IDLE: "dim", BUSY: "gr" };
 
 bindToggleClicks("blk-vu");
+
+function renderQueueSlot(item) {
+    if (!item) return `<div class="vu-queue-slot">&mdash;</div>`;
+    const cls = item.active ? "vu-queue-slot active" : "vu-queue-slot pending";
+    return `<div class="${cls}"><span class="vu-q-mn">${item.label}</span> <span class="vu-q-op">${item.operands}</span></div>`;
+}
 
 function ri(name, value, color, pad) {
     const formatted = vuFmt.get() === "dec" ? value.toString() : hex(value, pad);
@@ -45,24 +51,11 @@ export function renderVU(vu) {
     elPtrs.innerHTML = ri("VA", va, colors.gr, 4) + ri("VB", vb, colors.bl, 4) + ri("VC", vc, colors.or, 4);
     elML.innerHTML = ri("VM", vm, colors.rd, 4) + ri("VL", vl, colors.mid, 4);
 
-    elFlags.innerHTML = FPSR_FLAGS.map((f) => {
-        const on = (vfpsr >> f.bit) & 1;
-        return `<span class="fb" style="font-size:8px;border-color:${on ? colors.or : "var(--t-border)"};color:${on ? colors.or : colors.dim};">${f.n}</span>`;
-    }).join("");
+    elFlags.innerHTML = fpsrFlagsHtml(vfpsr, colors.or);
 
     elQueueDepth.textContent = `${queueItems.length}/${VU_QUEUE_DEPTH}`;
 
-    let slots = "";
-    for (let i = 0; i < VU_QUEUE_DEPTH; i++) {
-        if (i < queueItems.length) {
-            const item = queueItems[i];
-            const cls = item.active ? "vu-queue-slot active" : "vu-queue-slot pending";
-            slots += `<div class="${cls}"><span class="vu-q-mn">${item.label}</span> <span class="vu-q-op">${item.operands}</span></div>`;
-        } else {
-            slots += `<div class="vu-queue-slot">&mdash;</div>`;
-        }
-    }
-    elQueue.innerHTML = slots;
+    elQueue.innerHTML = Array.from({ length: VU_QUEUE_DEPTH }, (_, i) => renderQueueSlot(queueItems[i])).join("");
 
     elDot.style.background = colors[DOT_COLORS[vuState] || "dim"];
     elDot.classList.toggle("vu-busy", vuState === "BUSY");

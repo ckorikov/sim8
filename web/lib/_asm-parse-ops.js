@@ -34,11 +34,13 @@ export const TAG_FP_REG = "fp_reg";
 export const TAG_FLOAT = "float";
 export const TAG_FP_IMM = "fp_imm";
 export const TAG_VU_REG = "vu_reg";
+export const TAG_MU_REG = "mu_reg";
 export const TAG_PAGE_LABEL = "page_label";
 
-// ── VU register map (also needed by line parser for keyword check) ─
+// ── VU/MU register maps (also needed by line parser for keyword check) ─
 
 export const _VU_REG_MAP = { VA: 0, VB: 1, VC: 2, VM: 3, VL: 4 };
+export const _MU_REG_MAP = { MA: 0, MB: 1, MC: 2, MM: 3, MN: 4, MK: 5 };
 
 // ── Number parsing ───────────────────────────────────────────────
 
@@ -171,6 +173,9 @@ function _tryRegister(token, _line, arch) {
     if (arch >= 3 && up in _VU_REG_MAP) {
         return { tag: TAG_VU_REG, code: _VU_REG_MAP[up] };
     }
+    if (arch >= 3 && up in _MU_REG_MAP) {
+        return { tag: TAG_MU_REG, code: _MU_REG_MAP[up] };
+    }
     return null;
 }
 
@@ -181,7 +186,7 @@ function _tryString(token, _line) {
     return null;
 }
 
-function _tryConst(token, line, wide = false) {
+function _tryConst(token, line, _arch, wide = false) {
     if (_RE_CHAR_MULTI.test(token)) {
         throw new AsmError("Only one character is allowed", line);
     }
@@ -263,7 +268,7 @@ const _OPERAND_PARSERS = [_tryBracket, _tryPageLabel, _tryRegister, _tryString, 
 export function _parseOperand(token, line, arch = 1, wide = false) {
     token = token.trim();
     for (const parser of _OPERAND_PARSERS) {
-        const result = parser === _tryConst ? parser(token, line, wide) : parser(token, line, arch);
+        const result = parser(token, line, arch, wide);
         if (result !== null) return result;
     }
     throw new AsmError(`Invalid operand: ${token}`, line);

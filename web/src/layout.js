@@ -10,6 +10,8 @@ const BLOCK_GAP = 16; // gap between adjacent blocks (CPU↔FPU, VU↔Pad)
 const IO_GAP = 24; // gap between Memory bottom and Display/Terminal top
 const CONTAINER_PAD = 32; // bottom padding for diagram container
 
+const px = (n) => n + "px";
+
 export function adjustBlockPositions(initWiresFn) {
     const cpuEl = document.getElementById("blk-cpu");
     const fpuEl = document.getElementById("blk-fpu");
@@ -23,45 +25,45 @@ export function adjustBlockPositions(initWiresFn) {
 
     // ── Horizontal: CPU+FPU left-aligned ──
     const memLeft = parseInt(cssVar("--s-cpu-x")) || 48;
-    cpuEl.style.left = memLeft + "px";
-    fpuEl.style.left = memLeft + cpuEl.offsetWidth + BLOCK_GAP + "px";
+    cpuEl.style.left = px(memLeft);
+    fpuEl.style.left = px(memLeft + cpuEl.offsetWidth + BLOCK_GAP);
 
     // ── Row 1: CPU + FPU at top, equal height ──
-    cpuEl.style.top = topY + "px";
-    fpuEl.style.top = topY + "px";
+    cpuEl.style.top = px(topY);
+    fpuEl.style.top = px(topY);
     const maxH = Math.max(cpuEl.offsetHeight, fpuEl.offsetHeight);
-    cpuEl.style.minHeight = maxH + "px";
-    fpuEl.style.minHeight = maxH + "px";
+    cpuEl.style.minHeight = px(maxH);
+    fpuEl.style.minHeight = px(maxH);
 
     const row1Bottom = topY + maxH;
     const fpuRight = memLeft + cpuEl.offsetWidth + BLOCK_GAP + fpuEl.offsetWidth;
 
     // ── Memory + Display/Terminal width = CPU left to FPU right ──
     const rowWidth = fpuRight - memLeft;
-    memEl.style.width = rowWidth + "px";
-    dispEl.style.width = rowWidth + "px";
-    if (termEl) termEl.style.width = rowWidth + "px";
+    memEl.style.width = px(rowWidth);
+    dispEl.style.width = px(rowWidth);
+    if (termEl) termEl.style.width = px(rowWidth);
 
     // ── VU X: same gap as wireGap from Memory right ──
-    if (vuEl) vuEl.style.left = fpuRight + wireGap + "px";
+    if (vuEl) vuEl.style.left = px(fpuRight + wireGap);
 
     // ── Row 2: Memory below bus corridor; VU aligned with row 1 top ──
     const row2Top = row1Bottom + wireGap;
-    memEl.style.top = row2Top + "px";
-    if (vuEl) vuEl.style.top = topY + "px";
+    memEl.style.top = px(row2Top);
+    if (vuEl) vuEl.style.top = px(topY);
 
     const memBottom = row2Top + memEl.offsetHeight;
     const vuBottom = vuEl ? topY + vuEl.offsetHeight : topY;
 
     // ── Display and terminal share the same position below memory ──
     const ioTop = memBottom + IO_GAP;
-    dispEl.style.top = ioTop + "px";
-    if (termEl) termEl.style.top = ioTop + "px";
+    dispEl.style.top = px(ioTop);
+    if (termEl) termEl.style.top = px(ioTop);
 
     const padVisible = padEl && padEl.style.display !== "none";
     if (padVisible) {
-        padEl.style.left = fpuRight + wireGap + "px";
-        padEl.style.top = vuBottom + BLOCK_GAP + "px";
+        padEl.style.left = px(fpuRight + wireGap);
+        padEl.style.top = px(vuBottom + BLOCK_GAP);
     }
 
     // ── Active I/O element for height calculation ──
@@ -72,7 +74,7 @@ export function adjustBlockPositions(initWiresFn) {
     if (vuEl) bottomEdge = Math.max(bottomEdge, vuBottom);
     if (padVisible && padEl) bottomEdge = Math.max(bottomEdge, parseInt(padEl.style.top) + padEl.offsetHeight);
 
-    container.style.height = bottomEdge + CONTAINER_PAD + "px";
+    container.style.height = px(bottomEdge + CONTAINER_PAD);
     initWiresFn();
 }
 
@@ -84,7 +86,7 @@ export function fitDiagram() {
     const scale = Math.min(availW / natW, 1);
     container.style.transform = `scale(${scale})`;
     const natH = parseInt(container.style.height) || container.offsetHeight;
-    container.style.marginBottom = -(1 - scale) * natH + "px";
+    container.style.marginBottom = px(-(1 - scale) * natH);
 }
 
 export function setupSplitHandle(onResize) {
@@ -110,7 +112,7 @@ export function setupSplitHandle(onResize) {
         if (x < snapPx) targetW = 0;
         else if (x > maxLeftW - snapPx) targetW = maxLeftW;
         else targetW = x;
-        left.style.width = targetW + "px";
+        left.style.width = px(targetW);
         onResize();
     });
 

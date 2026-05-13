@@ -32,31 +32,18 @@ function _encodeFloat(value, fmt, line) {
 
 // ── DB encoding ──────────────────────────────────────────────────
 
-function _encodeDbOperand(op, line, result) {
-    if (op.tag === TAG_CONST) {
-        result.push(op.value);
-        return;
-    }
+function _encodeDbOperandBytes(op, line) {
+    if (op.tag === TAG_CONST) return [op.value];
     if (op.tag === TAG_STRING) {
-        if (!op.text) {
-            throw new AsmError("DB string must not be empty", line);
-        }
-        for (const c of op.text) result.push(c.charCodeAt(0));
-        return;
+        if (!op.text) throw new AsmError("DB string must not be empty", line);
+        return [...op.text].map((c) => c.charCodeAt(0));
     }
-    if (op.tag === TAG_FLOAT) {
-        result.push(..._encodeFloat(op.value, op.fmt, line));
-        return;
-    }
+    if (op.tag === TAG_FLOAT) return Array.from(_encodeFloat(op.value, op.fmt, line));
     throw new AsmError("DB does not support this operand", line);
 }
 
 export function _encodeDb(operands, line) {
-    const result = [];
-    for (const op of operands) {
-        _encodeDbOperand(op, line, result);
-    }
-    return result;
+    return operands.flatMap((op) => _encodeDbOperandBytes(op, line));
 }
 
 // ── FP suffix validation ─────────────────────────────────────────
@@ -93,16 +80,9 @@ export function _encodeFpInstruction(instr, operands, dstSuffix, srcSuffix, line
         return [instr.op, dstFpmEnc, srcFpmEnc];
     }
 
-    const fpOps = [];
-    const nonFpOps = [];
-    for (const op of operands) {
-        if (op.tag === TAG_FP_REG) {
-            _validateFpRegWidth(op, dstFmt, line);
-            fpOps.push(op);
-        } else {
-            nonFpOps.push(op);
-        }
-    }
+    const fpOps = operands.filter((op) => op.tag === TAG_FP_REG);
+    const nonFpOps = operands.filter((op) => op.tag !== TAG_FP_REG);
+    fpOps.forEach((op) => _validateFpRegWidth(op, dstFmt, line));
 
     const fpmEncs = fpOps.map((fp) => encodeFpm(fp.phys, fp.pos, dstFmt));
     const nonFpBytes = nonFpOps.map((op) => _encodeOperand(op));

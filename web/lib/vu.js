@@ -3,7 +3,7 @@
  * Pure logic -- no DOM dependencies.
  */
 
-import { bytesToFloat, floatToBytes, fpAdd, fpSub, fpMul, fpDiv, fpSqrt } from "./fp.js";
+import { bytesToFloat, floatToBytes, fpAdd, fpSub, fpMul, fpDiv, fpSqrt, fpExp, fpFmadd } from "./fp.js";
 
 import {
     Op,
@@ -11,6 +11,8 @@ import {
     VU_FMT_U,
     VU_FMT_I,
     VU_MODE_VV,
+    VU_MODE_VS,
+    VU_MODE_VI,
     VU_MODE_R,
     VU_WINDOW_SIZE,
     VU_CMP_EQ,
@@ -38,16 +40,34 @@ const _FP_FMTS = new Set([0, 1, 2, 3, 4]); // F, H, BF, O3, O2
 const _FMT_NAMES = ["F", "H", "BF", "O3", "O2", "U", "I"];
 const _hex16 = (v) => v.toString(16).toUpperCase().padStart(4, "0");
 
+function _fpToUint8Sat(val) {
+    if (typeof val === "number") {
+        if (Number.isNaN(val)) return 0;
+        if (!Number.isFinite(val)) return val > 0 ? 255 : 0;
+        return Math.max(0, Math.min(255, Math.trunc(val)));
+    }
+    return Math.max(0, Math.min(255, val));
+}
+
+function _fpToInt8Sat(val) {
+    if (typeof val === "number") {
+        if (Number.isNaN(val)) return 0;
+        if (!Number.isFinite(val)) return val > 0 ? 127 : -128;
+        return Math.max(-128, Math.min(127, Math.trunc(val)));
+    }
+    return Math.max(-128, Math.min(127, val));
+}
+
 // ── Exception accumulation ───────────────────────────────────────
 
 function _excToFlags(exc) {
-    let flags = 0;
-    if (exc.invalid) flags |= 0x01;
-    if (exc.divZero) flags |= 0x02;
-    if (exc.overflow) flags |= 0x04;
-    if (exc.underflow) flags |= 0x08;
-    if (exc.inexact) flags |= 0x10;
-    return flags;
+    return (
+        (exc.invalid ? 0x01 : 0) |
+        (exc.divZero ? 0x02 : 0) |
+        (exc.overflow ? 0x04 : 0) |
+        (exc.underflow ? 0x08 : 0) |
+        (exc.inexact ? 0x10 : 0)
+    );
 }
 
 const _NO_EXC = Object.freeze({
@@ -63,9 +83,10 @@ const _NO_EXC = Object.freeze({
 function _readElem(mem, addr, fmt) {
     const sz = VU_FMT_ELEM_SIZE[fmt];
     if (_FP_FMTS.has(fmt)) {
-        const data = new Uint8Array(sz);
-        for (let i = 0; i < sz; i++) data[i] = mem.get(addr + i);
-        return bytesToFloat(data, fmt);
+        return bytesToFloat(
+            Uint8Array.from({ length: sz }, (_, i) => mem.get(addr + i)),
+            fmt,
+        );
     }
     const val = mem.get(addr);
     if (fmt === VU_FMT_I) {
@@ -75,10 +96,9 @@ function _readElem(mem, addr, fmt) {
 }
 
 function _writeElem(mem, addr, fmt, val, rm) {
-    const sz = VU_FMT_ELEM_SIZE[fmt];
     if (_FP_FMTS.has(fmt)) {
         const { data, exc } = floatToBytes(Number(val), fmt, rm);
-        for (let i = 0; i < sz; i++) mem.set(addr + i, data[i]);
+        data.forEach((b, i) => mem.set(addr + i, b));
         return exc;
     }
     mem.set(addr, val & 0xff);
@@ -164,6 +184,10 @@ function _vuSqrt(val, fmt, rm) {
     return fpSqrt(Number(val), fmt, rm);
 }
 
+function _vuExp(val, fmt, rm) {
+    return fpExp(Number(val), fmt, rm);
+}
+
 function _vuNeg(val, fmt) {
     if (_FP_FMTS.has(fmt)) {
         return { result: -Number(val), exc: _NO_EXC };
@@ -186,9 +210,24 @@ function _vuAbs(val, fmt) {
 
 const _VU_UNARY_FN = new Map([
     [Op.VSQRT, _vuSqrt],
+    [Op.VEXP, _vuExp],
     [Op.VNEG, _vuNeg],
     [Op.VABS, _vuAbs],
 ]);
+
+/** Decode a vs/vi-mode immediate (raw int) into a typed scalar.
+ * For FP formats this re-decodes the bytes as the format would (e.g. 0x40 in
+ * O3 is 2.0, not 64). For integer formats the raw value is returned. */
+function _vuDecodeImm(imm, fmt) {
+    const sz = VU_FMT_ELEM_SIZE[fmt] || 1;
+    if (_FP_FMTS.has(fmt)) {
+        const bytes = Uint8Array.from({ length: sz }, (_, i) => (imm >> (8 * i)) & 0xff);
+        return bytesToFloat(bytes, fmt);
+    }
+    const val = imm & ((1 << (8 * sz)) - 1);
+    if (fmt === VU_FMT_I) return val < 128 ? val : val - 256;
+    return val;
+}
 
 const _CMP_FN = new Map([
     [VU_CMP_EQ, (a, b) => a === b],
@@ -218,11 +257,7 @@ function _vuCmp(a, b, cond, fmt) {
 }
 
 function _vuDot(valuesA, valuesB) {
-    let acc = 0.0;
-    for (let i = 0; i < valuesA.length; i++) {
-        acc += valuesA[i] * valuesB[i];
-    }
-    return acc;
+    return valuesA.reduce((acc, a, i) => acc + a * valuesB[i], 0.0);
 }
 
 // ── VuRegisters ───────────────────────────────────────────────────
@@ -256,12 +291,7 @@ class VuRegisters {
     }
 
     reset() {
-        this.va = 0;
-        this.vb = 0;
-        this.vc = 0;
-        this.vm = 0;
-        this.vl = 0;
-        this.vfpsr = 0;
+        this.va = this.vb = this.vc = this.vm = this.vl = this.vfpsr = 0;
     }
 }
 
@@ -283,6 +313,7 @@ class VuCommand {
         this.dstCode = dstCode;
         this.s1Code = s1Code;
         this.s2Code = s2Code;
+        this.srcFmt = 0; // VCVT only: source element format
         this._progress = 0;
         this._compactIdx = 0;
     }
@@ -394,9 +425,14 @@ export class VectorUnit {
         if (op === Op.VDOT) {
             this._execDot(mem, cmd, elemSize, fmt, rm);
         } else if (op === Op.VMOV) {
-            this._execMov(mem, cmd, startIdx, endIdx, elemSize);
-        } else if (op === Op.VFILL) {
-            this._execFill(mem, cmd, startIdx, endIdx, elemSize, fmt, rm);
+            // vv: raw byte copy. vs/vi: broadcast cmd.imm into VL elements.
+            if (cmd.mode === VU_MODE_VV) {
+                this._execMov(mem, cmd, startIdx, endIdx, elemSize);
+            } else {
+                this._execFill(mem, cmd, startIdx, endIdx, elemSize, fmt, rm);
+            }
+        } else if (op === Op.VFMADD) {
+            this._execFmadd(mem, cmd, startIdx, endIdx, elemSize, fmt, rm);
         } else if (op === Op.VCMP) {
             this._execCmp(mem, cmd, startIdx, endIdx, elemSize, fmt);
         } else if (op === Op.VSEL) {
@@ -405,6 +441,8 @@ export class VectorUnit {
             this._execGather(mem, cmd, startIdx, endIdx, elemSize);
         } else if (op === Op.VSCATTER) {
             this._execScatter(mem, cmd, startIdx, endIdx, elemSize);
+        } else if (op === Op.VCVT) {
+            this._execCvt(mem, cmd, startIdx, endIdx, elemSize, rm);
         } else if (VU_UNARY_OPS.has(op)) {
             this._execUnary(mem, cmd, startIdx, endIdx, elemSize, fmt, rm);
         } else if (VU_ARITH_OPS.has(op)) {
@@ -419,20 +457,32 @@ export class VectorUnit {
     /** Return dst byte footprint: byte mask (VCMP), scalar (VDOT/reduce), or full vector. */
     _dstFootprint(cmd, sz) {
         if (cmd.op === Op.VCMP) return cmd.vl;
-        if (cmd.op === Op.VDOT || cmd.mode === VU_MODE_R) return sz;
+        if (cmd.op === Op.VDOT) return sz;
+        if (cmd.mode === VU_MODE_R) return sz;
         return cmd.vl * sz;
     }
 
     _checkOob(cmd, sz) {
         const vl = cmd.vl;
         if (cmd.dstAddr + this._dstFootprint(cmd, sz) > MEM_SIZE) return true;
-        // s1 footprint (VFILL/VSEL don't read s1; VSCATTER reads data-dependent count)
-        if (cmd.op !== Op.VFILL && cmd.op !== Op.VSEL && cmd.op !== Op.VSCATTER) {
-            if (cmd.s1Addr + vl * sz > MEM_SIZE) return true;
+        // s1 footprint:
+        //   VSEL/VSCATTER don't read s1 the normal way
+        //   VMOV vs/vi don't read s1 (source is mem[s2_ptr] / imm)
+        const s1Skip =
+            cmd.op === Op.VSEL ||
+            cmd.op === Op.VSCATTER ||
+            (cmd.op === Op.VMOV && (cmd.mode === VU_MODE_VS || cmd.mode === VU_MODE_VI));
+        if (!s1Skip) {
+            const s1Sz = cmd.op === Op.VCVT ? VU_FMT_ELEM_SIZE[cmd.srcFmt] || 1 : sz;
+            if (cmd.s1Addr + vl * s1Sz > MEM_SIZE) return true;
         }
         // s2 footprint for VV mode (not for VGATHER/VSCATTER which are unary)
         if (cmd.mode === VU_MODE_VV && !_GATHER_OPS.has(cmd.op)) {
             if (cmd.s2Addr + vl * sz > MEM_SIZE) return true;
+        }
+        // vs-mode: s2 is a memory pointer; CPU reads sz bytes from mem[s2] at issue
+        if (cmd.mode === VU_MODE_VS) {
+            if (cmd.s2Addr + sz > MEM_SIZE) return true;
         }
         // Mask pointer for VCMP/VSEL/VGATHER/VSCATTER
         if (cmd.op === Op.VCMP || cmd.op === Op.VSEL || _GATHER_OPS.has(cmd.op)) {
@@ -488,8 +538,31 @@ export class VectorUnit {
         this.regs.vfpsr |= flags;
     }
 
-    _execFill(mem, cmd, startIdx, endIdx, sz, fmt, rm) {
-        this._accumVfpsr(startIdx, endIdx, (i) => _excToFlags(_writeElem(mem, cmd.dstAddr + i * sz, fmt, cmd.imm, rm)));
+    _execFill(mem, cmd, startIdx, endIdx, sz, _fmt, _rm) {
+        // Raw byte broadcast — cmd.imm holds the format-encoded immediate.
+        // No FP re-encoding (matches "raw byte copy" semantics of VMOV).
+        for (let i = startIdx; i < endIdx; i++) {
+            const base = cmd.dstAddr + i * sz;
+            for (let b = 0; b < sz; b++) mem.set(base + b, (cmd.imm >> (8 * b)) & 0xff);
+        }
+    }
+
+    _execCvt(mem, cmd, startIdx, endIdx, dstSz, rm) {
+        const srcFmt = cmd.srcFmt;
+        const srcSz = VU_FMT_ELEM_SIZE[srcFmt] || 1;
+        const dstFmt = cmd.fmt;
+        this._accumVfpsr(startIdx, endIdx, (i) => {
+            const val = _readElem(mem, cmd.s1Addr + i * srcSz, srcFmt);
+            if (dstFmt === VU_FMT_U) {
+                mem.set(cmd.dstAddr + i * dstSz, _fpToUint8Sat(val));
+                return 0;
+            }
+            if (dstFmt === VU_FMT_I) {
+                mem.set(cmd.dstAddr + i * dstSz, _fpToInt8Sat(val) & 0xff);
+                return 0;
+            }
+            return _excToFlags(_writeElem(mem, cmd.dstAddr + i * dstSz, dstFmt, Number(val), rm));
+        });
     }
 
     _execUnary(mem, cmd, startIdx, endIdx, sz, fmt, rm) {
@@ -502,22 +575,31 @@ export class VectorUnit {
 
     _execArith(mem, cmd, startIdx, endIdx, sz, fmt, rm) {
         const isVV = cmd.mode === VU_MODE_VV;
+        const scalar = isVV ? null : _vuDecodeImm(cmd.imm, fmt);
         this._accumVfpsr(startIdx, endIdx, (i) => {
             const a = _readElem(mem, cmd.s1Addr + i * sz, fmt);
-            const b = isVV ? _readElem(mem, cmd.s2Addr + i * sz, fmt) : cmd.imm;
+            const b = isVV ? _readElem(mem, cmd.s2Addr + i * sz, fmt) : scalar;
             const { result, exc: opExc } = _vuArith(cmd.op, a, b, fmt, rm);
+            return _excToFlags(opExc) | _excToFlags(_writeElem(mem, cmd.dstAddr + i * sz, fmt, result, rm));
+        });
+    }
+
+    _execFmadd(mem, cmd, startIdx, endIdx, sz, fmt, rm) {
+        const isVV = cmd.mode === VU_MODE_VV;
+        const scalar = isVV ? null : _vuDecodeImm(cmd.imm, fmt);
+        this._accumVfpsr(startIdx, endIdx, (i) => {
+            const a = _readElem(mem, cmd.s1Addr + i * sz, fmt);
+            const b = isVV ? _readElem(mem, cmd.s2Addr + i * sz, fmt) : scalar;
+            const c = _readElem(mem, cmd.dstAddr + i * sz, fmt);
+            const { result, exc: opExc } = fpFmadd(Number(a), Number(b), Number(c), fmt, rm);
             return _excToFlags(opExc) | _excToFlags(_writeElem(mem, cmd.dstAddr + i * sz, fmt, result, rm));
         });
     }
 
     _execDot(mem, cmd, sz, fmt, rm) {
         const vl = cmd.vl;
-        const valuesA = [];
-        const valuesB = [];
-        for (let i = 0; i < vl; i++) {
-            valuesA.push(_readElem(mem, cmd.s1Addr + i * sz, fmt));
-            valuesB.push(_readElem(mem, cmd.s2Addr + i * sz, fmt));
-        }
+        const valuesA = Array.from({ length: vl }, (_, i) => _readElem(mem, cmd.s1Addr + i * sz, fmt));
+        const valuesB = Array.from({ length: vl }, (_, i) => _readElem(mem, cmd.s2Addr + i * sz, fmt));
         const result = _vuDot(valuesA, valuesB);
         const wExc = _writeElem(mem, cmd.dstAddr, fmt, result, rm);
         this.regs.vfpsr |= _excToFlags(wExc);

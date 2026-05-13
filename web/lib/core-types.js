@@ -7,12 +7,14 @@ import {
     BY_CODE,
     BY_CODE_FP,
     BY_CODE_VU,
+    BY_CODE_MU,
     FP_FMT_WIDTH,
     Op,
     Reg,
     ISA,
     ISA_FP,
     ISA_VU,
+    ISA_MU,
     decodeRegaddr,
     decodeFpm,
     validateFpm,
@@ -24,6 +26,7 @@ import {
     VU_ARITH_OPS,
     VU_UNARY_OPS,
     VU_VV_ONLY_OPS,
+    VU_FP_ONLY_OPS,
     VU_INT_FMTS,
     VU_FMT_ELEM_SIZE,
     VU_FMT_U,
@@ -41,6 +44,12 @@ import {
     VU_CMP_GE,
     decodeVfm,
     decodeVuRegs,
+    MU_ASYNC_OPS,
+    MU_FP_FMTS,
+    MU_INT_FMTS,
+    MU_FMT_ELEM_SIZE,
+    decodeMfm,
+    encodeMfm,
 } from "./isa.js";
 
 // Re-export ISA symbols used by core.js (avoids redundant core.js → isa.js edge)
@@ -50,6 +59,7 @@ export {
     ISA,
     ISA_FP,
     ISA_VU,
+    ISA_MU,
     decodeRegaddr,
     decodeFpm,
     validateFpm,
@@ -62,6 +72,7 @@ export {
     VU_ARITH_OPS,
     VU_UNARY_OPS,
     VU_VV_ONLY_OPS,
+    VU_FP_ONLY_OPS,
     VU_INT_FMTS,
     VU_FMT_ELEM_SIZE,
     VU_FMT_U,
@@ -79,6 +90,12 @@ export {
     VU_CMP_GE,
     decodeVfm,
     decodeVuRegs,
+    MU_ASYNC_OPS,
+    MU_FP_FMTS,
+    MU_INT_FMTS,
+    MU_FMT_ELEM_SIZE,
+    decodeMfm,
+    encodeMfm,
 };
 
 // ── Constants ────────────────────────────────────────────────────
@@ -153,9 +170,7 @@ export class Memory {
         if (offset + data.length > MEM_SIZE) {
             throw new RangeError(`Data (${data.length} bytes at offset ${offset}) exceeds memory size (${MEM_SIZE})`);
         }
-        for (let i = 0; i < data.length; i++) {
-            this.set(offset + i, data[i]);
-        }
+        data.forEach((b, i) => this.set(offset + i, b));
     }
 
     reset() {
@@ -415,18 +430,30 @@ export function decode(mem, ip, arch) {
     if (defn === undefined && arch >= 3) {
         defn = BY_CODE_VU[opcode];
     }
+    if (defn === undefined && arch >= 3) {
+        defn = BY_CODE_MU[opcode];
+    }
     if (defn === undefined) {
         throw new CpuFault(ErrorCode.INVALID_OPCODE, ip);
     }
     let size = defn.size;
-    // VU async instructions have variable size depending on VFM mode
-    if (defn.fmtDep && arch >= 3 && ip + 1 < PAGE_SIZE) {
-        const vfmEnc = mem.get(ip + 1);
-        const mode = (vfmEnc >> 3) & 3;
-        if (mode === VU_MODE_VI) {
-            const fmt = vfmEnc & 7;
-            const elemSize = VU_FMT_ELEM_SIZE[fmt] || 1;
-            size = 3 + elemSize;
+    // VU async instructions have variable size:
+    //   VCMP → 4 bytes (cond byte appended)
+    //   vi mode → 3 + elem_size bytes (immediate appended)
+    //   else → 3 bytes
+    if (arch >= 3 && VU_ASYNC_OPS.has(opcode) && ip + 1 < PAGE_SIZE) {
+        if (opcode === Op.VCMP || opcode === Op.VCVT) {
+            size = 4;
+        } else {
+            const vfmEnc = mem.get(ip + 1);
+            const mode = (vfmEnc >> 3) & 3;
+            if (mode === VU_MODE_VI) {
+                const fmt = vfmEnc & 7;
+                const elemSize = VU_FMT_ELEM_SIZE[fmt] || 1;
+                size = 3 + elemSize;
+            } else {
+                size = 3;
+            }
         }
     }
     if (ip + size > PAGE_SIZE) {
@@ -442,18 +469,10 @@ export function decode(mem, ip, arch) {
 // ── Byte conversion helpers ──────────────────────────────────────
 
 export function intFromBytesLE(data) {
-    let raw = 0;
-    for (let i = data.length - 1; i >= 0; i--) {
-        raw = (raw << 8) | data[i];
-    }
-    if (data.length === 4) return raw >>> 0;
-    return raw;
+    const raw = data.reduceRight((acc, b) => (acc << 8) | b, 0);
+    return data.length === 4 ? raw >>> 0 : raw;
 }
 
 export function intToBytesLE(raw, nbytes) {
-    const data = new Uint8Array(nbytes);
-    for (let i = 0; i < nbytes; i++) {
-        data[i] = (raw >> (i * 8)) & 0xff;
-    }
-    return data;
+    return Uint8Array.from({ length: nbytes }, (_, i) => (raw >> (i * 8)) & 0xff);
 }

@@ -80,13 +80,12 @@ export function initWires() {
         interacting: false,
     });
 
+    const fromTop = (y) => Math.round(y - cRect.top);
+    const fromLeft = (x) => Math.round(x - cRect.left);
+
     function portPos(portId) {
-        const port = document.getElementById(portId);
-        const pr = port.getBoundingClientRect();
-        return {
-            x: Math.round(pr.left - cRect.left + pr.width / 2),
-            y: Math.round(pr.top - cRect.top + pr.height / 2),
-        };
+        const pr = document.getElementById(portId).getBoundingClientRect();
+        return { x: fromLeft(pr.left + pr.width / 2), y: fromTop(pr.top + pr.height / 2) };
     }
 
     // ── Γ bus geometry: 3-column layout (CPU | FPU | VU in row 1) ──
@@ -97,12 +96,12 @@ export function initWires() {
     const vuEl = document.getElementById("blk-vu");
     const vuR = vuEl ? vuEl.getBoundingClientRect() : null;
 
-    const cpuBottomY = Math.round(cpuR.bottom - cRect.top);
-    const fpuBottomY = Math.round(fpuR.bottom - cRect.top);
-    const memTopY = Math.round(memR.top - cRect.top);
-    const memLeftX = Math.round(memR.left - cRect.left);
-    const memRightX = Math.round(memR.right - cRect.left);
-    const vuLeftX = vuR ? Math.round(vuR.left - cRect.left) : memRightX + 56;
+    const cpuBottomY = fromTop(cpuR.bottom);
+    const fpuBottomY = fromTop(fpuR.bottom);
+    const memTopY = fromTop(memR.top);
+    const memLeftX = fromLeft(memR.left);
+    const memRightX = fromLeft(memR.right);
+    const vuLeftX = vuR ? fromLeft(vuR.left) : memRightX + 56;
 
     // BUS_Y: midpoint between row-1 bottom and Memory top → equal clearance
     const row1BottomY = Math.max(cpuBottomY, fpuBottomY);
@@ -111,13 +110,13 @@ export function initWires() {
     const BUS_X = Math.round((memRightX + vuLeftX) / 2);
 
     // Vertical bus: upper branch fixed by VU port, lower branch mirrors or extends for Pad
-    const vuPortY = vuR ? Math.round(vuR.top - cRect.top + vuR.height * 0.5) : BUS_Y;
+    const vuPortY = vuR ? fromTop(vuR.top + vuR.height * 0.5) : BUS_Y;
     const upperArm = BUS_Y - Math.min(BUS_Y, vuPortY);
-    let lowerArm = vuR ? Math.round(vuR.bottom - cRect.top) - BUS_Y : upperArm;
+    let lowerArm = vuR ? fromTop(vuR.bottom) - BUS_Y : upperArm;
     const padEl = pad.visible ? document.getElementById("blk-pad") : null;
     if (padEl) {
         const padR = padEl.getBoundingClientRect();
-        lowerArm = Math.max(lowerArm, Math.round(padR.bottom - cRect.top) - BUS_Y);
+        lowerArm = Math.max(lowerArm, fromTop(padR.bottom) - BUS_Y);
     }
     // Without Pad, mirror arms; with Pad, lower extends independently
     if (!pad.visible) lowerArm = Math.max(lowerArm, upperArm);

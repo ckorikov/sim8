@@ -112,13 +112,21 @@ export function initFormatToggle(blockId, tabsSelector, attr, renderFn, initial 
 }
 
 /** FP status register flag layout — shared by FPU (FPSR) and VU (VFPSR). */
-export const FPSR_FLAGS = [
+const FPSR_FLAGS = [
     { n: "NV", bit: 0 },
     { n: "DZ", bit: 1 },
     { n: "OF", bit: 2 },
     { n: "UF", bit: 3 },
     { n: "NX", bit: 4 },
 ];
+
+/** Render FPSR/VFPSR flag bits as HTML spans. onColor is used for active flags. */
+export function fpsrFlagsHtml(register, onColor) {
+    return FPSR_FLAGS.map((f) => {
+        const on = (register >> f.bit) & 1;
+        return `<span class="fb" style="font-size:8px;border-color:${on ? onColor : "var(--t-border)"};color:${on ? onColor : colors.dim};">${f.n}</span>`;
+    }).join("");
+}
 
 export function escapeHtml(s) {
     return s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");

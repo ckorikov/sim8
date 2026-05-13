@@ -31,33 +31,17 @@ function _indirectAddr(encoded) {
 
 // ── Register validation ─────────────────────────────────────────────
 
-function _decodeGpr(code) {
-    if (code > Reg.D) {
-        throw new CpuFault(ErrorCode.INVALID_REG, this.regs.ip);
-    }
-    return code;
+function _makeRegDecoder(max, extra) {
+    return function (code) {
+        if (code > max && code !== extra) throw new CpuFault(ErrorCode.INVALID_REG, this.regs.ip);
+        return code;
+    };
 }
 
-function _decodeGprOrSp(code) {
-    if (code > Reg.SP) {
-        throw new CpuFault(ErrorCode.INVALID_REG, this.regs.ip);
-    }
-    return code;
-}
-
-function _decodeGprOrDp(code) {
-    if (code > Reg.D && code !== Reg.DP) {
-        throw new CpuFault(ErrorCode.INVALID_REG, this.regs.ip);
-    }
-    return code;
-}
-
-function _decodeMovReg(code) {
-    if (code > Reg.DP) {
-        throw new CpuFault(ErrorCode.INVALID_REG, this.regs.ip);
-    }
-    return code;
-}
+const _decodeGpr = _makeRegDecoder(Reg.D);
+const _decodeGprOrSp = _makeRegDecoder(Reg.SP);
+const _decodeGprOrDp = _makeRegDecoder(Reg.D, Reg.DP);
+const _decodeMovReg = _makeRegDecoder(Reg.DP);
 
 // ── Source resolvers ────────────────────────────────────────────────
 

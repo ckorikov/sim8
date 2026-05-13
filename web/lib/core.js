@@ -12,6 +12,7 @@ import {
     ISA,
     ISA_FP,
     ISA_VU,
+    ISA_MU,
     // Core types
     Memory,
     RegisterFile,
@@ -33,6 +34,7 @@ import {
 import { intHandlers } from "./core-handlers-int.js";
 import { fpHandlers } from "./core-handlers-fp.js";
 import { vuHandlers } from "./core-handlers-vu.js";
+import { muHandlers } from "./core-handlers-mu.js";
 
 // Re-export public API from core-types so existing imports keep working
 export {
@@ -76,16 +78,13 @@ export class CPU {
         if (arch >= 3) {
             this.vu = new VectorUnit();
             this._buildVuDispatch();
+            this._initMu();
+            this._buildMuDispatch();
         }
 
-        let allIsa = arch < 2 ? ISA : ISA.concat(ISA_FP);
-        if (arch >= 3) allIsa = allIsa.concat(ISA_VU);
-        this._instrDef = {};
-        this._opCost = {};
-        for (const d of allIsa) {
-            this._instrDef[d.op] = d;
-            if (!d.fmtDep) this._opCost[d.op] = d.cost;
-        }
+        const allIsa = arch < 2 ? ISA : arch < 3 ? ISA.concat(ISA_FP) : ISA.concat(ISA_FP, ISA_VU, ISA_MU);
+        this._instrDef = Object.fromEntries(allIsa.map((d) => [d.op, d]));
+        this._opCost = Object.fromEntries(allIsa.filter((d) => !d.fmtDep).map((d) => [d.op, d.cost]));
     }
 
     // ── Public API ────────────────────────────────────────────────────
@@ -98,7 +97,7 @@ export class CPU {
 
     /** True when VU queue has pending work. */
     get vuBusy() {
-        return this.vu !== null && !this.vu.isEmpty;
+        return this.vu?.isEmpty === false;
     }
 
     /** True when CPU is stalled on VWAIT. */
@@ -184,11 +183,12 @@ export class CPU {
         return this._opCost[op] ?? 1;
     }
 
-    /** Execute one CPU instruction. Does NOT touch VU. */
+    /** Execute one CPU instruction. Does NOT touch VU/MU. */
     step() {
         if (this.state === CpuState.FAULT) return false;
         if (this.state === CpuState.HALTED) return false;
         if (this._vuWaiting) return false; // CPU stalled on VWAIT
+        if (this._mwaitPending === true) return false; // CPU stalled on MWAIT
 
         if (this.state === CpuState.IDLE) this.state = CpuState.RUNNING;
 
@@ -206,9 +206,15 @@ export class CPU {
     }
 
     run(maxSteps = 100000) {
+        const hasMu = this._arch >= 3;
         for (let i = 0; i < maxSteps; i++) {
             this.vuTick();
-            if (!this.step() && !this.vuBusy) break;
+            if (hasMu) {
+                this.muTick();
+                if (this._mwaitPending) this._stepMwait();
+            }
+            const muBusy = hasMu && !this._muQueue.isEmpty;
+            if (!this.step() && !this.vuBusy && !muBusy) break;
         }
         return this.state;
     }
@@ -228,7 +234,11 @@ export class CPU {
         this._peakMem = 0;
         this._vuWaiting = false;
         this._vwaitSize = 0;
-        if (this.vu !== null) this.vu.reset();
+        this.vu?.reset();
+        this._muQueue?.reset();
+        this._muRegs?.reset();
+        this._mwaitPending = false;
+        this._mwaitSize = 0;
     }
 
     get steps() {
@@ -298,3 +308,4 @@ export class CPU {
 Object.defineProperties(CPU.prototype, Object.getOwnPropertyDescriptors(intHandlers));
 Object.defineProperties(CPU.prototype, Object.getOwnPropertyDescriptors(fpHandlers));
 Object.defineProperties(CPU.prototype, Object.getOwnPropertyDescriptors(vuHandlers));
+Object.defineProperties(CPU.prototype, Object.getOwnPropertyDescriptors(muHandlers));

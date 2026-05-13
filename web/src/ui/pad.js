@@ -115,7 +115,7 @@ function clearPad() {
     ctx.fillStyle = colors.canvas;
     ctx.fillRect(0, 0, canvasSize, canvasSize);
     renderPad();
-    if (_onSync) _onSync();
+    _onSync?.();
 }
 
 function applyPadVisible() {
@@ -153,7 +153,7 @@ export function initPad(onLayout, onSync) {
     const stopDrawing = () => {
         if (drawing) {
             drawing = false;
-            if (_onSync) _onSync();
+            _onSync?.();
         }
     };
     elCanvas.addEventListener("mouseup", stopDrawing);
@@ -171,23 +171,19 @@ export function initPad(onLayout, onSync) {
         clearPad();
     });
 
-    elPage.addEventListener("change", () => {
-        parsePageInput();
+    const onInputChange = (parseFn) => () => {
+        parseFn();
         syncInputs();
         renderPad();
-        if (_onSync) _onSync();
-    });
+        _onSync?.();
+    };
 
-    elAddr.addEventListener("change", () => {
-        parseAddrInput();
-        syncInputs();
-        renderPad();
-        if (_onSync) _onSync();
-    });
+    elPage.addEventListener("change", onInputChange(parsePageInput));
+    elAddr.addEventListener("change", onInputChange(parseAddrInput));
 
     elToggle.addEventListener("click", () => {
         togglePad();
-        if (_onLayout) _onLayout();
-        if (_onSync) _onSync();
+        _onLayout?.();
+        _onSync?.();
     });
 }

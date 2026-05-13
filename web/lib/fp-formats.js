@@ -33,11 +33,11 @@ export function exc({ invalid = false, divZero = false, overflow = false, underf
 
 export function excReplace(base, overrides) {
     return exc({
-        invalid: overrides.invalid !== undefined ? overrides.invalid : base.invalid,
-        divZero: overrides.divZero !== undefined ? overrides.divZero : base.divZero,
-        overflow: overrides.overflow !== undefined ? overrides.overflow : base.overflow,
-        underflow: overrides.underflow !== undefined ? overrides.underflow : base.underflow,
-        inexact: overrides.inexact !== undefined ? overrides.inexact : base.inexact,
+        invalid: overrides.invalid ?? base.invalid,
+        divZero: overrides.divZero ?? base.divZero,
+        overflow: overrides.overflow ?? base.overflow,
+        underflow: overrides.underflow ?? base.underflow,
+        inexact: overrides.inexact ?? base.inexact,
     });
 }
 
@@ -581,10 +581,7 @@ function _encodeIeeeDirected(value, expBits, mantBits, bias, rm) {
     const { byteVal: bits, exc: mExc } = _encodeMiniFloat(absVal, sign, expBits, mantBits, bias, true, null, rm);
     const width = 1 + expBits + mantBits;
     const numBytes = width >> 3;
-    const data = new Uint8Array(numBytes);
-    for (let i = 0; i < numBytes; i++) {
-        data[i] = (bits >> (i * 8)) & 0xff;
-    }
+    const data = Uint8Array.from({ length: numBytes }, (_, i) => (bits >> (i * 8)) & 0xff);
     return { data, exc: mExc };
 }
 
