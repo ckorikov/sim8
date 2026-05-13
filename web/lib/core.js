@@ -241,6 +241,17 @@ export class CPU {
         this._mwaitSize = 0;
     }
 
+    restart() {
+        this.regs.ip = 0;
+        this.state = CpuState.IDLE;
+        this._vuWaiting = false;
+        this._vwaitSize = 0;
+        this.vu?.reset();
+        this._muQueue?.reset();
+        this._mwaitPending = false;
+        this._mwaitSize = 0;
+    }
+
     get steps() {
         return this._steps;
     }
