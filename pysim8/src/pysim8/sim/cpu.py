@@ -4,14 +4,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pysim8.isa import FP_FMT_WIDTH, ISA, ISA_FP, ISA_VU, InstrDef, Op
+from pysim8.isa import FP_FMT_WIDTH, ISA, ISA_FP, ISA_MU, ISA_VU, InstrDef, Op
 
 from .decoder import Decoder
 from .errors import CpuFault, ErrorCode
 from .handlers import HandlersMixin
 from .handlers_fp import HandlersFpMixin
+from .handlers_mu import HandlersMuMixin
 from .handlers_vu import HandlersVuMixin
-from .memory import IO_START, PAGE_SIZE, Memory
+from .memory import DISPLAY_END, IO_START, Memory
 from .registers import CpuState, RegisterFile
 from .tracing import TraceCallback, TraceEvent
 
@@ -27,7 +28,7 @@ __all__ = ["CPU"]
 _FP_FMT_MEM_COST: tuple[int, ...] = tuple(FP_FMT_WIDTH[fmt] // 8 for fmt in range(5))
 
 
-class CPU(HandlersMixin, HandlersFpMixin, HandlersVuMixin):
+class CPU(HandlersMixin, HandlersFpMixin, HandlersVuMixin, HandlersMuMixin):
     """8-bit CPU simulator (control unit)."""
 
     __slots__ = (
@@ -44,6 +45,12 @@ class CPU(HandlersMixin, HandlersFpMixin, HandlersVuMixin):
         "_instr_def",
         "_peak_mem",
         "_vu_queue",
+        "_vwait_pending",
+        "_vwait_size",
+        "_mu_queue",
+        "_mu_regs",
+        "_mwait_pending",
+        "_mwait_size",
     )
 
     def __init__(
@@ -62,6 +69,8 @@ class CPU(HandlersMixin, HandlersFpMixin, HandlersVuMixin):
         self._peak_mem = 0
         self._vwait_pending = False
         self._vwait_size = 0
+        self._mwait_pending = False
+        self._mwait_size = 0
         self._arch = arch
         self._dispatch: dict[Op, Handler] = {}
         self._build_dispatch()
@@ -70,9 +79,11 @@ class CPU(HandlersMixin, HandlersFpMixin, HandlersVuMixin):
         if arch >= 3:
             self._build_vu_dispatch()
             self._init_vu()
+            self._build_mu_dispatch()
+            self._init_mu()
 
         overrides = costs or {}
-        all_isa = ISA + (ISA_FP if arch >= 2 else ()) + (ISA_VU if arch >= 3 else ())
+        all_isa = ISA + (ISA_FP if arch >= 2 else ()) + (ISA_VU if arch >= 3 else ()) + (ISA_MU if arch >= 3 else ())
         valid = {d.mnemonic for d in all_isa}
         unknown = overrides.keys() - valid
         if unknown:
@@ -98,16 +109,21 @@ class CPU(HandlersMixin, HandlersFpMixin, HandlersVuMixin):
         if self.state == CpuState.IDLE:
             self.state = CpuState.RUNNING
 
-        # VU ticks at start of step (main clock)
+        # VU + MU tick at start of step (main clock)
         if self._arch >= 3:
             self.vu_tick()
-            # Surface VU fault immediately if CPU is stalled at VWAIT
+            self.mu_tick()
+            # Surface pending faults if CPU is stalled
             if self._vwait_pending and self._consume_vu_fault():
                 return False
+            if self._mwait_pending and self._consume_mu_fault():
+                return False
 
-        # VWAIT: CPU stalled, only VU ticks
+        # VWAIT / MWAIT: CPU stalled, only VU / MU tick
         if self._vwait_pending:
             return self._step_vwait()
+        if self._mwait_pending:
+            return self._step_mwait()
 
         ip_before = self.regs.ip
 
@@ -180,6 +196,27 @@ class CPU(HandlersMixin, HandlersFpMixin, HandlersVuMixin):
             self._vwait_size = 0
         return True
 
+    def _consume_mu_fault(self) -> bool:
+        """Enter fault from pending MU fault code. Returns True if a fault was consumed."""
+        code = self._mu_queue.fault
+        if code == 0:
+            return False
+        self._mu_queue.fault = 0
+        self._mwait_pending = False
+        self._enter_fault(ErrorCode(code))
+        return True
+
+    def _step_mwait(self) -> bool:
+        """Handle one MWAIT stall cycle. Returns True if still RUNNING."""
+        self._cycles += 1
+        if self._consume_mu_fault():
+            return False
+        if self._mu_queue.is_empty:
+            self._mwait_pending = False
+            self.regs.ip += self._mwait_size
+            self._mwait_size = 0
+        return True
+
     def run(self, max_steps: int = 100_000) -> CpuState:
         """Run until HALTED or FAULT (or max_steps exceeded).
 
@@ -201,8 +238,12 @@ class CPU(HandlersMixin, HandlersFpMixin, HandlersVuMixin):
         self._peak_mem = 0
         self._vwait_pending = False
         self._vwait_size = 0
+        self._mwait_pending = False
+        self._mwait_size = 0
         if self._arch >= 3:
             self._vu_queue.reset()
+            self._mu_queue.reset()
+            self._mu_regs.reset()
 
     @property
     def tracer(self) -> TraceCallback | None:
@@ -267,13 +308,13 @@ class CPU(HandlersMixin, HandlersFpMixin, HandlersVuMixin):
         return self.regs.flags.f
 
     def display(self) -> str:
-        """Read console I/O region (page 0, addresses 232-255).
+        """Read display cells (page 0, addresses 232–251 = 0xE8–0xFB, 20 cells).
 
         Per spec: non-printable and whitespace characters render as space.
         Trailing spaces (from unwritten cells) are stripped.
         """
         chars: list[str] = []
-        for addr in range(IO_START, PAGE_SIZE):
+        for addr in range(IO_START, DISPLAY_END):
             b = self.mem[addr]
             chars.append(chr(b) if 0x21 <= b <= 0x7E else " ")
         return "".join(chars).rstrip()

@@ -1,4 +1,4 @@
-"""CPU simulator tests from spec/tests.md (tests 1-231).
+"""CPU simulator tests from spec/tests/tests-cpu.md (tests 1-231).
 
 Tests are organized by spec sections. Each test assembles source code,
 executes it on the CPU, and verifies the resulting state.

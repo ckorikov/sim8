@@ -7,16 +7,15 @@ async issue/queue → element arithmetic → auto-increment → faults.
 from __future__ import annotations
 
 import pytest
+from conftest import asm_bytes, asm_error, run
 
 from pysim8.isa import (
-    Op,
     VU_CMP_SUFFIX,
-    VU_FMT_ELEM_SIZE,
     VU_FMT_U,
-    VU_MODE_VV,
-    VU_MODE_VS,
-    VU_MODE_VI,
     VU_MODE_R,
+    VU_MODE_VS,
+    VU_MODE_VV,
+    Op,
     encode_vfm,
     encode_vu_regs,
 )
@@ -24,9 +23,6 @@ from pysim8.sim.cpu import CPU
 from pysim8.sim.errors import ErrorCode
 from pysim8.sim.registers import CpuState
 from pysim8.sim.vu import VuCommand, VuQueue, VuRegisters
-
-from conftest import asm_bytes, asm_error, run
-
 
 # ── Helpers ──────────────────────────────────────────────────────
 
@@ -401,15 +397,6 @@ class TestVuFaults:
         assert cpu.state == CpuState.FAULT
         assert cpu.regs.a == ErrorCode.VU_FORMAT
 
-    def test_invalid_mode_for_vfill_faults(self) -> None:
-        """Op.VFILL (183) is reserved. Executing it faults with INVALID_OPCODE."""
-        cpu = cpu3()
-        vfm_enc = encode_vfm(VU_FMT_U, VU_MODE_VV)
-        code = vset_imm16(4, 4) + [int(Op.VFILL), vfm_enc, 0, 0]
-        load_run(cpu, code)
-        assert cpu.state == CpuState.FAULT
-        assert cpu.regs.a == ErrorCode.INVALID_OPCODE
-
     def test_reserved_regs_bits_fault(self) -> None:
         cpu = cpu3()
         vfm_enc = encode_vfm(VU_FMT_U, VU_MODE_VV)
@@ -491,3 +478,196 @@ class TestVuAssembler:
 
     def test_vset_invalid_format_suffix_fails(self) -> None:
         asm_error("VADD.X.vv VC, VA, VB\nHLT", arch=3)
+
+
+# ── 9. VEXP / VFMADD / VMOV broadcast — end-to-end ───────────────
+
+
+def _bf16_at(cpu: CPU, addr: int) -> float:
+    import struct as _struct
+
+    raw = (cpu.mem[addr + 1] << 8) | cpu.mem[addr]
+    return _struct.unpack("<f", _struct.pack("<I", raw << 16))[0]
+
+
+def _f32_at(cpu: CPU, addr: int) -> float:
+    import struct as _struct
+
+    return _struct.unpack("<f", bytes(cpu.mem[addr + i] for i in range(4)))[0]
+
+
+class TestVuExp:
+    def test_exp_bf16_basic(self) -> None:
+        import math as _math
+
+        src = (
+            "@page 1\nbuf: DB 0.0_bf, 1.0_bf, 2.0_bf, -1.0_bf\n"
+            "@page 0\n"
+            "VSET VL, 4\nVSET VA, buf\nVSET VC, buf\nVEXP.BF VC, VA\nVWAIT\nHLT\n"
+        )
+        cpu = run(src, arch=3)
+        assert cpu.state == CpuState.HALTED
+        for i, expected in enumerate([1.0, _math.e, _math.exp(2), _math.exp(-1)]):
+            actual = _bf16_at(cpu, 256 + i * 2)
+            assert abs(actual - expected) / max(expected, 1e-9) < 0.05
+
+    def test_exp_integer_format_faults(self) -> None:
+        cpu = cpu3()
+        vfm_enc = encode_vfm(VU_FMT_U, VU_MODE_VV)
+        code = vset_imm16(4, 4) + [int(Op.VEXP), vfm_enc, encode_vu_regs(2, 0, 0), 0]
+        load_run(cpu, code)
+        assert cpu.state == CpuState.FAULT
+        assert cpu.regs.a == ErrorCode.VU_FORMAT
+
+    def test_exp_unary_only_vv_mode(self) -> None:
+        # VEXP in VS mode → FAULT
+        cpu = cpu3()
+        vfm_enc = encode_vfm(0, VU_MODE_VS)  # fmt=F, mode=vs
+        code = vset_imm16(4, 4) + [int(Op.VEXP), vfm_enc, encode_vu_regs(2, 0, 0), 0]
+        load_run(cpu, code)
+        assert cpu.state == CpuState.FAULT
+        assert cpu.regs.a == ErrorCode.VU_FORMAT
+
+    def test_exp_assembler_emits_unary(self) -> None:
+        code = asm_bytes(
+            "@page 1\nbuf: DB 1.0_bf, 2.0_bf\n@page 0\nVSET VL, 2\nVSET VA, buf\nVSET VC, buf\nVEXP.BF VC, VA\nHLT\n",
+            arch=3,
+        )
+        # Find VEXP opcode in code stream
+        assert int(Op.VEXP) in code
+
+
+class TestVuFmadd:
+    def test_fmadd_f32_vv(self) -> None:
+        src = (
+            "@page 1\n"
+            "va_buf: DB 1.0_f, 2.0_f, 3.0_f, 4.0_f\n"
+            "vb_buf: DB 5.0_f, 6.0_f, 7.0_f, 8.0_f\n"
+            "vc_buf: DB 0.5_f, 1.0_f, 1.5_f, 2.0_f\n"
+            "@page 0\n"
+            "VSET VL, 4\n"
+            "VSET VA, va_buf\nVSET VB, vb_buf\nVSET VC, vc_buf\n"
+            "VFMADD.F VC, VA, VB\nVWAIT\nHLT\n"
+        )
+        cpu = run(src, arch=3)
+        assert cpu.state == CpuState.HALTED
+        # vc_buf is at offset 32 in page 1 (after va=16 + vb=16)
+        for i, exp in enumerate([5.5, 13.0, 22.5, 34.0]):
+            assert abs(_f32_at(cpu, 256 + 32 + i * 4) - exp) < 1e-5
+
+    def test_fmadd_bf16_vs_mem_broadcast(self) -> None:
+        """VFMADD vs mode: dst[i] += src1[i] * mem[s2_ptr] (bf16 scalar from memory)."""
+        # Layout (page 1):
+        #   0..7   va_buf: bf16 [1.0, 2.0, 4.0, 8.0]
+        #   8..15  vc_buf: bf16 [0, 0, 0, 0]
+        #   16..17 scal:   bf16 2.0
+        src = (
+            "@page 1\n"
+            "va_buf: DB 1.0_bf, 2.0_bf, 4.0_bf, 8.0_bf\n"
+            "vc_buf: DB 0.0_bf, 0.0_bf, 0.0_bf, 0.0_bf\n"
+            "scal:   DB 2.0_bf\n"
+            "@page 0\n"
+            "VSET VL, 4\n"
+            "VSET VA, va_buf\n"
+            "VSET VB, scal\n"
+            "VSET VC, vc_buf\n"
+            "VFMADD.BF.vs VC, VA, VB\n"
+            "VWAIT\nHLT\n"
+        )
+        cpu = run(src, arch=3)
+        assert cpu.state == CpuState.HALTED
+        from pysim8.fp_formats import bytes_to_float
+
+        for i, expected in enumerate([2.0, 4.0, 8.0, 16.0]):
+            val = bytes_to_float(bytes(cpu.mem[264 + i * 2 + j] for j in range(2)), 2)  # fmt=BF=2
+            assert abs(val - expected) < 0.05
+
+    def test_fmadd_integer_format_faults(self) -> None:
+        cpu = cpu3()
+        vfm_enc = encode_vfm(VU_FMT_U, VU_MODE_VV)
+        code = vset_imm16(4, 4) + [int(Op.VFMADD), vfm_enc, encode_vu_regs(2, 0, 1), 0]
+        load_run(cpu, code)
+        assert cpu.state == CpuState.FAULT
+        assert cpu.regs.a == ErrorCode.VU_FORMAT
+
+    def test_fmadd_no_reduction_mode(self) -> None:
+        # VFMADD with mode=R should fault (no reduction semantics defined)
+        cpu = cpu3()
+        vfm_enc = encode_vfm(0, VU_MODE_R)  # fmt=F, mode=R
+        code = vset_imm16(4, 4) + [int(Op.VFMADD), vfm_enc, encode_vu_regs(2, 0, 0), 0]
+        load_run(cpu, code)
+        assert cpu.state == CpuState.FAULT
+        assert cpu.regs.a == ErrorCode.VU_FORMAT
+
+
+class TestVMovBroadcast:
+    def test_vmov_vs_mem_broadcast_byte(self) -> None:
+        """VMOV.U.vs VC, VB — read 1 byte from mem[VB], broadcast to VL elements."""
+        src = (
+            "@page 1\n"
+            "scal: DB 0x77\n"
+            "@page 1, 4\n"
+            "buf:  DB 0xAA, 0xBB, 0xCC, 0xDD\n"
+            "@page 0\n"
+            "VSET VL, 4\nVSET VB, scal\nVSET VC, buf\n"
+            "VMOV.U.vs VC, VB\nVWAIT\nHLT\n"
+        )
+        cpu = run(src, arch=3)
+        assert cpu.state == CpuState.HALTED
+        assert list(cpu.mem[260:264]) == [0x77] * 4
+        # VB does NOT auto-advance in vs mode (snapshot once, reusable)
+        assert cpu.regs.vu.vb == 256
+
+    def test_vmov_vs_mem_broadcast_bf16(self) -> None:
+        """VMOV.BF.vs VC, VB — bf16 scalar broadcast (multi-byte FP)."""
+        src = (
+            "@page 1\n"
+            "scal: DB 1.5_bf\n"
+            "@page 1, 8\n"
+            "buf:  DB 0, 0, 0, 0, 0, 0, 0, 0\n"
+            "@page 0\n"
+            "VSET VL, 4\nVSET VB, scal\nVSET VC, buf\n"
+            "VMOV.BF.vs VC, VB\nVWAIT\nHLT\n"
+        )
+        cpu = run(src, arch=3)
+        assert cpu.state == CpuState.HALTED
+        # bf16(1.5) = 0x3FC0 (LE: 0xC0 0x3F)
+        for i in range(4):
+            assert cpu.mem[264 + i * 2] == 0xC0
+            assert cpu.mem[264 + i * 2 + 1] == 0x3F
+        # VC advanced by 8 (4 elems × 2B), VB unchanged
+        assert cpu.regs.vu.vb == 256
+        assert cpu.regs.vu.vc == 264 + 8
+
+    def test_vmov_vi_imm_broadcast(self) -> None:
+        """VMOV vi mode broadcasts immediate."""
+        src = (
+            "@page 1\nbuf: DB 0xAA, 0xBB, 0xCC, 0xDD\n@page 0\nVSET VL, 4\nVSET VC, buf\nVMOV.U VC, 0x55\nVWAIT\nHLT\n"
+        )
+        cpu = run(src, arch=3)
+        assert cpu.state == CpuState.HALTED
+        assert list(cpu.mem[256:260]) == [0x55] * 4
+
+    def test_vfill_mnemonic_removed(self) -> None:
+        """VFILL is no longer a valid mnemonic — assembler must reject it."""
+        from conftest import asm_error as _asm_error
+
+        _asm_error("VFILL.U VC, 0x55\nHLT", arch=3)
+
+    def test_vmov_vv_raw_copy_unchanged(self) -> None:
+        """VMOV vv (mode 0) still does raw byte copy."""
+        src = (
+            "@page 1\nsrc: DB 0x11, 0x22, 0x33, 0x44\n"
+            "dst: DB 0, 0, 0, 0\n"
+            "@page 0\n"
+            "VSET VL, 4\nVSET VA, src\nVSET VC, dst\nVMOV.U VC, VA\nVWAIT\nHLT\n"
+        )
+        cpu = run(src, arch=3)
+        assert cpu.state == CpuState.HALTED
+        assert list(cpu.mem[260:264]) == [0x11, 0x22, 0x33, 0x44]
+
+    def test_vmov_vs_gpr_no_longer_accepted(self) -> None:
+        """GPR as 3rd operand is no longer parsed as vs (vs is now mem-only)."""
+        from conftest import asm_error as _asm_error
+
+        _asm_error("MOV A, 0x77\nVSET VL, 4\nVSET VC, 0x100\nVMOV.U VC, A\nHLT", arch=3)

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from pysim8.asm._codegen_core import AssemblerError, _encode_operand, _find_instr
 from pysim8.asm._codegen_fp import _encode_db, _encode_fmov_imm, _encode_fp_instruction
+from pysim8.asm._codegen_mu import _encode_mu_instruction
 from pysim8.asm._codegen_vu import _encode_vu_instruction
 from pysim8.asm.parser import (
     OpAddrLabel,
@@ -27,6 +28,7 @@ from pysim8.isa import (
     FP_CONTROL_MNEMONICS,
     IO_START,
     MNEMONICS_FP,
+    MNEMONICS_MU,
     MNEMONICS_VU,
     PAGE_SIZE,
 )
@@ -60,6 +62,9 @@ def _encode_instruction(
 
     if arch >= 3 and mnemonic in MNEMONICS_VU:
         return _encode_vu_instruction(mnemonic, operands, dst_suffix, src_suffix, line)
+
+    if arch >= 3 and mnemonic in MNEMONICS_MU:
+        return _encode_mu_instruction(mnemonic, operands, dst_suffix, src_suffix, line)
 
     if arch >= 2 and mnemonic in MNEMONICS_FP:
         if mnemonic == "FMOV" and len(operands) == 2 and isinstance(operands[1], OpFpImm):
@@ -178,8 +183,8 @@ def _pass1_collect_patches(
         if not isinstance(op, (OpLabel, OpAddrLabel, OpPageLabel)):
             continue
         is_page_ref = isinstance(op, OpPageLabel)
-        # VSET 2-op bare label: emit lo patch (pos+2) + hi patch (pos+3)
-        if mnemonic == "VSET" and len(operands) == 2 and isinstance(op, OpLabel):
+        # VSET/MSET 2-op bare label: emit lo patch (pos+2) + hi patch (pos+3)
+        if mnemonic in ("VSET", "MSET") and len(operands) == 2 and isinstance(op, OpLabel):
             state.patches.append(LabelPatch(state.current_page, pos + 2, op.name, False, is_jump, loc))
             state.patches.append(LabelPatch(state.current_page, pos + 3, op.name, True, is_jump, loc))
             continue

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import random
 
-import pytest
 from conftest import run
 from hypothesis import given, settings
 from hypothesis import strategies as st

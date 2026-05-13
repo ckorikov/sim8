@@ -8,13 +8,17 @@ from __future__ import annotations
 
 import math
 import operator
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from pysim8.fp_arithmetic import (
     fp_add,
     fp_div,
+    fp_fmadd,
     fp_mul,
     fp_sub,
+)
+from pysim8.fp_arithmetic import (
+    fp_exp as _fp_exp,
 )
 from pysim8.fp_arithmetic import (
     fp_sqrt as _fp_sqrt,
@@ -22,6 +26,7 @@ from pysim8.fp_arithmetic import (
 from pysim8.fp_formats import (
     NO_EXC,
     FpExceptions,
+    RoundingMode,
     bytes_to_float,
     float_to_bytes,
 )
@@ -49,12 +54,17 @@ if TYPE_CHECKING:
 __all__ = [
     "vu_read_elem",
     "vu_write_elem",
+    "vu_decode_imm",
     "vu_arith",
     "vu_dot",
+    "vu_fmadd",
     "vu_sqrt",
+    "vu_exp",
     "vu_neg",
     "vu_abs",
     "vu_cmp",
+    "vu_fp_to_uint8_sat",
+    "vu_fp_to_int8_sat",
 ]
 
 _FP_FMTS = frozenset({VU_FMT_F, VU_FMT_H, VU_FMT_BF, VU_FMT_O3, VU_FMT_O2})
@@ -65,6 +75,34 @@ def _to_byte(val: int) -> int:
     return val & 0xFF
 
 
+_RM_ROUND_INT: dict[int, Callable[[float], int]] = {
+    RoundingMode.RNE: round,
+    RoundingMode.RTZ: int,
+    RoundingMode.RDN: math.floor,
+    RoundingMode.RUP: math.ceil,
+}
+
+
+def vu_fp_to_uint8_sat(val: float, rm: int) -> tuple[int, FpExceptions]:
+    """Convert float → uint8 with saturation (FFTOI vector analogue)."""
+    if math.isnan(val):
+        return 0, FpExceptions(invalid=True)
+    if math.isinf(val):
+        return (255 if val > 0 else 0), FpExceptions(invalid=True)
+    rounded = _RM_ROUND_INT[rm](val)
+    return max(0, min(255, rounded)), FpExceptions(inexact=rounded != val)
+
+
+def vu_fp_to_int8_sat(val: float, rm: int) -> tuple[int, FpExceptions]:
+    """Convert float → int8 with saturation."""
+    if math.isnan(val):
+        return 0, FpExceptions(invalid=True)
+    if math.isinf(val):
+        return (127 if val > 0 else -128), FpExceptions(invalid=True)
+    rounded = _RM_ROUND_INT[rm](val)
+    return max(-128, min(127, rounded)), FpExceptions(inexact=rounded != val)
+
+
 def vu_read_elem(mem: Memory, addr: int, fmt: int) -> float | int:
     """Read one element from memory at addr in the given format."""
     sz = VU_FMT_ELEM_SIZE[fmt]
@@ -72,6 +110,24 @@ def vu_read_elem(mem: Memory, addr: int, fmt: int) -> float | int:
     if fmt in _FP_FMTS:
         return bytes_to_float(raw, fmt)
     val = int.from_bytes(raw, "little")
+    if fmt == VU_FMT_I:
+        return val if val < 128 else val - 256
+    return val
+
+
+def vu_decode_imm(imm: int, fmt: int) -> float | int:
+    """Decode a vs/vi-mode immediate stored in cmd.imm into a typed scalar.
+
+    cmd.imm is a raw integer holding little-endian-packed bytes equal to one
+    element's encoding. For FP formats this must be re-decoded (an O3 byte 0x40
+    means 2.0, not 64). For integer formats the raw value is returned (signed
+    for INT8).
+    """
+    sz = VU_FMT_ELEM_SIZE[fmt]
+    if fmt in _FP_FMTS:
+        raw = bytes((imm >> (8 * i)) & 0xFF for i in range(sz))
+        return bytes_to_float(raw, fmt)
+    val = imm & ((1 << (8 * sz)) - 1)
     if fmt == VU_FMT_I:
         return val if val < 128 else val - 256
     return val
@@ -131,7 +187,9 @@ def _arith_uint8(op: int, a: int, b: int) -> tuple[int, FpExceptions]:
         raw = ua * ub
         return _to_byte(raw), _int_exc(raw)
     if op == Op.VDIV:
-        return (0, NO_EXC) if ub == 0 else (ua // ub, NO_EXC)
+        if ub == 0:
+            return 0, FpExceptions(div_zero=True)
+        return ua // ub, NO_EXC
     if op == Op.VMAX:
         return max(ua, ub), NO_EXC
     if op == Op.VMIN:
@@ -151,7 +209,7 @@ def _arith_int8(op: int, a: int, b: int) -> tuple[int, FpExceptions]:
         return _to_byte(raw), _int_exc(raw)
     if op == Op.VDIV:
         if b == 0:
-            return 0, NO_EXC
+            return 0, FpExceptions(div_zero=True)
         sign = -1 if (a < 0) ^ (b < 0) else 1
         return _to_byte(sign * (abs(a) // abs(b))), NO_EXC
     if op == Op.VMAX:
@@ -187,6 +245,22 @@ def vu_dot(values_a: list[float], values_b: list[float]) -> float:
 def vu_sqrt(val: float | int, fmt: int, rm: int = 0) -> tuple[float | int, FpExceptions]:
     """Element square root (FP only — caller validates format)."""
     return _fp_sqrt(float(val), fmt, rm)
+
+
+def vu_exp(val: float | int, fmt: int, rm: int = 0) -> tuple[float | int, FpExceptions]:
+    """Element exponential (FP only — caller validates format)."""
+    return _fp_exp(float(val), fmt, rm)
+
+
+def vu_fmadd(
+    c: float | int,
+    a: float | int,
+    b: float | int,
+    fmt: int,
+    rm: int = 0,
+) -> tuple[float, FpExceptions]:
+    """Fused multiply-add: c + a*b (FP only — caller validates format)."""
+    return fp_fmadd(float(a), float(b), float(c), fmt, rm)
 
 
 def vu_neg(val: float | int, fmt: int) -> tuple[float | int, FpExceptions]:

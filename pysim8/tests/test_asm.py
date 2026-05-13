@@ -1,4 +1,4 @@
-"""Assembler tests from spec/tests.md (tests 110-184).
+"""Assembler tests from spec/tests/tests-cpu.md (tests 110-184).
 
 Tests are assembler-only: assemble source → verify bytes / labels / mapping / errors.
 """

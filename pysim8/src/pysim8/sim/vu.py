@@ -26,6 +26,7 @@ class VuCommand:
     mask_addr: int
     vl: int
     imm: int
+    src_fmt: int = 0  # VCVT: source element format (other ops: unused)
     progress: int = 0  # elements processed so far (windowed execution)
     compact_idx: int = 0  # packed index for VGATHER/VSCATTER
 

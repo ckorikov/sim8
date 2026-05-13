@@ -2,7 +2,7 @@
 
 HandlersVuMixin provides:
   - Synchronous handlers (VSET, VFSTAT, VFCLR, VWAIT)
-  - Async command issue (VADD..VFILL → push to queue + auto-increment)
+  - Async command issue (VADD..VEXP → push to queue + auto-increment)
   - VU tick (vu_tick: dequeue + execute one command per CPU step)
 """
 
@@ -14,6 +14,9 @@ from pysim8.isa import (
     VU_ARITH_OPS,
     VU_ASYNC_OPS,
     VU_FMT_ELEM_SIZE,
+    VU_FMT_I,
+    VU_FMT_U,
+    VU_FP_ONLY_OPS,
     VU_INT_FMTS,
     VU_MODE_R,
     VU_MODE_VI,
@@ -34,7 +37,12 @@ from .vu_ops import (
     vu_abs,
     vu_arith,
     vu_cmp,
+    vu_decode_imm,
     vu_dot,
+    vu_exp,
+    vu_fmadd,
+    vu_fp_to_int8_sat,
+    vu_fp_to_uint8_sat,
     vu_neg,
     vu_read_elem,
     vu_sqrt,
@@ -52,9 +60,10 @@ if TYPE_CHECKING:
 __all__ = ["HandlersVuMixin"]
 
 # Unified (val, fmt, rm) -> (result, exc) callables for each unary VU op.
-# vu_sqrt already matches; vu_neg/vu_abs drop the unused rm.
+# vu_sqrt/vu_exp already match; vu_neg/vu_abs drop the unused rm.
 _VU_UNARY_FN: dict[int, Callable[..., tuple[int | float, "FpExceptions"]]] = {
     int(Op.VSQRT): vu_sqrt,
+    int(Op.VEXP): vu_exp,
     int(Op.VNEG): lambda val, fmt, rm: vu_neg(val, fmt),
     int(Op.VABS): lambda val, fmt, rm: vu_abs(val, fmt),
 }
@@ -86,11 +95,10 @@ class HandlersVuMixin:
         d[Op.VFSTAT] = self._h_vfstat
         d[Op.VFCLR] = self._h_vfclr
         d[Op.VWAIT] = self._h_vwait
-        # All async ops share one handler
+        # All async ops share one handler; VCVT overrides with its own
         for op_val in VU_ASYNC_OPS:
             d[Op(op_val)] = self._h_vasync
-        # Op.VFILL (183) is reserved; executing it faults with INVALID_OPCODE
-        d[Op.VFILL] = self._h_vfill_reserved
+        d[Op.VCVT] = self._h_vcvt
 
     def _init_vu(self) -> None:
         """Initialize VU queue. Called from CPU.__init__."""
@@ -174,10 +182,6 @@ class HandlersVuMixin:
         else:
             self.regs.ip += instr.size
 
-    def _h_vfill_reserved(self, instr: DecodedInstr) -> None:
-        """Op.VFILL (183) is reserved. Always faults with INVALID_OPCODE."""
-        raise CpuFault(ErrorCode.INVALID_OPCODE, self.regs.ip)
-
     # ── Async command issue ──────────────────────────────────────
 
     def _h_vasync(self, instr: DecodedInstr) -> None:
@@ -194,6 +198,40 @@ class HandlersVuMixin:
 
         cmd = self._vu_build_command(vu, opcode, fmt, mode, cond, dst_code, s1_code, s2_code, instr)
         self._vu_auto_inc(vu, opcode, mode, dst_code, s1_code, s2_code, vu.vl, VU_FMT_ELEM_SIZE.get(fmt, 1))
+        self._vu_drain_and_enqueue(cmd)
+        self.regs.ip += instr.size
+
+    def _h_vcvt(self, instr: DecodedInstr) -> None:
+        """VCVT.dstfmt.srcfmt: element-wise format conversion (4-byte encoding)."""
+        vu = self._vu_regs()
+        dst_fmt, mode, _ = decode_vfm(instr.operands[0])
+        src_fmt = decode_vfm(instr.operands[1])[0]
+        dst_code, s1_code, _ = decode_vu_regs(instr.operands[2])
+
+        if dst_fmt > 6 or src_fmt > 6 or mode == VU_MODE_R:
+            raise CpuFault(ErrorCode.VU_FORMAT, self.regs.ip)
+
+        if vu.vl == 0:
+            self.regs.ip += instr.size
+            return
+
+        dst_sz = VU_FMT_ELEM_SIZE.get(dst_fmt, 1)
+        src_sz = VU_FMT_ELEM_SIZE.get(src_fmt, 1)
+        cmd = VuCommand(
+            op=int(Op.VCVT),
+            fmt=dst_fmt,
+            mode=VU_MODE_VV,
+            cond=0,
+            dst_addr=vu.read_ptr(dst_code),
+            s1_addr=vu.read_ptr(s1_code),
+            s2_addr=0,
+            mask_addr=vu.vm,
+            vl=vu.vl,
+            imm=0,
+            src_fmt=src_fmt,
+        )
+        vu.inc_ptr(dst_code, vu.vl * dst_sz)
+        vu.inc_ptr(s1_code, vu.vl * src_sz)
         self._vu_drain_and_enqueue(cmd)
         self.regs.ip += instr.size
 
@@ -214,8 +252,12 @@ class HandlersVuMixin:
             for i, b in enumerate(instr.operands[2:]):
                 imm |= b << (8 * i)
         elif mode == VU_MODE_VS:
-            # GPR broadcast: s2_code encodes GPR code, snapshot value
-            imm = self.regs.read(s2_code)
+            # vs-mode: s2_code encodes a VU pointer register; CPU reads `sz`
+            # bytes from mem[ptr] at issue and snapshots into cmd.imm.
+            sz = VU_FMT_ELEM_SIZE.get(fmt, 1)
+            base = vu.read_ptr(s2_code)
+            for i in range(sz):
+                imm |= self.mem[base + i] << (8 * i)
         return VuCommand(
             op=opcode,
             fmt=fmt,
@@ -254,10 +296,7 @@ class HandlersVuMixin:
             fault()
         if opcode == Op.VCMP and cond > 5:
             fault()
-        if fmt in VU_INT_FMTS and opcode in (Op.VDOT, Op.VSQRT):
-            fault()
-        # GPR broadcast restricted to byte formats (elem_size == 1)
-        if mode == VU_MODE_VS and VU_FMT_ELEM_SIZE.get(fmt, 1) > 1:
+        if fmt in VU_INT_FMTS and opcode in VU_FP_ONLY_OPS:
             fault()
         # Mode validation per instruction
         if not self._valid_mode(opcode, mode):
@@ -267,7 +306,8 @@ class HandlersVuMixin:
             fault()
 
     _VV_ONLY_OPS: frozenset[int] = frozenset({Op.VDOT, Op.VCMP, Op.VSEL})
-    _MODE0_ONLY_OPS: frozenset[int] = frozenset({Op.VSQRT, Op.VNEG, Op.VABS, Op.VGATHER, Op.VSCATTER})
+    _MODE0_ONLY_OPS: frozenset[int] = frozenset({Op.VSQRT, Op.VEXP, Op.VNEG, Op.VABS, Op.VGATHER, Op.VSCATTER})
+    _NO_R_OPS: frozenset[int] = frozenset({Op.VFMADD})
 
     @staticmethod
     def _valid_mode(opcode: int, mode: int) -> bool:
@@ -276,12 +316,13 @@ class HandlersVuMixin:
         if opcode in HandlersVuMixin._MODE0_ONLY_OPS:
             return mode == 0
         if opcode == Op.VMOV:
-            return mode in (0, VU_MODE_VI)
-        if opcode == Op.VFILL:
-            return mode == VU_MODE_VI
+            # vv (copy), vs (mem-scalar broadcast), vi (imm broadcast). No reduction.
+            return mode in (VU_MODE_VV, VU_MODE_VS, VU_MODE_VI)
+        if opcode in HandlersVuMixin._NO_R_OPS:
+            return mode in (VU_MODE_VV, VU_MODE_VS, VU_MODE_VI)
         return True  # arithmetic: all modes valid
 
-    _NO_S2_OPS: frozenset[int] = frozenset({Op.VSQRT, Op.VNEG, Op.VABS, Op.VMOV, Op.VFILL, Op.VGATHER, Op.VSCATTER})
+    _NO_S2_OPS: frozenset[int] = frozenset({Op.VSQRT, Op.VEXP, Op.VNEG, Op.VABS, Op.VMOV, Op.VGATHER, Op.VSCATTER})
 
     @staticmethod
     def _vu_dst_inc(op: int, mode: int, vl: int, sz: int) -> int:
@@ -297,15 +338,25 @@ class HandlersVuMixin:
         return vl * sz
 
     @staticmethod
-    def _vu_s1_inc(op: int, vl: int, sz: int) -> int:
-        """Source-1 auto-increment: zero for VFILL/VSEL (no src1 consumed), else full vector."""
-        if op in (Op.VFILL, Op.VSEL, Op.VSCATTER):
-            return 0  # VSCATTER: data-dependent, user must VSET
+    def _vu_s1_inc(op: int, mode: int, vl: int, sz: int) -> int:
+        """Source-1 auto-increment.
+
+        Zero when src1 is not consumed: VSEL alt-pointer, VSCATTER data-dependent,
+        VMOV in vs (mem-broadcast from s2_ptr) or vi (imm broadcast).
+        """
+        if op in (Op.VSEL, Op.VSCATTER):
+            return 0
+        if op == Op.VMOV and mode in (VU_MODE_VS, VU_MODE_VI):
+            return 0
         return vl * sz
 
     @staticmethod
     def _vu_s2_inc(op: int, mode: int, vl: int, sz: int) -> int:
-        """Source-2 auto-increment: zero for unary ops, scalar/imm modes, or reduce; else full vector."""
+        """Source-2 auto-increment: zero for unary ops, scalar/imm modes, or reduce; else full vector.
+
+        In .vs mode s2 is a memory pointer; the pointer itself does NOT advance
+        (snapshot once at issue; reusable for repeated broadcasts).
+        """
         if op in HandlersVuMixin._NO_S2_OPS:
             return 0
         if mode in (VU_MODE_VS, VU_MODE_VI, VU_MODE_R):
@@ -317,7 +368,7 @@ class HandlersVuMixin:
         """Compute (dst_inc, s1_inc, s2_inc) for auto-increment."""
         return (
             HandlersVuMixin._vu_dst_inc(op, mode, vl, sz),
-            HandlersVuMixin._vu_s1_inc(op, vl, sz),
+            HandlersVuMixin._vu_s1_inc(op, mode, vl, sz),
             HandlersVuMixin._vu_s2_inc(op, mode, vl, sz),
         )
 
@@ -368,16 +419,20 @@ class HandlersVuMixin:
             self._vu_exec_window(cmd, sz, start, end)
 
         cmd.progress = end
-        if cmd.progress >= cmd.vl:
+        if cmd.progress >= cmd.vl and not self._vu_queue.is_empty:
             self._vu_queue.dequeue()
 
     def _vu_exec_window(self, cmd: VuCommand, sz: int, start: int, end: int) -> None:
         """Execute elements [start, end) of a VU command."""
         op = cmd.op
         if op == Op.VMOV:
-            self._vu_win_mov(cmd, sz, start, end)
-        elif op == Op.VFILL:
-            self._vu_win_fill(cmd, sz, start, end)
+            # vv: raw byte copy. vs/vi: broadcast cmd.imm (snapshotted GPR or imm).
+            if cmd.mode == VU_MODE_VV:
+                self._vu_win_mov(cmd, sz, start, end)
+            else:
+                self._vu_win_fill(cmd, sz, start, end)
+        elif op == Op.VFMADD:
+            self._vu_win_fmadd(cmd, sz, start, end)
         elif op == Op.VCMP:
             self._vu_win_vcmp(cmd, sz, start, end)
         elif op == Op.VSEL:
@@ -390,6 +445,8 @@ class HandlersVuMixin:
             self._vu_win_unary(cmd, sz, start, end)
         elif op in VU_ARITH_OPS:
             self._vu_win_arith(cmd, sz, start, end)
+        elif op == Op.VCVT:
+            self._vu_win_vcvt(cmd, sz, start, end)
 
     def _vu_rounding_mode(self) -> int:
         return self.regs.fpu.rounding_mode if self.regs.fpu is not None else 0
@@ -408,12 +465,16 @@ class HandlersVuMixin:
         self._vu_regs().vfpsr |= flags
 
     def _vu_win_fill(self, cmd: VuCommand, sz: int, start: int, end: int) -> None:
-        rm = self._vu_rounding_mode()
-        self._vu_accumulate_flags(
-            start,
-            end,
-            lambda i: exc_to_flags(vu_write_elem(self.mem, cmd.dst_addr + i * sz, cmd.fmt, cmd.imm, rm)),
-        )
+        """Broadcast cmd.imm (vi/vs scalar) into VL elements as raw bytes.
+
+        VMOV vi/vs is a raw byte fill — no FP re-encoding of the immediate.
+        For byte formats this writes one byte per element; for multi-byte FP
+        formats (vi only) the imm bytes are LE-extracted from cmd.imm.
+        """
+        for i in range(start, end):
+            base = cmd.dst_addr + i * sz
+            for b in range(sz):
+                self.mem[base + b] = (cmd.imm >> (8 * b)) & 0xFF
 
     def _vu_win_vcmp(self, cmd: VuCommand, sz: int, start: int, end: int) -> None:
         for i in range(start, end):
@@ -472,14 +533,64 @@ class HandlersVuMixin:
     def _vu_win_arith(self, cmd: VuCommand, sz: int, start: int, end: int) -> None:
         rm = self._vu_rounding_mode()
         is_vv = cmd.mode == VU_MODE_VV
+        scalar = None if is_vv else vu_decode_imm(cmd.imm, cmd.fmt)
+
+        is_int_fmt = cmd.fmt in VU_INT_FMTS
 
         def _elem(i: int) -> int:
             a = vu_read_elem(self.mem, cmd.s1_addr + i * sz, cmd.fmt)
-            b = vu_read_elem(self.mem, cmd.s2_addr + i * sz, cmd.fmt) if is_vv else cmd.imm
+            b = vu_read_elem(self.mem, cmd.s2_addr + i * sz, cmd.fmt) if is_vv else scalar
             result, op_exc = vu_arith(cmd.op, a, b, cmd.fmt, rm)
+            if is_int_fmt and op_exc.div_zero:
+                self._vu_queue.fault = ErrorCode.DIV_ZERO
+                self._vu_queue.flush()
+                return 0
             return exc_to_flags(op_exc) | exc_to_flags(
                 vu_write_elem(self.mem, cmd.dst_addr + i * sz, cmd.fmt, result, rm)
             )
+
+        self._vu_accumulate_flags(start, end, _elem)
+
+    def _vu_win_fmadd(self, cmd: VuCommand, sz: int, start: int, end: int) -> None:
+        """Fused multiply-add window: dst[i] = dst[i] + src1[i] * src2[i].
+
+        src2 is read from memory in vv mode; in vs/vi modes the scalar is
+        decoded from cmd.imm in the command's format (snapshotted at issue).
+        """
+        rm = self._vu_rounding_mode()
+        is_vv = cmd.mode == VU_MODE_VV
+        scalar = None if is_vv else vu_decode_imm(cmd.imm, cmd.fmt)
+
+        def _elem(i: int) -> int:
+            a = vu_read_elem(self.mem, cmd.s1_addr + i * sz, cmd.fmt)
+            b = vu_read_elem(self.mem, cmd.s2_addr + i * sz, cmd.fmt) if is_vv else scalar
+            c = vu_read_elem(self.mem, cmd.dst_addr + i * sz, cmd.fmt)
+            result, op_exc = vu_fmadd(c, a, b, cmd.fmt, rm)
+            return exc_to_flags(op_exc) | exc_to_flags(
+                vu_write_elem(self.mem, cmd.dst_addr + i * sz, cmd.fmt, result, rm)
+            )
+
+        self._vu_accumulate_flags(start, end, _elem)
+
+    def _vu_win_vcvt(self, cmd: VuCommand, sz: int, start: int, end: int) -> None:
+        """Convert elements from src_fmt (cmd.src_fmt) to dst_fmt (cmd.fmt)."""
+        src_fmt = cmd.src_fmt
+        src_sz = VU_FMT_ELEM_SIZE.get(src_fmt, 1)
+        dst_fmt = cmd.fmt
+        rm = self._vu_rounding_mode()
+
+        def _elem(i: int) -> int:
+            val = vu_read_elem(self.mem, cmd.s1_addr + i * src_sz, src_fmt)
+            fval = float(val)
+            if dst_fmt == VU_FMT_U:
+                result, exc = vu_fp_to_uint8_sat(fval, rm)
+                self.mem[cmd.dst_addr + i * sz] = result
+                return exc_to_flags(exc)
+            if dst_fmt == VU_FMT_I:
+                result, exc = vu_fp_to_int8_sat(fval, rm)
+                self.mem[cmd.dst_addr + i * sz] = result & 0xFF
+                return exc_to_flags(exc)
+            return exc_to_flags(vu_write_elem(self.mem, cmd.dst_addr + i * sz, dst_fmt, fval, rm))
 
         self._vu_accumulate_flags(start, end, _elem)
 
@@ -515,11 +626,15 @@ class HandlersVuMixin:
         """Return dst byte footprint: byte mask (VCMP), scalar (VDOT/reduce), or full vector."""
         if cmd.op == Op.VCMP:
             return cmd.vl
-        if cmd.op == Op.VDOT or cmd.mode == VU_MODE_R:
+        if cmd.op == Op.VDOT:
+            return sz
+        if cmd.mode == VU_MODE_R:
             return sz
         return cmd.vl * sz
 
     _GATHER_OPS: frozenset[int] = frozenset({Op.VGATHER, Op.VSCATTER})
+    # VV-mode ops that don't read s2 (gather/scatter are data-dependent; VCVT has no s2)
+    _NO_S2_VV_OPS: frozenset[int] = frozenset({Op.VGATHER, Op.VSCATTER, Op.VCVT})
 
     def _vu_validate_oob(self, cmd: VuCommand, sz: int) -> bool:
         """Check if any operand access is out of bounds."""
@@ -527,12 +642,21 @@ class HandlersVuMixin:
         dst_bytes = self._vu_dst_footprint(cmd, sz)
         if cmd.dst_addr + dst_bytes > MEM_SIZE:
             return True
-        # s1 footprint: VFILL/VSEL don't read s1; VSCATTER reads data-dependent count
-        if cmd.op not in (Op.VFILL, Op.VSEL, Op.VSCATTER):
-            if cmd.s1_addr + vl * sz > MEM_SIZE:
+        # s1 footprint:
+        #   VSEL/VSCATTER don't read s1 the normal way (data-dependent for SCATTER)
+        #   VMOV vs/vi don't read s1 (source is mem[s2_ptr] / imm)
+        #   VCVT reads s1 in src_fmt (different element size than dst)
+        s1_skip = cmd.op in (Op.VSEL, Op.VSCATTER) or (cmd.op == Op.VMOV and cmd.mode in (VU_MODE_VS, VU_MODE_VI))
+        if not s1_skip:
+            s1_sz = VU_FMT_ELEM_SIZE.get(cmd.src_fmt, 1) if cmd.op == Op.VCVT else sz
+            if cmd.s1_addr + vl * s1_sz > MEM_SIZE:
                 return True
-        # s2 footprint for VV mode (not for VGATHER/VSCATTER which are unary)
-        if cmd.mode == VU_MODE_VV and cmd.op not in self._GATHER_OPS:
+        # vs-mode: s2 is a memory pointer; CPU reads sz bytes from mem[s2] at issue.
+        if cmd.mode == VU_MODE_VS:
+            if cmd.s2_addr + sz > MEM_SIZE:
+                return True
+        # s2 footprint for VV mode; excluded ops either have no s2 or handle it differently
+        if cmd.mode == VU_MODE_VV and cmd.op not in self._NO_S2_VV_OPS:
             if cmd.s2_addr + vl * sz > MEM_SIZE:
                 return True
         # Mask pointer for VCMP/VSEL/VGATHER/VSCATTER

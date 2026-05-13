@@ -17,18 +17,15 @@ from __future__ import annotations
 import pytest
 
 from pysim8.isa import (
-    Op,
     VU_FMT_ELEM_SIZE,
     VU_FMT_U,
     VU_MODE_VV,
+    Op,
     encode_vfm,
     encode_vu_regs,
 )
 from pysim8.sim.cpu import CPU
 from pysim8.sim.registers import CpuState
-
-from conftest import run
-
 
 # ── Helpers ──────────────────────────────────────────────────────
 

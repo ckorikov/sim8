@@ -19,6 +19,8 @@ __all__ = [
     "OpFloat",
     "OpFpImm",
     "OpVuReg",
+    "OpVuRegAddr",
+    "OpMuReg",
     "Operand",
     "ParsedLine",
 ]
@@ -136,6 +138,20 @@ class OpVuReg:
     code: int  # 0=VA, 1=VB, 2=VC, 3=VM, 4=VL
 
 
+@dataclass(frozen=True, slots=True)
+class OpVuRegAddr:
+    """VU register used as memory pointer: [VA], [VB], [VC], [VM]."""
+
+    code: int  # 0=VA, 1=VB, 2=VC, 3=VM
+
+
+@dataclass(frozen=True, slots=True)
+class OpMuReg:
+    """MU register operand: MA, MB, MC (pointers), MM, MN, MK (dims)."""
+
+    code: int  # 0=MA, 1=MB, 2=MC, 3=MM, 4=MN, 5=MK
+
+
 Operand = (
     OpReg
     | OpConst
@@ -149,6 +165,8 @@ Operand = (
     | OpFloat
     | OpFpImm
     | OpVuReg
+    | OpVuRegAddr
+    | OpMuReg
 )
 
 

@@ -682,8 +682,8 @@ class TestIsaEdges:
 
     def test_db_unsupported_operand_type(self) -> None:
         """DB with unexpected operand type raises AssemblerError."""
-        from pysim8.asm._codegen_fp import _encode_db_operand
         from pysim8.asm._codegen_core import AssemblerError
+        from pysim8.asm._codegen_fp import _encode_db_operand
         from pysim8.asm.parser import OpReg
 
         result: list[int] = []

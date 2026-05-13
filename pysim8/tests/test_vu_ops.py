@@ -21,9 +21,8 @@ import struct
 
 import pytest
 
-from pysim8.fp_formats import FpExceptions, NO_EXC
+from pysim8.fp_formats import NO_EXC, FpExceptions
 from pysim8.isa import (
-    Op,
     VU_CMP_EQ,
     VU_CMP_GE,
     VU_CMP_GT,
@@ -38,18 +37,20 @@ from pysim8.isa import (
     VU_FMT_O2,
     VU_FMT_O3,
     VU_FMT_U,
+    Op,
 )
 from pysim8.sim.vu_ops import (
     vu_abs,
     vu_arith,
     vu_cmp,
     vu_dot,
+    vu_exp,
+    vu_fmadd,
     vu_neg,
     vu_read_elem,
     vu_sqrt,
     vu_write_elem,
 )
-
 
 # ── Helpers ───────────────────────────────────────────────────────
 
@@ -334,10 +335,10 @@ class TestArithUint8:
         assert result == (200 * 2) & 0xFF
         assert exc.overflow
 
-    def test_div_by_zero_returns_zero(self) -> None:
+    def test_div_by_zero_signals_div_zero(self) -> None:
         result, exc = vu_arith(int(Op.VDIV), 10, 0, VU_FMT_U)
         assert result == 0
-        assert exc == NO_EXC
+        assert exc.div_zero
 
     def test_div_normal(self) -> None:
         result, exc = vu_arith(int(Op.VDIV), 10, 3, VU_FMT_U)
@@ -388,10 +389,10 @@ class TestArithInt8:
         assert result == raw & 0xFF
         assert exc.underflow
 
-    def test_div_by_zero_returns_zero(self) -> None:
+    def test_div_by_zero_signals_div_zero(self) -> None:
         result, exc = vu_arith(int(Op.VDIV), 10, 0, VU_FMT_I)
         assert result == 0
-        assert exc == NO_EXC
+        assert exc.div_zero
 
     def test_div_negative_positive(self) -> None:
         # -10 / 3 → sign=-1, abs(10)//3 = 3, result = -3 → 0xFD
@@ -682,3 +683,101 @@ class TestVuCmp:
 
         with pytest.raises(ValueError, match="Unknown VU comparison condition"):
             _compare(1, 2, 99)
+
+
+# ── vu_exp ────────────────────────────────────────────────────────
+
+
+class TestVuExp:
+    def test_exp_zero(self) -> None:
+        result, exc = vu_exp(0.0, VU_FMT_F)
+        assert result == 1.0  # type: ignore[arg-type]
+        assert exc == NO_EXC
+
+    def test_exp_one(self) -> None:
+        result, exc = vu_exp(1.0, VU_FMT_F)
+        assert abs(result - math.e) < 1e-5  # type: ignore[arg-type]
+
+    def test_exp_negative(self) -> None:
+        result, exc = vu_exp(-1.0, VU_FMT_F)
+        assert abs(result - 1.0 / math.e) < 1e-5  # type: ignore[arg-type]
+
+    def test_exp_pos_inf(self) -> None:
+        result, exc = vu_exp(float("inf"), VU_FMT_F)
+        assert result == float("inf")  # type: ignore[arg-type]
+        assert exc == NO_EXC
+
+    def test_exp_neg_inf(self) -> None:
+        result, exc = vu_exp(float("-inf"), VU_FMT_F)
+        assert result == 0.0  # type: ignore[arg-type]
+        assert exc == NO_EXC
+
+    def test_exp_nan(self) -> None:
+        result, exc = vu_exp(float("nan"), VU_FMT_F)
+        assert math.isnan(result)  # type: ignore[arg-type]
+        assert exc.invalid
+
+    def test_exp_overflow_to_inf(self) -> None:
+        # exp(1000) overflows even float32
+        result, exc = vu_exp(1000.0, VU_FMT_F)
+        assert result == float("inf")  # type: ignore[arg-type]
+        assert exc.overflow
+        assert exc.inexact
+
+    def test_exp_bf16(self) -> None:
+        result, exc = vu_exp(1.0, VU_FMT_BF)
+        # bf16 has limited precision but exp(1) should round near e
+        assert abs(result - math.e) < 0.05  # type: ignore[arg-type]
+
+    def test_exp_o3(self) -> None:
+        # OFP8 E4M3: small range; exp(1) = 2.71... rounds to nearest representable
+        result, exc = vu_exp(1.0, VU_FMT_O3)
+        assert abs(result - math.e) < 0.5  # type: ignore[arg-type]
+
+
+# ── vu_fmadd ──────────────────────────────────────────────────────
+
+
+class TestVuFmadd:
+    def test_basic(self) -> None:
+        # 0.5 + 1.0 * 2.0 = 2.5
+        result, exc = vu_fmadd(0.5, 1.0, 2.0, VU_FMT_F)
+        assert result == 2.5
+        assert exc == NO_EXC
+
+    def test_zero_accumulator(self) -> None:
+        result, exc = vu_fmadd(0.0, 3.0, 4.0, VU_FMT_F)
+        assert result == 12.0
+
+    def test_negative_product(self) -> None:
+        # 10 + (-2) * 3 = 4
+        result, exc = vu_fmadd(10.0, -2.0, 3.0, VU_FMT_F)
+        assert result == 4.0
+
+    def test_inf_times_zero_is_nan(self) -> None:
+        # 1 + (Inf * 0) = NaN (invalid)
+        result, exc = vu_fmadd(1.0, float("inf"), 0.0, VU_FMT_F)
+        assert math.isnan(result)  # type: ignore[arg-type]
+        assert exc.invalid
+
+    def test_nan_input_propagates(self) -> None:
+        result, exc = vu_fmadd(0.0, float("nan"), 1.0, VU_FMT_F)
+        assert math.isnan(result)  # type: ignore[arg-type]
+        assert exc.invalid
+
+    def test_inf_minus_inf_is_nan(self) -> None:
+        # (-inf) + (inf * 1) → inf - inf = NaN
+        result, exc = vu_fmadd(float("-inf"), float("inf"), 1.0, VU_FMT_F)
+        assert math.isnan(result)  # type: ignore[arg-type]
+        assert exc.invalid
+
+    def test_bf16_precision(self) -> None:
+        # bf16 truncates to ~3 decimal digits
+        result, exc = vu_fmadd(1.0, 1.5, 2.0, VU_FMT_BF)
+        assert abs(result - 4.0) < 0.1  # type: ignore[arg-type]
+
+    def test_overflow_sets_flag(self) -> None:
+        # bf16 max ~3.4e38; 1e30 * 1e30 overflows bf16
+        result, exc = vu_fmadd(0.0, 1e30, 1e30, VU_FMT_BF)
+        assert exc.overflow
+        assert math.isinf(result)  # type: ignore[arg-type]

@@ -13,6 +13,9 @@ from pysim8._isa_tables import (
     ISA_FP_DATA as _ISA_FP_DATA,
 )
 from pysim8._isa_tables import (
+    ISA_MU_DATA as _ISA_MU_DATA,
+)
+from pysim8._isa_tables import (
     ISA_VU_DATA as _ISA_VU_DATA,
 )
 from pysim8._isa_tables import (
@@ -93,6 +96,7 @@ __all__ = [
     "VU_UNARY_OPS",
     "VU_VV_ONLY_OPS",
     "VU_INT_FMTS",
+    "VU_FIXED4_OPS",
     "VU_SYNC_MNEMONICS",
     "VU_MODE_VV",
     "VU_MODE_VS",
@@ -103,6 +107,23 @@ __all__ = [
     "encode_vu_regs",
     "decode_vu_regs",
     "vu_instr_size",
+    # Matrix Unit (MU)
+    "ISA_MU",
+    "BY_CODE_MU",
+    "BY_MNEMONIC_MU",
+    "MNEMONICS_MU",
+    "MU_REGISTERS",
+    "MU_SUFFIX_TO_FMT",
+    "MU_FMT_ELEM_SIZE",
+    "MU_ASYNC_OPS",
+    "MU_SYNC_MNEMONICS",
+    "MU_FP_FMTS",
+    "MU_INT_FMTS",
+    "MU_LAYOUT_A_COL",
+    "MU_LAYOUT_B_COL",
+    "MU_LAYOUT_C_COL",
+    "encode_mfm",
+    "decode_mfm",
 ]
 
 
@@ -334,9 +355,9 @@ VU_WINDOW_SIZE: dict[int, int] = {1: 8, 2: 4, 4: 2}
 
 # VU mode codes
 VU_MODE_VV = 0
-VU_MODE_VS = 1
+VU_MODE_VS = 1  # memory-scalar broadcast: read 1 element from mem[s2_ptr]
 VU_MODE_VI = 2
-VU_MODE_R = 3  # reduction
+VU_MODE_R = 3  # reduction (arithmetic ops only)
 
 # VU format suffix → fmt code
 VU_SUFFIX_TO_FMT: dict[str, int] = {
@@ -349,7 +370,6 @@ VU_SUFFIX_TO_FMT: dict[str, int] = {
     "I": VU_FMT_I,
 }
 
-# VU mode suffix → mode code
 VU_SUFFIX_TO_MODE: dict[str, int] = {
     "VV": VU_MODE_VV,
     "VS": VU_MODE_VS,
@@ -394,7 +414,7 @@ VU_ARITH_OPS: frozenset[int] = frozenset(
         Op.VMIN,
     }
 )
-VU_UNARY_OPS: frozenset[int] = frozenset({Op.VSQRT, Op.VNEG, Op.VABS, Op.VGATHER, Op.VSCATTER})
+VU_UNARY_OPS: frozenset[int] = frozenset({Op.VSQRT, Op.VNEG, Op.VABS, Op.VGATHER, Op.VSCATTER, Op.VEXP})
 VU_ASYNC_OPS: frozenset[int] = frozenset(
     {
         Op.VADD,
@@ -410,12 +430,19 @@ VU_ASYNC_OPS: frozenset[int] = frozenset(
         Op.VCMP,
         Op.VSEL,
         Op.VMOV,
+        Op.VCVT,
         Op.VGATHER,
         Op.VSCATTER,
+        Op.VFMADD,
+        Op.VEXP,
     }
 )
 VU_VV_ONLY_OPS: frozenset[int] = frozenset({Op.VDOT, Op.VCMP, Op.VSEL})
 VU_INT_FMTS: frozenset[int] = frozenset({VU_FMT_U, VU_FMT_I})
+# FP-only async ops (integer formats → FAULT(ERR_VU_FORMAT))
+VU_FP_ONLY_OPS: frozenset[int] = frozenset({Op.VDOT, Op.VSQRT, Op.VFMADD, Op.VEXP})
+# Async ops with a fixed 4-byte encoding (opcode + VFM + extra byte + regs)
+VU_FIXED4_OPS: frozenset[int] = frozenset({Op.VCMP, Op.VCVT})
 
 
 def encode_vfm(fmt: int, mode: int) -> int:
@@ -445,7 +472,7 @@ def vu_instr_size(opcode: int, vfm: int) -> int:
     Async opcodes: 3 for .vv/.vs/.r, 3 + elem_size for .vi.
     VCMP is always 4 bytes (opcode + VFM + regs + cond).
     """
-    if opcode == Op.VCMP:
+    if opcode in VU_FIXED4_OPS:
         return 4
     if opcode not in VU_ASYNC_OPS:
         instr_def = BY_CODE_VU.get(opcode)
@@ -463,3 +490,76 @@ BY_CODE_VU: dict[int, InstrDef] = {int(instr.op): instr for instr in ISA_VU}
 BY_MNEMONIC_VU: dict[str, tuple[InstrDef, ...]] = _by_mnemonic(ISA_VU)
 MNEMONICS_VU: frozenset[str] = frozenset(BY_MNEMONIC_VU)
 VU_SYNC_MNEMONICS: frozenset[str] = frozenset({"VSET", "VFSTAT", "VFCLR", "VWAIT"})
+
+
+# ── MU (Matrix Unit) ──────────────────────────────────────────────
+
+ISA_MU: tuple[InstrDef, ...] = _build_isa(_ISA_MU_DATA)
+BY_CODE_MU: dict[int, InstrDef] = {int(instr.op): instr for instr in ISA_MU}
+BY_MNEMONIC_MU: dict[str, tuple[InstrDef, ...]] = _by_mnemonic(ISA_MU)
+MNEMONICS_MU: frozenset[str] = frozenset(BY_MNEMONIC_MU) | frozenset({"MSHAPE"})
+MU_SYNC_MNEMONICS: frozenset[str] = frozenset({"MSET", "MFSTAT", "MFCLR", "MWAIT", "MSHAPE"})
+
+MU_REGISTERS: dict[str, int] = {
+    "MA": 0,
+    "MB": 1,
+    "MC": 2,
+    "MM": 3,
+    "MN": 4,
+    "MK": 5,
+}
+
+MU_SUFFIX_TO_FMT: dict[str, int] = {
+    "F": VU_FMT_F,
+    "H": VU_FMT_H,
+    "BF": VU_FMT_BF,
+    "O3": VU_FMT_O3,
+    "O2": VU_FMT_O2,
+    "U": VU_FMT_U,
+    "I": VU_FMT_I,
+}
+MU_FMT_ELEM_SIZE: dict[int, int] = {
+    VU_FMT_F: 4,
+    VU_FMT_H: 2,
+    VU_FMT_BF: 2,
+    VU_FMT_O3: 1,
+    VU_FMT_O2: 1,
+    VU_FMT_U: 1,
+    VU_FMT_I: 1,
+}
+MU_FP_FMTS: frozenset[int] = frozenset({VU_FMT_F, VU_FMT_H, VU_FMT_BF, VU_FMT_O3, VU_FMT_O2})
+MU_INT_FMTS: frozenset[int] = frozenset({VU_FMT_U, VU_FMT_I})
+
+MU_ASYNC_OPS: frozenset[int] = frozenset({Op.MMUL, Op.MMAD})
+
+# MFM layout flags (bits[5:3]): column-major storage per matrix
+MU_LAYOUT_A_COL = 0x20  # bit5: A column-major (.c..)
+MU_LAYOUT_B_COL = 0x10  # bit4: B column-major (..c.)
+MU_LAYOUT_C_COL = 0x08  # bit3: C column-major (...c)
+
+
+def encode_mfm(
+    fmt: int,
+    a_col: bool = False,
+    b_col: bool = False,
+    c_col: bool = False,
+) -> int:
+    """Encode MFM byte: bits[2:0]=fmt, bit5=A_col, bit4=B_col, bit3=C_col."""
+    val = fmt & 0x07
+    if a_col:
+        val |= MU_LAYOUT_A_COL
+    if b_col:
+        val |= MU_LAYOUT_B_COL
+    if c_col:
+        val |= MU_LAYOUT_C_COL
+    return val
+
+
+def decode_mfm(mfm: int) -> tuple[int, bool, bool, bool]:
+    """Decode MFM byte → (fmt, a_col, b_col, c_col)."""
+    return (
+        mfm & 0x07,
+        bool(mfm & MU_LAYOUT_A_COL),
+        bool(mfm & MU_LAYOUT_B_COL),
+        bool(mfm & MU_LAYOUT_C_COL),
+    )

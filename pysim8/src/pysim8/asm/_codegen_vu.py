@@ -34,10 +34,8 @@ from pysim8.isa import (
 _VSET_BYTE_EXPR = (OpConst, OpLabel, OpPageLabel, OpAddrLabel)
 
 _VU_MNEMONIC_TO_OP: dict[str, int] = {d.mnemonic: int(d.op) for d in ISA_VU if d.mnemonic not in VU_SYNC_MNEMONICS}
-# VFILL is an alias for VMOV — emits opcode 182 (Op.VMOV) with forced vi mode
-_VU_MNEMONIC_TO_OP["VFILL"] = int(Op.VMOV)
 
-_VU_SINGLE_MODE: frozenset[str] = frozenset({"VMOV", "VDOT", "VSQRT", "VNEG", "VABS", "VSEL", "VGATHER", "VSCATTER"})
+_VU_SINGLE_MODE: frozenset[str] = frozenset({"VDOT", "VSQRT", "VEXP", "VNEG", "VABS", "VSEL", "VGATHER", "VSCATTER"})
 
 
 def _encode_vu_instruction(
@@ -125,6 +123,11 @@ def _encode_vset(operands: list[Operand], line: int) -> list[int]:
     raise AssemblerError("VSET does not support this operand(s)", line)
 
 
+# Mnemonics that have no reduction mode — when only 2 VU regs are present,
+# the mode is vv (unary copy), not reduction.
+_VU_NO_R_MNEMONICS: frozenset[str] = frozenset({"VMOV", "VFMADD"})
+
+
 def _resolve_vu_mode_cond(
     mnemonic: str,
     mode_suffix: str | None,
@@ -136,22 +139,24 @@ def _resolve_vu_mode_cond(
         if mode_suffix is None:
             raise AssemblerError("VCMP requires a condition suffix", line)
         return 0, _lookup_suffix(mode_suffix, VU_CMP_SUFFIX, "Invalid VCMP condition", line)
-    if mnemonic == "VFILL":
-        return VU_MODE_VI, 0
     if mnemonic in _VU_SINGLE_MODE:
         return 0, 0
     if mode_suffix is not None:
         return _lookup_suffix(mode_suffix, VU_SUFFIX_TO_MODE, "Invalid VU mode suffix", line), 0
     non_vu = [op for op in operands if not isinstance(op, OpVuReg)]
-    has_gpr = any(isinstance(op, OpReg) for op in non_vu)
     has_imm = any(isinstance(op, OpConst) for op in non_vu)
+    has_gpr = any(isinstance(op, OpReg) for op in non_vu)
     vu_count = sum(1 for op in operands if isinstance(op, OpVuReg))
     if has_gpr:
-        return VU_MODE_VS, 0
+        raise AssemblerError(
+            f"{mnemonic}: GPR operand not allowed; use `.vs` suffix for memory-scalar broadcast",
+            line,
+        )
     if has_imm:
         return VU_MODE_VI, 0
     if vu_count <= 2:
-        return VU_MODE_R, 0
+        # VMOV / VFMADD have no reduction mode: 2 VU regs → vv copy/accumulate.
+        return (VU_MODE_VV if mnemonic in _VU_NO_R_MNEMONICS else VU_MODE_R), 0
     return VU_MODE_VV, 0
 
 
@@ -163,7 +168,12 @@ def _resolve_vu_fmt(mnemonic: str, fmt_suffix: str | None, line: int) -> int:
 
 
 def _encode_vu_regs_from_operands(operands: list[Operand], mnemonic: str, mode: int, line: int) -> int:
-    """Extract and validate VU pointer registers from operands, return encoded byte."""
+    """Extract and validate VU pointer registers from operands, return encoded byte.
+
+    In .vs mode the third VU register is the scalar-source pointer: at issue
+    the CPU reads one element of fmt from mem[that_ptr] and broadcasts it.
+    For VMOV.vs there are only two VU regs (dst, src_ptr) — src1 is unused.
+    """
     vu_regs = [op for op in operands if isinstance(op, OpVuReg)]
     if not vu_regs:
         raise AssemblerError(f"{mnemonic} requires VU register operands", line)
@@ -171,18 +181,38 @@ def _encode_vu_regs_from_operands(operands: list[Operand], mnemonic: str, mode: 
         if r.code > 3:
             raise AssemblerError("Async VU operands must be pointer registers (VA-VM)", line)
     dc = vu_regs[0].code
-    s1c = vu_regs[1].code if len(vu_regs) > 1 else 0
     if mode == VU_MODE_VS:
-        gpr_ops = [op for op in operands if isinstance(op, OpReg)]
-        if not gpr_ops:
-            raise AssemblerError(f"{mnemonic} broadcast requires a GPR operand (A-D)", line)
-        gpr_code = gpr_ops[0].code
-        if gpr_code > 3:
-            raise AssemblerError("Broadcast GPR must be A-D", line)
-        s2c = gpr_code
-    else:
-        s2c = vu_regs[2].code if len(vu_regs) > 2 else 0
+        if mnemonic == "VMOV":
+            if len(vu_regs) != 2:
+                raise AssemblerError("VMOV.vs requires exactly two VU pointer operands (dst, src_ptr)", line)
+            return encode_vu_regs(dc, 0, vu_regs[1].code)
+        if len(vu_regs) != 3:
+            raise AssemblerError(f"{mnemonic}.vs requires three VU pointer operands (dst, src1, src_ptr)", line)
+        return encode_vu_regs(dc, vu_regs[1].code, vu_regs[2].code)
+    s1c = vu_regs[1].code if len(vu_regs) > 1 else 0
+    s2c = vu_regs[2].code if len(vu_regs) > 2 else 0
     return encode_vu_regs(dc, s1c, s2c)
+
+
+def _encode_vcvt(
+    operands: list[Operand],
+    dst_suffix: str | None,
+    src_suffix: str | None,
+    line: int,
+) -> list[int]:
+    """Encode VCVT.dstfmt.srcfmt vdst, vsrc → [183, dst_vfm, src_vfm, reg_byte]."""
+    if dst_suffix is None or src_suffix is None:
+        raise AssemblerError("VCVT requires two format suffixes: VCVT.dstfmt.srcfmt", line)
+    dst_fmt = _resolve_vu_fmt("VCVT", dst_suffix, line)
+    src_fmt = _resolve_vu_fmt("VCVT", src_suffix, line)
+    vu_regs = [op for op in operands if isinstance(op, OpVuReg)]
+    if len(vu_regs) != 2:
+        raise AssemblerError("VCVT requires exactly two VU register operands (dst, src)", line)
+    for r in vu_regs:
+        if r.code > 3:
+            raise AssemblerError("VCVT operands must be pointer registers (VA-VM)", line)
+    reg_byte = encode_vu_regs(vu_regs[0].code, vu_regs[1].code, 0)
+    return [int(Op.VCVT), encode_vfm(dst_fmt, 0), encode_vfm(src_fmt, 0), reg_byte]
 
 
 def _encode_vu_async(
@@ -197,11 +227,11 @@ def _encode_vu_async(
     if opcode is None:
         raise AssemblerError(f"Unknown VU async instruction: {mnemonic}", line)
 
+    if mnemonic == "VCVT":
+        return _encode_vcvt(operands, fmt_suffix, mode_suffix, line)
+
     fmt = _resolve_vu_fmt(mnemonic, fmt_suffix, line)
     mode, cond = _resolve_vu_mode_cond(mnemonic, mode_suffix, operands, line)
-
-    if mode == VU_MODE_VS and VU_FMT_ELEM_SIZE.get(fmt, 1) > 1:
-        raise AssemblerError(f"GPR broadcast only for byte formats (U/I/O3/O2), not .{fmt_suffix}", line)
 
     regs_byte = _encode_vu_regs_from_operands(operands, mnemonic, mode, line)
     encoded = [opcode, encode_vfm(fmt, mode), regs_byte]

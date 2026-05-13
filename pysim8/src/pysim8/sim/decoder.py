@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from pysim8.isa import BY_CODE, BY_CODE_FP, BY_CODE_VU, VU_ASYNC_OPS, Op, vu_instr_size
+from pysim8.isa import BY_CODE, BY_CODE_FP, BY_CODE_MU, BY_CODE_VU, VU_ASYNC_OPS, Op, vu_instr_size
 
 from .errors import CpuFault, ErrorCode
 from .memory import PAGE_SIZE, Memory
@@ -34,6 +34,8 @@ class Decoder:
             instr_def = BY_CODE_FP.get(opcode)
         if instr_def is None and arch >= 3:
             instr_def = BY_CODE_VU.get(opcode)
+        if instr_def is None and arch >= 3:
+            instr_def = BY_CODE_MU.get(opcode)
         if instr_def is None:
             raise CpuFault(ErrorCode.INVALID_OPCODE, ip)
 
