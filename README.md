@@ -15,12 +15,23 @@ spec/           Specification
   mem.md          Memory model and addressing
   uarch.md        Microarchitecture (interpreter pseudocode)
   fp.md           FPU coprocessor (IEEE 754)
-  vector.md       Vector Unit (VU) coprocessor
+  vu.md           Vector Unit (VU) coprocessor
+  mu.md           Matrix Unit (MU) coprocessor
   asm.md          Assembler
   errors.md       Error/fault codes
-  tests.md        Test specification (integer)
-  tests-fp.md     Test specification (FPU)
-  tests-vec.md    Test specification (VU)
+  io-display.md   I/O: display cells (0xE8–0xFB)
+  io-uart.md      I/O: UART terminal (0xFC–0xFF)
+  io-pad.md       I/O: pixel pad (configurable memory-mapped grid)
+  tests/
+    tests-cpu.md        Test specification (CPU/integer)
+    tests-fp.md         Test specification (FPU)
+    tests-vu.md         Test specification (VU)
+    tests-mu.md         Test specification (MU)
+    tests-mem.md        Test specification (memory model)
+    tests-io-display.md Test specification (display I/O)
+    tests-io-uart.md    Test specification (UART I/O)
+    tests-io-pad.md     Test specification (pixel pad I/O)
+    tests-errors.md     Test specification (error codes & fault machine)
 
 formal/         Formal verification
   tla/              TLA+ formal model and tests
