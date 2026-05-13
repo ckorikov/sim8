@@ -14,11 +14,13 @@ from pysim8.asm._parser_types import (
     OpFpImm,
     OpFpReg,
     OpLabel,
+    OpMuReg,
     OpPageLabel,
     OpReg,
     OpRegAddr,
     OpString,
     OpVuReg,
+    OpVuRegAddr,
     ParseError,
 )
 from pysim8.isa import (
@@ -27,6 +29,7 @@ from pysim8.isa import (
     FP_FMT_N2,
     FP_REGISTERS,
     FP_SUFFIX_TO_FMT,
+    MU_REGISTERS,
     REGISTERS,
     VU_REGISTERS,
 )
@@ -104,8 +107,8 @@ _RE_REG_ONLY = re.compile(r"^([A-Za-z]+)$")
 _RE_LABEL_OFFSET = re.compile(r"^([.A-Za-z]\w*)\s*([+-])\s*(\d+)$")
 
 
-def _parse_bracket_operand(inner: str, line: int) -> OpAddr | OpRegAddr | OpAddrLabel:
-    """Parse content inside brackets: [addr], [reg], [reg±offset], [label±N]."""
+def _parse_bracket_operand(inner: str, line: int, arch: int = 1) -> OpAddr | OpRegAddr | OpAddrLabel | OpVuRegAddr:
+    """Parse content inside brackets: [addr], [reg], [reg±offset], [label±N], [VU_reg]."""
     inner = inner.strip()
 
     if m := _RE_REG_OFFSET.match(inner):
@@ -129,6 +132,12 @@ def _parse_bracket_operand(inner: str, line: int) -> OpAddr | OpRegAddr | OpAddr
 
     if m := _RE_REG_ONLY.match(inner):
         reg_name = m.group(1).upper()
+        # VU pointer dereference for .vs broadcast: [VA]/[VB]/[VC]/[VM]
+        if arch >= 3 and reg_name in VU_REGISTERS:
+            code = VU_REGISTERS[reg_name]
+            if code > 3:
+                raise ParseError("VU dereference requires a pointer register (VA-VM)", line)
+            return OpVuRegAddr(code)
         if reg_name in REGISTERS:
             return OpRegAddr(REGISTERS[reg_name], 0)
 
@@ -154,12 +163,14 @@ def _try_bracket(token: str, line: int) -> Operand | None:
 
 
 def _try_register(token: str, line: int, arch: int = 1) -> Operand | None:
-    """Try to parse register name: A, B, C, D, SP, DP, FP regs, or VU regs."""
+    """Try to parse register name: A, B, C, D, SP, DP, FP regs, VU regs, or MU regs."""
     up = token.upper()
     if up in REGISTERS:
         return OpReg(REGISTERS[up])
     if arch >= 3 and up in VU_REGISTERS:
         return OpVuReg(VU_REGISTERS[up])
+    if arch >= 3 and up in MU_REGISTERS:
+        return OpMuReg(MU_REGISTERS[up])
     if up in FP_REGISTERS:
         info = FP_REGISTERS[up]
         return OpFpReg(up, info.pos, info.fmt, info.phys)

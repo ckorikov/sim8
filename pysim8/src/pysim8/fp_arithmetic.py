@@ -34,6 +34,8 @@ __all__ = [
     "fp_mul",
     "fp_div",
     "fp_sqrt",
+    "fp_exp",
+    "fp_fmadd",
     "fp_cmp",
     "fp_abs",
     "fp_neg",
@@ -179,6 +181,55 @@ def fp_sqrt(
         return float("inf"), NO_EXC
     result = math.sqrt(value)
     return _re_encode(result, fmt, rm)
+
+
+def fp_exp(
+    value: float,
+    fmt: int,
+    rm: int = 0,
+) -> tuple[float, FpExceptions]:
+    """Compute exp(value) in the given FP format.
+
+    IEEE 754 conventions: exp(NaN)=NaN+NV, exp(+inf)=+inf, exp(-inf)=+0,
+    exp(±0)=1. Overflow → +inf with OF+NX. Subnormal results signal UF+NX.
+    Inexact rounding signals NX.
+    """
+    if math.isnan(value):
+        return _NAN_INVALID
+    if math.isinf(value):
+        return (float("inf"), NO_EXC) if value > 0 else (0.0, NO_EXC)
+    if value == 0.0:
+        return 1.0, NO_EXC
+    try:
+        result = math.exp(value)
+    except OverflowError:
+        return float("inf"), FpExceptions(overflow=True, inexact=True)
+    return _re_encode(result, fmt, rm)
+
+
+def fp_fmadd(
+    a: float,
+    b: float,
+    c: float,
+    fmt: int,
+    rm: int = 0,
+) -> tuple[float, FpExceptions]:
+    """Fused multiply-add: c + a*b in the given FP format.
+
+    NaN/Inf semantics follow fp_mul + fp_add: 0*Inf → NaN+NV, Inf-Inf → NaN+NV.
+    Multiplication uses float64 intermediate precision (≥ source format), then
+    one rounding to the target format on the final sum.
+    """
+    if math.isnan(a) or math.isnan(b) or math.isnan(c):
+        return _NAN_INVALID
+    # 0 * Inf in the multiply produces NaN regardless of c
+    if (a == 0.0 and math.isinf(b)) or (math.isinf(a) and b == 0.0):
+        return _NAN_INVALID
+    product = a * b
+    # Inf - Inf in the add produces NaN
+    if math.isinf(product) and math.isinf(c) and product != c:
+        return _NAN_INVALID
+    return _add_core(c, product, fmt, rm)
 
 
 def fp_cmp(

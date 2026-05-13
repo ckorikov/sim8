@@ -349,6 +349,33 @@ class TestDisasmFpEdgeCoverage:
                 del BY_CODE_FP[int(Op.FCLR)]
 
 
+# ── VCVT disassembly ─────────────────────────────────────────────────
+
+
+class TestVcvtDisasm:
+    """VCVT [183, dst_vfm, src_vfm, regs] roundtrip."""
+
+    def test_vcvt_h_f_roundtrip(self) -> None:
+        """VCVT.H.F VB, VA assembles and disassembles correctly."""
+        from pysim8.isa import VU_FMT_F, VU_FMT_H, encode_vfm, encode_vu_regs
+
+        code = [183, encode_vfm(VU_FMT_H, 0), encode_vfm(VU_FMT_F, 0), encode_vu_regs(1, 0, 0)]
+        items = disasm(code)
+        assert len(items) == 1
+        assert items[0][1] == "VCVT.H.F VB, VA"
+        assert items[0][2] == 4
+
+    def test_vcvt_f_o3_roundtrip(self) -> None:
+        """VCVT.F.O3 VC, VA assembles to 4 bytes and disassembles correctly."""
+        from pysim8.isa import VU_FMT_F, VU_FMT_O3, encode_vfm, encode_vu_regs
+
+        code = [183, encode_vfm(VU_FMT_F, 0), encode_vfm(VU_FMT_O3, 0), encode_vu_regs(2, 0, 0)]
+        items = disasm(code)
+        assert len(items) == 1
+        assert items[0][1] == "VCVT.F.O3 VC, VA"
+        assert items[0][2] == 4
+
+
 # ── Hypothesis property-based tests ──────────────────────────────────
 
 

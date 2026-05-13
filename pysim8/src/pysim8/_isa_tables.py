@@ -122,7 +122,7 @@ class Op(IntEnum):
     FMOV_FP_IMM8 = 161
     FMOV_FP_IMM16 = 162
 
-    # VU (163–183)
+    # VU (163–187)
     VSET_IMM16 = 163
     VSET_GPR = 164
     VSET_MEM = 165
@@ -143,9 +143,20 @@ class Op(IntEnum):
     VCMP = 180
     VSEL = 181
     VMOV = 182
-    VFILL = 183
+    VCVT = 183
     VGATHER = 184
     VSCATTER = 185
+    VFMADD = 186
+    VEXP = 187
+
+    # MU (188–193) — Matrix Unit
+    MSET_IMM16 = 188
+    MSET_GPR = 189
+    MFSTAT = 190
+    MFCLR = 191
+    MWAIT = 192
+    MMUL = 193
+    MMAD = 194
 
 
 # ── Instruction data ─────────────────────────────────────────────────
@@ -287,9 +298,21 @@ ISA_VU_DATA: list[tuple[str, int, str, list[str], int, bool]] = [
     ("VCMP", 180, "VCMP", ["imm", "imm", "imm"], 1, False),
     ("VSEL", 181, "VSEL", ["imm", "imm"], 1, False),
     ("VMOV", 182, "VMOV", ["imm", "imm"], 1, False),
-    ("VFILL", 183, "VFILL", ["imm", "imm"], 1, False),
+    ("VCVT", 183, "VCVT", ["imm", "imm"], 1, False),
     ("VGATHER", 184, "VGATHER", ["imm", "imm"], 1, False),
     ("VSCATTER", 185, "VSCATTER", ["imm", "imm"], 1, False),
+    ("VFMADD", 186, "VFMADD", ["imm", "imm"], 1, False),
+    ("VEXP", 187, "VEXP", ["imm", "imm"], 1, False),
+]
+
+ISA_MU_DATA: list[tuple[str, int, str, list[str], int, bool]] = [
+    ("MSET_IMM16", 188, "MSET", ["imm", "fp_imm16"], 1, False),
+    ("MSET_GPR", 189, "MSET", ["imm", "imm"], 1, False),
+    ("MFSTAT", 190, "MFSTAT", ["imm"], 1, False),
+    ("MFCLR", 191, "MFCLR", [], 1, False),
+    ("MWAIT", 192, "MWAIT", [], 1, False),
+    ("MMUL", 193, "MMUL", ["imm", "imm"], 1, False),
+    ("MMAD", 194, "MMAD", ["imm", "imm"], 1, False),
 ]
 
 # ── FP register data ─────────────────────────────────────────────────

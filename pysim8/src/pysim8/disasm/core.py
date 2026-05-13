@@ -177,9 +177,9 @@ _VU_MODE_TO_SUFFIX: dict[int, str] = {v: k.lower() for k, v in VU_SUFFIX_TO_MODE
 _VU_COND_TO_SUFFIX: dict[int, str] = {v: k for k, v in VU_CMP_SUFFIX.items()}
 
 # Instructions with no mode suffix (single valid mode)
-_VU_SINGLE_MODE = frozenset({"VDOT", "VSQRT", "VNEG", "VABS", "VSEL", "VMOV", "VFILL", "VGATHER", "VSCATTER"})
-# Instructions with only dst, src1 operands
-_VU_DST_SRC1_ONLY = frozenset({"VSQRT", "VNEG", "VABS", "VMOV", "VGATHER", "VSCATTER"})
+_VU_SINGLE_MODE = frozenset({"VDOT", "VSQRT", "VEXP", "VNEG", "VABS", "VSEL", "VGATHER", "VSCATTER"})
+# Instructions with only dst, src1 operands (VMOV handled separately for mode-aware output)
+_VU_DST_SRC1_ONLY = frozenset({"VSQRT", "VEXP", "VNEG", "VABS", "VGATHER", "VSCATTER"})
 
 
 def _disasm_vu_sync(opcode: int, raw: tuple[int, ...]) -> str | None:
@@ -232,22 +232,43 @@ def _disasm_vu_async(opcode: int, code: bytes | list[int], offset: int) -> tuple
     s1n = _VU_REG_NAMES.get(src1, f"?{src1}")
     s2n = _VU_REG_NAMES.get(src2, f"?{src2}")
 
+    # VCVT has a second VFM byte (src_fmt) at offset+2; reg_byte at offset+3
+    if mnemonic == "VCVT":
+        src_fmt = decode_vfm(regs)[0]  # regs = code[offset+2] = src VFM byte
+        dst2, s1_2, _ = decode_vu_regs(code[offset + 3])
+        dst_sfx = _VU_FMT_TO_SUFFIX.get(fmt, f"?{fmt}")
+        src_sfx = _VU_FMT_TO_SUFFIX.get(src_fmt, f"?{src_fmt}")
+        dn2 = _VU_REG_NAMES.get(dst2, f"?{dst2}")
+        s1n2 = _VU_REG_NAMES.get(s1_2, f"?{s1_2}")
+        return f"VCVT.{dst_sfx}.{src_sfx} {dn2}, {s1n2}", size
+
     # Label: MNEMONIC.fmt[.cond] — no mode suffix (inferred from operands)
     if mnemonic == "VCMP":
         label = f"{mnemonic}.{suffix}.{_VU_COND_TO_SUFFIX.get(cond, f'?{cond}')}"
     else:
         label = f"{mnemonic}.{suffix}"
 
-    # Operands — mode determines src2 display
-    if mnemonic in _VU_DST_SRC1_ONLY:
+    # Operands — mode determines src2 display. vs encoded as .vs suffix.
+    if mnemonic == "VMOV":
+        # vv: copy; vs: mem-scalar broadcast from s2 (VU pointer); vi: imm broadcast.
+        if mode == 1:
+            label = f"{label}.vs"
+            parts = f"{dn}, {_VU_REG_NAMES.get(src2, f'?{src2}')}"
+        elif mode == 2:
+            imm_bytes = code[offset + 3 : offset + size]
+            imm = int.from_bytes(imm_bytes, "little") if imm_bytes else 0
+            parts = f"{dn}, {imm}"
+        else:
+            parts = f"{dn}, {s1n}"
+    elif mnemonic in _VU_DST_SRC1_ONLY:
         parts = f"{dn}, {s1n}"
-    elif mnemonic == "VFILL" or mode == 2:  # immediate
+    elif mode == 2:  # immediate
         imm_bytes = code[offset + 3 : offset + size]
         imm = int.from_bytes(imm_bytes, "little") if imm_bytes else 0
-        parts = f"{dn}, {imm}" if mnemonic == "VFILL" else f"{dn}, {s1n}, {imm}"
-    elif mode == 1:  # GPR broadcast
-        gpr_name = _REG_NAMES.get(src2, f"?{src2}")
-        parts = f"{dn}, {s1n}, {gpr_name}"
+        parts = f"{dn}, {s1n}, {imm}"
+    elif mode == 1:  # mem-scalar broadcast: s2 is VU pointer
+        label = f"{label}.vs"
+        parts = f"{dn}, {s1n}, {_VU_REG_NAMES.get(src2, f'?{src2}')}"
     elif mode == 3:  # reduction
         parts = f"{dn}, {s1n}"
     else:  # .vv

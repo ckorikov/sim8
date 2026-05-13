@@ -6,7 +6,9 @@ Leaf module — no pysim8 internal imports. Safe to import from anywhere.
 # ── Memory layout ────────────────────────────────────────────────
 MEM_SIZE = 65536
 PAGE_SIZE = 256
-IO_START = 232
+IO_START = 232  # 0xE8 — display cells start
+DISPLAY_END = 252  # 0xFC — display cells end (exclusive); 232–251 = 20 cells
+UART_START = 252  # 0xFC — UART TX_DATA
 SP_INIT = 231
 
 # ── FP format codes (spec §fp.md) ───────────────────────────────

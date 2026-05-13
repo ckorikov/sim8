@@ -29,6 +29,7 @@ from pysim8.asm._parser_types import (
     OpFpImm,
     OpFpReg,
     OpLabel,
+    OpMuReg,
     OpPageLabel,
     OpReg,
     OpRegAddr,
@@ -43,6 +44,7 @@ from pysim8.isa import (
     MNEMONIC_ALIASES,
     MNEMONICS,
     MNEMONICS_FP,
+    MNEMONICS_MU,
     MNEMONICS_VU,
     REGISTERS,
 )
@@ -62,6 +64,7 @@ __all__ = [
     "OpFloat",
     "OpFpImm",
     "OpVuReg",
+    "OpMuReg",
     "parse_lines",
     "AsmError",
     "ParseError",
@@ -137,7 +140,11 @@ def _resolve_mnemonic(mnemonic_raw: str, line_no: int, arch: int) -> tuple[str, 
     dst_suffix: str | None = None
     src_suffix: str | None = None
 
-    _dotted = (MNEMONICS_FP if arch >= 2 else frozenset()) | (MNEMONICS_VU if arch >= 3 else frozenset())
+    _dotted = (
+        (MNEMONICS_FP if arch >= 2 else frozenset())
+        | (MNEMONICS_VU if arch >= 3 else frozenset())
+        | (MNEMONICS_MU if arch >= 3 else frozenset())
+    )
     if "." in mnemonic and _dotted:
         dot_parts = mnemonic.split(".")
         base = dot_parts[0]
@@ -149,7 +156,10 @@ def _resolve_mnemonic(mnemonic_raw: str, line_no: int, arch: int) -> tuple[str, 
             src_suffix = dot_parts[2] if len(dot_parts) > 2 else None
 
     all_mnemonics = (
-        MNEMONICS | (MNEMONICS_FP if arch >= 2 else frozenset()) | (MNEMONICS_VU if arch >= 3 else frozenset())
+        MNEMONICS
+        | (MNEMONICS_FP if arch >= 2 else frozenset())
+        | (MNEMONICS_VU if arch >= 3 else frozenset())
+        | (MNEMONICS_MU if arch >= 3 else frozenset())
     )
     if mnemonic not in all_mnemonics:
         if _RE_LABEL.match(mnemonic_raw):
