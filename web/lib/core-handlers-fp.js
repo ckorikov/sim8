@@ -74,9 +74,7 @@ function _fpCheckMemBounds(addr, fmt) {
 
 function _fpReadMemRaw(addr, fmt) {
     const nbytes = this._fpCheckMemBounds(addr, fmt);
-    const data = new Uint8Array(nbytes);
-    for (let i = 0; i < nbytes; i++) data[i] = this.mem.get(addr + i);
-    return data;
+    return Uint8Array.from({ length: nbytes }, (_, i) => this.mem.get(addr + i));
 }
 
 function _fpReadMem(addr, fmt) {
@@ -85,7 +83,7 @@ function _fpReadMem(addr, fmt) {
 
 function _fpWriteMemRaw(addr, fmt, data) {
     this._fpCheckMemBounds(addr, fmt);
-    for (let i = 0; i < data.length; i++) this.mem.set(addr + i, data[i]);
+    data.forEach((b, i) => this.mem.set(addr + i, b));
 }
 
 // ── FP register helpers ─────────────────────────────────────────────

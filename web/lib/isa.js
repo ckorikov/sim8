@@ -3,7 +3,15 @@
  * Generated data imported from _isa_tables.js (source: isa/isa.json).
  */
 
-import { Op, ISA_DATA, ISA_FP_DATA, ISA_VU_DATA, FP_REG_DATA, MNEMONIC_ALIASES as _ALIASES } from "./_isa_tables.js";
+import {
+    Op,
+    ISA_DATA,
+    ISA_FP_DATA,
+    ISA_VU_DATA,
+    ISA_MU_DATA,
+    FP_REG_DATA,
+    MNEMONIC_ALIASES as _ALIASES,
+} from "./_isa_tables.js";
 
 export { Op };
 
@@ -212,11 +220,11 @@ export const BY_CODE = Object.freeze(Object.fromEntries(ISA.map((i) => [i.op, i]
 export const BY_CODE_FP = Object.freeze(Object.fromEntries(ISA_FP.map((i) => [i.op, i])));
 
 function _buildByMnemonic(table) {
-    const m = {};
-    for (const i of table) {
-        (m[i.mnemonic] || (m[i.mnemonic] = [])).push(i);
-    }
-    return Object.freeze(Object.fromEntries(Object.entries(m).map(([k, v]) => [k, Object.freeze(v)])));
+    const grouped = table.reduce((acc, i) => {
+        (acc[i.mnemonic] ??= []).push(i);
+        return acc;
+    }, {});
+    return Object.freeze(Object.fromEntries(Object.entries(grouped).map(([k, v]) => [k, Object.freeze(v)])));
 }
 
 export const BY_MNEMONIC = _buildByMnemonic(ISA);
@@ -240,9 +248,11 @@ export const VU_FMT_ELEM_SIZE = Object.freeze({ 0: 4, 1: 2, 2: 2, 3: 1, 4: 1, 5:
 export const VU_MODE_VV = 0;
 export const VU_MODE_VS = 1;
 export const VU_MODE_VI = 2;
-export const VU_MODE_R = 3;
+export const VU_MODE_R = 3; // reduction (arith); also VMOV memory-scalar broadcast (.b)
 
-export const VU_SUFFIX_TO_MODE = Object.freeze({ VV: 0, VS: 1, VI: 2, R: 3 });
+// Suffix table. Value 3 is shared: arithmetic interprets `.r` as reduction;
+// VMOV interprets `.b` as memory-scalar broadcast (same encoding).
+export const VU_SUFFIX_TO_MODE = Object.freeze({ VV: 0, VS: 1, VI: 2, R: 3, B: 3 });
 
 // ── VU compare condition constants ───────────────────────────────
 
@@ -304,11 +314,51 @@ export const VU_ASYNC_OPS = new Set([
     Op.VCMP,
     Op.VSEL,
     Op.VMOV,
+    Op.VCVT,
     Op.VGATHER,
     Op.VSCATTER,
+    Op.VFMADD,
+    Op.VEXP,
 ]);
 
 export const VU_ARITH_OPS = new Set([Op.VADD, Op.VSUB, Op.VMUL, Op.VDIV, Op.VMAX, Op.VMIN]);
-export const VU_UNARY_OPS = new Set([Op.VSQRT, Op.VNEG, Op.VABS]);
+export const VU_UNARY_OPS = new Set([Op.VSQRT, Op.VNEG, Op.VABS, Op.VEXP]);
 export const VU_VV_ONLY_OPS = new Set([Op.VDOT, Op.VCMP, Op.VSEL, Op.VGATHER, Op.VSCATTER]);
+export const VU_FP_ONLY_OPS = new Set([Op.VDOT, Op.VSQRT, Op.VFMADD, Op.VEXP]);
 export const VU_INT_FMTS = new Set([VU_FMT_U, VU_FMT_I]);
+
+// ── MU (Matrix Unit) ─────────────────────────────────────────────
+
+export const ISA_MU = _buildIsa(ISA_MU_DATA);
+
+export const MU_REGISTERS = Object.freeze({ MA: 0, MB: 1, MC: 2, MM: 3, MN: 4, MK: 5 });
+
+export const MU_SUFFIX_TO_FMT = Object.freeze({ F: 0, H: 1, BF: 2, O3: 3, O2: 4, U: 5, I: 6 });
+
+export const MU_FMT_ELEM_SIZE = Object.freeze({ 0: 4, 1: 2, 2: 2, 3: 1, 4: 1, 5: 1, 6: 1 });
+
+export const MU_FP_FMTS = new Set([0, 1, 2, 3, 4]);
+export const MU_INT_FMTS = new Set([5, 6]);
+
+export const MU_ASYNC_OPS = new Set([Op.MMUL, Op.MMAD]);
+export const MU_SYNC_MNEMONICS = new Set(["MSET", "MFSTAT", "MFCLR", "MWAIT", "MSHAPE"]);
+
+export const MU_LAYOUT_A_COL = 0x20;
+export const MU_LAYOUT_B_COL = 0x10;
+export const MU_LAYOUT_C_COL = 0x08;
+
+export function encodeMfm(fmt, aCol = false, bCol = false, cCol = false) {
+    let val = fmt & 0x07;
+    if (aCol) val |= MU_LAYOUT_A_COL;
+    if (bCol) val |= MU_LAYOUT_B_COL;
+    if (cCol) val |= MU_LAYOUT_C_COL;
+    return val;
+}
+
+export function decodeMfm(mfm) {
+    return [mfm & 0x07, !!(mfm & MU_LAYOUT_A_COL), !!(mfm & MU_LAYOUT_B_COL), !!(mfm & MU_LAYOUT_C_COL)];
+}
+
+export const BY_CODE_MU = Object.freeze(Object.fromEntries(ISA_MU.map((i) => [i.op, i])));
+const _BY_MNEMONIC_MU = _buildByMnemonic(ISA_MU);
+export const MNEMONICS_MU = new Set([...Object.keys(_BY_MNEMONIC_MU), "MSHAPE"]);

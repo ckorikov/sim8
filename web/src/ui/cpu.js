@@ -40,16 +40,18 @@ const STATE_INFO = {
 
 bindToggleClicks("blk-cpu");
 
-export function renderCPU() {
-    const ri = (n, v) => {
-        const off = isHidden(n);
-        const lc = off ? colors.dim : regColors[n] || colors.dim;
-        const vc = off ? colors.txt : regColors[n] || colors.txt;
-        return `<div class="ri"><span class="ri-l" style="color:${lc}">${n}</span><span class="ri-v" style="color:${vc}">${cpuFmtVal(v)}</span></div>`;
-    };
-    const fl = (n, v) =>
-        `<span class="fb" style="border-color:${v ? colors.or : "var(--t-border)"};color:${v ? colors.or : colors.dim};min-width:var(--s-flag-min-w);">${n}</span>`;
+function ri(n, v) {
+    const off = isHidden(n);
+    const lc = off ? colors.dim : regColors[n] || colors.dim;
+    const vc = off ? colors.txt : regColors[n] || colors.txt;
+    return `<div class="ri"><span class="ri-l" style="color:${lc}">${n}</span><span class="ri-v" style="color:${vc}">${cpuFmtVal(v)}</span></div>`;
+}
 
+function fl(n, v) {
+    return `<span class="fb" style="border-color:${v ? colors.or : "var(--t-border)"};color:${v ? colors.or : colors.dim};min-width:var(--s-flag-min-w);">${n}</span>`;
+}
+
+export function renderCPU() {
     elRegs.innerHTML = ri("A", cpu.a) + ri("B", cpu.b) + ri("C", cpu.c) + ri("D", cpu.d);
     elPtrs.innerHTML = ri("IP", cpu.ip) + ri("SP", cpu.sp) + ri("DP", cpu.dp);
     elFlags.innerHTML = fl("Z", cpu.zero) + fl("C", cpu.carry) + fl("F", cpu.fault);

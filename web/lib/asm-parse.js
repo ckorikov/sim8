@@ -9,13 +9,16 @@ import {
     MNEMONICS,
     MNEMONICS_FP,
     MNEMONICS_VU,
+    MNEMONICS_MU,
     FP_CONTROL_MNEMONICS,
     VU_SYNC_MNEMONICS,
+    MU_SYNC_MNEMONICS,
     MNEMONIC_ALIASES,
     FORBIDDEN_FP_LABEL_NAMES,
     VU_SUFFIX_TO_FMT,
     VU_SUFFIX_TO_MODE,
     VU_CMP_SUFFIX,
+    MU_SUFFIX_TO_FMT,
     // Re-exported for asm.js codegen (avoids redundant asm.js → isa.js edge)
     Op,
     OpType,
@@ -45,8 +48,10 @@ import {
     TAG_FLOAT,
     TAG_FP_IMM,
     TAG_VU_REG,
+    TAG_MU_REG,
     TAG_PAGE_LABEL,
     _VU_REG_MAP,
+    _MU_REG_MAP,
     _RE_LABEL,
     _tryParseNumber,
     _parseOperand,
@@ -68,6 +73,7 @@ export {
     TAG_FLOAT,
     TAG_FP_IMM,
     TAG_VU_REG,
+    TAG_MU_REG,
     TAG_PAGE_LABEL,
     Op,
     OpType,
@@ -75,6 +81,8 @@ export {
     BY_MNEMONIC_FP,
     MNEMONICS_FP,
     MNEMONICS_VU,
+    MNEMONICS_MU,
+    MU_SYNC_MNEMONICS,
     FP_CONTROL_MNEMONICS,
     GPR_CODES,
     ARITH_CODES,
@@ -90,7 +98,7 @@ export {
 // ── Cached combined mnemonic sets ────────────────────────────────
 
 const ALL_MNEMONICS_V2 = new Set([...MNEMONICS, ...MNEMONICS_FP]);
-const ALL_MNEMONICS_V3 = new Set([...ALL_MNEMONICS_V2, ...MNEMONICS_VU]);
+const ALL_MNEMONICS_V3 = new Set([...ALL_MNEMONICS_V2, ...MNEMONICS_VU, ...MNEMONICS_MU]);
 
 // ── @include regex + URL helpers ─────────────────────────────────
 
@@ -112,7 +120,7 @@ export function decodeUtf8(bytes) {
 
 // ── Zero-operand mnemonics ───────────────────────────────────────
 
-const _ZERO_ARG_MNEMONICS = new Set(["HLT", "RET", "FCLR", "VFCLR", "VWAIT"]);
+const _ZERO_ARG_MNEMONICS = new Set(["HLT", "RET", "FCLR", "VFCLR", "VWAIT", "MFCLR", "MWAIT"]);
 
 function _validateFpSuffixReqs(mnemonic, dstSuffix, srcSuffix, lineNo) {
     if (FP_CONTROL_MNEMONICS.has(mnemonic)) {
@@ -130,10 +138,26 @@ function _validateVuSuffixReqs(mnemonic, vuFmtSuffix, vuModeSuffix, vuCondSuffix
     } else {
         if (vuFmtSuffix === null) throw new AsmError("VU format suffix required", lineNo);
         if (!(vuFmtSuffix in VU_SUFFIX_TO_FMT)) throw new AsmError(`Invalid VU format suffix: ${vuFmtSuffix}`, lineNo);
-        if (vuModeSuffix !== null && !(vuModeSuffix in VU_SUFFIX_TO_MODE))
-            throw new AsmError(`Invalid VU mode suffix: ${vuModeSuffix}`, lineNo);
+        if (vuModeSuffix !== null) {
+            // VCVT uses two format suffixes (dst, src) — second is not a mode
+            if (mnemonic === "VCVT") {
+                if (!(vuModeSuffix in VU_SUFFIX_TO_FMT))
+                    throw new AsmError(`Invalid VU format suffix: ${vuModeSuffix}`, lineNo);
+            } else if (!(vuModeSuffix in VU_SUFFIX_TO_MODE)) {
+                throw new AsmError(`Invalid VU mode suffix: ${vuModeSuffix}`, lineNo);
+            }
+        }
         if (vuCondSuffix !== null && !(vuCondSuffix in VU_CMP_SUFFIX))
             throw new AsmError(`Invalid VU condition suffix: ${vuCondSuffix}`, lineNo);
+    }
+}
+
+function _validateMuSuffixReqs(mnemonic, muFmtSuffix, lineNo) {
+    if (MU_SYNC_MNEMONICS.has(mnemonic)) {
+        if (muFmtSuffix !== null) throw new AsmError("Syntax error", lineNo);
+    } else {
+        if (muFmtSuffix === null) throw new AsmError("MU format suffix required", lineNo);
+        if (!(muFmtSuffix in MU_SUFFIX_TO_FMT)) throw new AsmError(`Invalid MU format suffix: ${muFmtSuffix}`, lineNo);
     }
 }
 
@@ -189,6 +213,8 @@ function _parseLine(raw, lineNo, arch) {
         vuFmtSuffix: null,
         vuModeSuffix: null,
         vuCondSuffix: null,
+        muFmtSuffix: null,
+        muLayoutSuffix: null,
     };
 
     if (!text) return result;
@@ -201,7 +227,11 @@ function _parseLine(raw, lineNo, arch) {
     if (labelMatch) {
         const labelName = labelMatch[1];
         const up = labelName.toUpperCase();
-        if (up in Reg || (arch >= 2 && FORBIDDEN_FP_LABEL_NAMES.has(up)) || (arch >= 3 && up in _VU_REG_MAP)) {
+        if (
+            up in Reg ||
+            (arch >= 2 && FORBIDDEN_FP_LABEL_NAMES.has(up)) ||
+            (arch >= 3 && (up in _VU_REG_MAP || up in _MU_REG_MAP))
+        ) {
             throw new AsmError(`Label contains keyword: ${up}`, lineNo);
         }
         result.label = labelName.toLowerCase();
@@ -227,6 +257,8 @@ function _parseLine(raw, lineNo, arch) {
     let vuFmtSuffix = null;
     let vuModeSuffix = null;
     let vuCondSuffix = null;
+    let muFmtSuffix = null;
+    let muLayoutSuffix = null;
     if (mnemonic.includes(".") && arch >= 2) {
         const dotParts = mnemonic.split(".");
         const base = dotParts[0];
@@ -238,6 +270,13 @@ function _parseLine(raw, lineNo, arch) {
             vuFmtSuffix = dotParts.length > 1 ? dotParts[1] : null;
             vuModeSuffix = dotParts.length > 2 ? dotParts[2] : null;
             vuCondSuffix = dotParts.length > 3 ? dotParts[3] : null;
+        } else if (arch >= 3 && MNEMONICS_MU.has(base)) {
+            mnemonic = base;
+            if (dotParts.length > 3) {
+                throw new AsmError("Syntax error", lineNo);
+            }
+            muFmtSuffix = dotParts.length > 1 ? dotParts[1] : null;
+            muLayoutSuffix = dotParts.length > 2 ? dotParts[2] : null;
         } else if (MNEMONICS_FP.has(base)) {
             mnemonic = base;
             dstSuffix = dotParts.length > 1 ? dotParts[1] : null;
@@ -260,6 +299,7 @@ function _parseLine(raw, lineNo, arch) {
     if (arch >= 2 && MNEMONICS_FP.has(mnemonic)) _validateFpSuffixReqs(mnemonic, dstSuffix, srcSuffix, lineNo);
     if (arch >= 3 && MNEMONICS_VU.has(mnemonic))
         _validateVuSuffixReqs(mnemonic, vuFmtSuffix, vuModeSuffix, vuCondSuffix, lineNo);
+    if (arch >= 3 && MNEMONICS_MU.has(mnemonic)) _validateMuSuffixReqs(mnemonic, muFmtSuffix, lineNo);
 
     result.mnemonic = mnemonic;
     result.dstSuffix = dstSuffix;
@@ -267,6 +307,8 @@ function _parseLine(raw, lineNo, arch) {
     result.vuFmtSuffix = vuFmtSuffix;
     result.vuModeSuffix = vuModeSuffix;
     result.vuCondSuffix = vuCondSuffix;
+    result.muFmtSuffix = muFmtSuffix;
+    result.muLayoutSuffix = muLayoutSuffix;
 
     if (mnemonic === "DB") {
         result.operands = _parseDbOperands(operandStr, lineNo, arch);
@@ -285,23 +327,14 @@ function _parseLine(raw, lineNo, arch) {
 }
 
 export function parseLines(source, arch) {
-    const lines = source.split("\n");
-    const parsed = [];
     const labelsSeen = {};
-
-    for (let i = 0; i < lines.length; i++) {
+    return source.split("\n").map((text, i) => {
         const lineNo = i + 1;
-        const p = _parseLine(lines[i], lineNo, arch);
-
+        const p = _parseLine(text, lineNo, arch);
         if (p.label !== null) {
-            if (p.label in labelsSeen) {
-                throw new AsmError(`Duplicate label: ${p.label}`, lineNo);
-            }
+            if (p.label in labelsSeen) throw new AsmError(`Duplicate label: ${p.label}`, lineNo);
             labelsSeen[p.label] = lineNo;
         }
-
-        parsed.push(p);
-    }
-
-    return parsed;
+        return p;
+    });
 }

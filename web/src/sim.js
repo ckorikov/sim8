@@ -58,43 +58,62 @@ onToggle(() => {
 
 // ── Assembly ───────────────────────────────────────────────────
 
-async function doAssemble() {
-    saveCurrentTab();
-    const errEl = document.getElementById("asm-error");
-    errEl.classList.add("hidden");
-    errEl.textContent = "";
-    clearDiagnostics();
+const _errEl = document.getElementById("asm-error");
 
+function clearAssemblyError() {
+    _errEl.classList.add("hidden");
+    _errEl.textContent = "";
+    clearDiagnostics();
+}
+
+function prepareForAssembly() {
     cpu.reset();
     resetTerm({ clearScreen: false });
-    asm.labels = {};
-    asm.mapping = {};
-    asm.lineMap = null;
-    asm.lastCode = null;
-    asm.lastUsedBytes = 0;
-    asm.instrStarts = new Set();
-    asm.labelAddrs = new Set();
-    asm.labelNames = new Map();
+    Object.assign(asm, {
+        labels: {},
+        mapping: {},
+        lineMap: null,
+        lastCode: null,
+        lastUsedBytes: 0,
+        instrStarts: new Set(),
+        labelAddrs: new Set(),
+        labelNames: new Map(),
+    });
+}
 
+function applyAssemblyResult(result) {
+    const allLabels = Object.entries(result.labels);
+    Object.assign(asm, {
+        labels: result.labels,
+        mapping: result.mapping,
+        lineMap: result.lineMap,
+        lastCode: result.code,
+        lastUsedBytes: result.usedBytes,
+        instrStarts: new Set(Object.keys(result.mapping).map(Number)),
+        labelAddrs: new Set(allLabels.map(([, v]) => v)),
+        labelNames: new Map(allLabels.map(([n, v]) => [v, n])),
+    });
+    cpu.load(result.code, result.usedBytes);
+}
+
+function showAssemblyError(e) {
+    _errEl.textContent = e instanceof AsmError ? String(e) : "Internal error: " + e.message;
+    _errEl.classList.remove("hidden");
+    if (e instanceof AsmError && e.line >= 1) showDiagnostic(e.line, e.message);
+}
+
+async function doAssemble() {
+    saveCurrentTab();
+    clearAssemblyError();
+    prepareForAssembly();
     try {
         const result = await assembleAsync(getMainSource(), 3, getVirtualFiles());
-        asm.labels = result.labels;
-        asm.mapping = result.mapping;
-        asm.lineMap = result.lineMap;
-        asm.lastCode = result.code;
-        asm.lastUsedBytes = result.usedBytes;
-        asm.instrStarts = new Set(Object.keys(result.mapping).map(Number));
-        const allLabels = Object.entries(result.labels);
-        asm.labelAddrs = new Set(allLabels.map(([, v]) => v));
-        asm.labelNames = new Map(allLabels.map(([n, v]) => [v, n]));
-        cpu.load(result.code, result.usedBytes);
+        applyAssemblyResult(result);
         renderLabels();
         renderAll();
         return true;
     } catch (e) {
-        errEl.textContent = e instanceof AsmError ? String(e) : "Internal error: " + e.message;
-        errEl.classList.remove("hidden");
-        if (e instanceof AsmError && e.line >= 1) showDiagnostic(e.line, e.message);
+        showAssemblyError(e);
         renderLabels();
         renderAll();
         return false;
@@ -105,6 +124,12 @@ async function doAssemble() {
 
 const _ioSnap = new Uint8Array(IO_DISPLAY_END - IO_BASE); // display chars only (232-251)
 
+function captureIOSnapshot() {
+    _ioSnap.forEach((_, i) => {
+        _ioSnap[i] = cpu.mem.get(IO_BASE + i);
+    });
+}
+
 function ioChanged() {
     return _ioSnap.some((v, i) => cpu.mem.get(IO_BASE + i) !== v);
 }
@@ -112,10 +137,10 @@ function ioChanged() {
 let _padChecksum = 0;
 
 function padChecksum() {
-    let s = 0;
-    const len = pad.end - pad.start;
-    for (let i = 0; i < len; i++) s += cpu.mem.get(pad.start + i);
-    return s;
+    return Array.from({ length: pad.end - pad.start }, (_, i) => cpu.mem.get(pad.start + i)).reduce(
+        (acc, b) => acc + b,
+        0,
+    );
 }
 
 function padChanged() {
@@ -125,6 +150,12 @@ function padChanged() {
         return true;
     }
     return false;
+}
+
+function flashActiveWires(cpuDid, vuDid, opcode, txEmitted) {
+    const wires = _activeWires(cpuDid, vuDid, opcode);
+    if (txEmitted && !wires.includes(WIRE_IO)) wires.push(WIRE_IO);
+    for (const w of wires) flashWire(w);
 }
 
 function _activeWires(cpuDid, vuDid, opcode) {
@@ -147,25 +178,18 @@ function _activeWires(cpuDid, vuDid, opcode) {
 function stepCPU() {
     if (cpu.state === CpuState.FAULT) return 0;
 
-    for (let i = 0; i < _ioSnap.length; i++) _ioSnap[i] = cpu.mem.get(IO_BASE + i);
+    captureIOSnapshot();
     if (pad.visible) _padChecksum = padChecksum();
-
     const opcode = cpu.mem.get(cpu.ip);
 
     termPreStep();
-
-    // VU ticks first — newly issued commands appear in queue for 1 UI frame
-    const vuDid = cpu.vuTick();
+    const vuDid = cpu.vuTick(); // VU ticks first — newly issued commands appear in queue for 1 UI frame
     const cpuDid = cpu.step();
-
     const txEmitted = termPostStep();
 
     if (!cpuDid && !vuDid && !cpu.vuWaiting) return 0;
 
-    const wires = _activeWires(cpuDid, vuDid, opcode);
-    if (txEmitted && !wires.includes(WIRE_IO)) wires.push(WIRE_IO);
-    for (const w of wires) flashWire(w);
-
+    flashActiveWires(cpuDid, vuDid, opcode, txEmitted);
     renderAll();
     return 1;
 }

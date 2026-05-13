@@ -136,10 +136,20 @@ export const Op = Object.freeze({
     VCMP: 180,
     VSEL: 181,
     VMOV: 182,
-    VFILL: 183,
+    VCVT: 183,
     VGATHER: 184,
     VSCATTER: 185,
+    VFMADD: 186,
+    VEXP: 187,
 
+    // MU (188–194)
+    MSET_IMM16: 188,
+    MSET_GPR: 189,
+    MFSTAT: 190,
+    MFCLR: 191,
+    MWAIT: 192,
+    MMUL: 193,
+    MMAD: 194,
 });
 
 // ── Instruction data ─────────────────────────────────────────────────
@@ -281,9 +291,21 @@ export const ISA_VU_DATA = [
     ["VCMP", 180, "VCMP", ["imm", "imm", "imm"], 1, false],
     ["VSEL", 181, "VSEL", ["imm", "imm"], 1, false],
     ["VMOV", 182, "VMOV", ["imm", "imm"], 1, false],
-    ["VFILL", 183, "VFILL", ["imm", "imm"], 1, false],
+    ["VCVT", 183, "VCVT", ["imm", "imm", "imm"], 1, false],
     ["VGATHER", 184, "VGATHER", ["imm", "imm"], 1, false],
     ["VSCATTER", 185, "VSCATTER", ["imm", "imm"], 1, false],
+    ["VFMADD", 186, "VFMADD", ["imm", "imm"], 1, false],
+    ["VEXP", 187, "VEXP", ["imm", "imm"], 1, false],
+];
+
+export const ISA_MU_DATA = [
+    ["MSET_IMM16", 188, "MSET", ["imm", "fp_imm16"], 1, false],
+    ["MSET_GPR", 189, "MSET", ["imm", "imm"], 1, false],
+    ["MFSTAT", 190, "MFSTAT", ["imm"], 1, false],
+    ["MFCLR", 191, "MFCLR", [], 1, false],
+    ["MWAIT", 192, "MWAIT", [], 1, false],
+    ["MMUL", 193, "MMUL", ["imm", "imm"], 1, false],
+    ["MMAD", 194, "MMAD", ["imm", "imm"], 1, false],
 ];
 
 // ── FP register data ─────────────────────────────────────────────────

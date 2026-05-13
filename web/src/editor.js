@@ -109,6 +109,135 @@ export function focusEditor() {
     cmView.focus();
 }
 
+// ── Completion helpers (no CodeMirror dependency) ──────────────
+
+function buildMnemonicVariants() {
+    const base = [...ISA, ...ISA_FP, ...ISA_VU]
+        .filter((def) => !MNEMONIC_FORMS_OVERRIDE[def.mnemonic])
+        .reduce((acc, def) => {
+            const sig = def.format.map((s) => FORMAT_LABELS[s] || "?").join(", ");
+            const form = sig ? `${def.mnemonic} ${sig}` : def.mnemonic;
+            (acc[def.mnemonic] ??= new Set()).add(form);
+            return acc;
+        }, {});
+    const overrides = Object.fromEntries(
+        Object.entries(MNEMONIC_FORMS_OVERRIDE).map(([mn, forms]) => [mn, new Set(forms)]),
+    );
+    return { ...base, ...overrides };
+}
+const MNEMONIC_VARIANTS = buildMnemonicVariants();
+
+function _infoline(parent, cls, text) {
+    const d = document.createElement("div");
+    d.className = cls;
+    d.textContent = text;
+    parent.appendChild(d);
+}
+
+function mnemonicInfoDom(mnemonic, aliasOf) {
+    const el = document.createElement("div");
+    el.className = "cm-instr-info";
+    const canonical = aliasOf || mnemonic;
+    _infoline(el, "cm-instr-desc", MNEMONIC_INFO[canonical] || canonical);
+    if (aliasOf) _infoline(el, "cm-instr-form", `= ${aliasOf}`);
+    MNEMONIC_VARIANTS[canonical]?.forEach((f) => _infoline(el, "cm-instr-form", f));
+    const flags = MNEMONIC_FLAGS[canonical];
+    if (flags) _infoline(el, "cm-instr-form", `Flags: ${flags}`);
+    const fpex = MNEMONIC_FP_EXCEPTIONS[canonical];
+    if (fpex) _infoline(el, "cm-instr-form", `FP exc: ${fpex}`);
+    if (MNEMONICS_FP.has(canonical) && !FP_CONTROL_MNEMONICS.has(canonical)) {
+        const suffixes = Object.entries(FP_FORMAT_DOCS)
+            .filter(([k]) => k.length <= 2)
+            .map(([k, v]) => `.${k}=${v.name}`)
+            .join(", ");
+        _infoline(el, "cm-instr-form", `Formats: ${suffixes}`);
+    }
+    const note = MNEMONIC_NOTES[canonical];
+    if (note) _infoline(el, "cm-instr-form", note);
+    return el;
+}
+
+const MNEMONIC_COMPLETIONS = [
+    ...[...MNEMONICS, ...MNEMONICS_FP, ...MNEMONICS_VU].map((m) => ({
+        label: m,
+        info: () => mnemonicInfoDom(m),
+        type: "keyword",
+    })),
+    ...Object.entries(MNEMONIC_ALIASES).map(([alias, canonical]) => ({
+        label: alias,
+        detail: `= ${canonical}`,
+        info: () => mnemonicInfoDom(alias, canonical),
+        type: "keyword",
+    })),
+];
+
+const REGISTER_COMPLETIONS = [
+    ...Object.keys(Reg).map((r) => {
+        const doc = REGISTER_DOCS[r];
+        return { label: r, info: doc ? doc.description : r, type: "variable" };
+    }),
+    ...Object.keys(FP_REGISTERS).map((r) => {
+        const doc = REGISTER_DOCS[r];
+        const fmt = FP_FMT_NAMES[FP_REGISTERS[r].fmt] || `${FP_REGISTERS[r].width}b`;
+        return { label: r, info: doc ? doc.description : `FP ${fmt}`, type: "variable" };
+    }),
+    ...["VA", "VB", "VC", "VM", "VL"].map((r) => ({
+        label: r,
+        info: r === "VL" ? "VU vector length (16-bit)" : `VU address pointer (16-bit)`,
+        type: "variable",
+    })),
+];
+
+function sim8CompletionSource(context) {
+    const atWord = context.matchBefore(/@\w*/i);
+    if (atWord && (atWord.from < atWord.to || context.explicit)) {
+        return {
+            from: atWord.from,
+            options: [
+                {
+                    label: "@include",
+                    type: "keyword",
+                    detail: '"filename.asm"',
+                    info: DIRECTIVE_DOCS["@INCLUDE"]?.description,
+                },
+                {
+                    label: "@page",
+                    type: "keyword",
+                    detail: "N[, offset]",
+                    info: DIRECTIVE_DOCS["@PAGE"]?.description,
+                },
+            ],
+        };
+    }
+
+    const word = context.matchBefore(/[\w.]+/);
+    if (!word || (word.from === word.to && !context.explicit)) return null;
+
+    const prefix = word.text.toUpperCase();
+    const line = context.state.doc.lineAt(word.from);
+    const beforeWord = line.text.slice(0, word.from - line.from);
+    if (beforeWord.includes(";")) return null;
+    const isMnemonicPos = /^\s*(\w+\s*:)?\s*$/.test(beforeWord);
+
+    if (isMnemonicPos) {
+        const options = MNEMONIC_COMPLETIONS.filter((o) => o.label.startsWith(prefix));
+        return options.length ? { from: word.from, options } : null;
+    }
+
+    const options = REGISTER_COMPLETIONS.filter((o) => o.label.startsWith(prefix));
+    const seen = new Set(options.map((o) => o.label.toUpperCase()));
+    const labelRe = /^[ \t]*(\w+)\s*:/gm;
+    let m;
+    const docText = context.state.doc.toString();
+    while ((m = labelRe.exec(docText)) !== null) {
+        if (!seen.has(m[1].toUpperCase()) && m[1].toUpperCase().startsWith(prefix)) {
+            options.push({ label: m[1], type: "namespace", info: "Label" });
+            seen.add(m[1].toUpperCase());
+        }
+    }
+    return options.length ? { from: word.from, options } : null;
+}
+
 export async function initEditor(container, defaultCode) {
     try {
         const [
@@ -291,136 +420,6 @@ export async function initEditor(container, defaultCode) {
                 },
             },
         });
-
-        function buildMnemonicVariants() {
-            const variants = {};
-            for (const def of [...ISA, ...ISA_FP, ...ISA_VU]) {
-                if (MNEMONIC_FORMS_OVERRIDE[def.mnemonic]) continue;
-                const sig = def.format.map((s) => FORMAT_LABELS[s] || "?").join(", ");
-                const form = sig ? `${def.mnemonic} ${sig}` : def.mnemonic;
-                if (!variants[def.mnemonic]) variants[def.mnemonic] = new Set();
-                variants[def.mnemonic].add(form);
-            }
-            for (const [mn, forms] of Object.entries(MNEMONIC_FORMS_OVERRIDE)) {
-                variants[mn] = new Set(forms);
-            }
-            return variants;
-        }
-        const MNEMONIC_VARIANTS = buildMnemonicVariants();
-
-        function _infoline(parent, cls, text) {
-            const d = document.createElement("div");
-            d.className = cls;
-            d.textContent = text;
-            parent.appendChild(d);
-        }
-
-        function mnemonicInfoDom(mnemonic, aliasOf) {
-            const el = document.createElement("div");
-            el.className = "cm-instr-info";
-            const canonical = aliasOf || mnemonic;
-            _infoline(el, "cm-instr-desc", MNEMONIC_INFO[canonical] || canonical);
-            if (aliasOf) _infoline(el, "cm-instr-form", `= ${aliasOf}`);
-            const forms = MNEMONIC_VARIANTS[canonical];
-            if (forms) {
-                for (const f of forms) _infoline(el, "cm-instr-form", f);
-            }
-            const flags = MNEMONIC_FLAGS[canonical];
-            if (flags) _infoline(el, "cm-instr-form", `Flags: ${flags}`);
-            const fpex = MNEMONIC_FP_EXCEPTIONS[canonical];
-            if (fpex) _infoline(el, "cm-instr-form", `FP exc: ${fpex}`);
-            if (MNEMONICS_FP.has(canonical) && !FP_CONTROL_MNEMONICS.has(canonical)) {
-                const suffixes = Object.entries(FP_FORMAT_DOCS)
-                    .filter(([k]) => k.length <= 2)
-                    .map(([k, v]) => `.${k}=${v.name}`)
-                    .join(", ");
-                _infoline(el, "cm-instr-form", `Formats: ${suffixes}`);
-            }
-            const note = MNEMONIC_NOTES[canonical];
-            if (note) _infoline(el, "cm-instr-form", note);
-            return el;
-        }
-
-        const MNEMONIC_COMPLETIONS = [
-            ...[...MNEMONICS, ...MNEMONICS_FP, ...MNEMONICS_VU].map((m) => ({
-                label: m,
-                info: () => mnemonicInfoDom(m),
-                type: "keyword",
-            })),
-            ...Object.entries(MNEMONIC_ALIASES).map(([alias, canonical]) => ({
-                label: alias,
-                detail: `= ${canonical}`,
-                info: () => mnemonicInfoDom(alias, canonical),
-                type: "keyword",
-            })),
-        ];
-
-        const REGISTER_COMPLETIONS = [
-            ...Object.keys(Reg).map((r) => {
-                const doc = REGISTER_DOCS[r];
-                return { label: r, info: doc ? doc.description : r, type: "variable" };
-            }),
-            ...Object.keys(FP_REGISTERS).map((r) => {
-                const doc = REGISTER_DOCS[r];
-                const fmt = FP_FMT_NAMES[FP_REGISTERS[r].fmt] || `${FP_REGISTERS[r].width}b`;
-                return { label: r, info: doc ? doc.description : `FP ${fmt}`, type: "variable" };
-            }),
-            ...["VA", "VB", "VC", "VM", "VL"].map((r) => ({
-                label: r,
-                info: r === "VL" ? "VU vector length (16-bit)" : `VU address pointer (16-bit)`,
-                type: "variable",
-            })),
-        ];
-
-        function sim8CompletionSource(context) {
-            const atWord = context.matchBefore(/@\w*/i);
-            if (atWord && (atWord.from < atWord.to || context.explicit)) {
-                return {
-                    from: atWord.from,
-                    options: [
-                        {
-                            label: "@include",
-                            type: "keyword",
-                            detail: '"filename.asm"',
-                            info: DIRECTIVE_DOCS["@INCLUDE"]?.description,
-                        },
-                        {
-                            label: "@page",
-                            type: "keyword",
-                            detail: "N[, offset]",
-                            info: DIRECTIVE_DOCS["@PAGE"]?.description,
-                        },
-                    ],
-                };
-            }
-
-            const word = context.matchBefore(/[\w.]+/);
-            if (!word || (word.from === word.to && !context.explicit)) return null;
-
-            const prefix = word.text.toUpperCase();
-            const line = context.state.doc.lineAt(word.from);
-            const beforeWord = line.text.slice(0, word.from - line.from);
-            if (beforeWord.includes(";")) return null;
-            const isMnemonicPos = /^\s*(\w+\s*:)?\s*$/.test(beforeWord);
-
-            if (isMnemonicPos) {
-                const options = MNEMONIC_COMPLETIONS.filter((o) => o.label.startsWith(prefix));
-                return options.length ? { from: word.from, options } : null;
-            }
-
-            const options = REGISTER_COMPLETIONS.filter((o) => o.label.startsWith(prefix));
-            const seen = new Set(options.map((o) => o.label.toUpperCase()));
-            const labelRe = /^[ \t]*(\w+)\s*:/gm;
-            let m;
-            const docText = context.state.doc.toString();
-            while ((m = labelRe.exec(docText)) !== null) {
-                if (!seen.has(m[1].toUpperCase()) && m[1].toUpperCase().startsWith(prefix)) {
-                    options.push({ label: m[1], type: "namespace", info: "Label" });
-                    seen.add(m[1].toUpperCase());
-                }
-            }
-            return options.length ? { from: word.from, options } : null;
-        }
 
         cmScrollIntoView = EditorView.scrollIntoView;
         cmView = new EditorView({

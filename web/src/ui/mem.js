@@ -31,6 +31,30 @@ const FPM_TO_NAME = Object.fromEntries(
 );
 const REG_NAMES = ["A", "B", "C", "D", "SP", "DP"];
 
+function _decodeRegName(b, i) {
+    return [REG_NAMES[b[i]] ?? `r${b[i]}`, 1];
+}
+
+function _decodeRegaddrExpr(b, i) {
+    const [rc, off] = decodeRegaddr(b[i]);
+    const rn = REG_NAMES[rc] ?? `r${rc}`;
+    return [off === 0 ? `[${rn}]` : `[${rn}${off > 0 ? "+" : ""}${off}]`, 1];
+}
+
+// Each entry: (bytes, byteIndex) → [operandString, bytesConsumed]
+const _OP_DECODERS = {
+    [OpType.REG]: _decodeRegName,
+    [OpType.REG_ARITH]: _decodeRegName,
+    [OpType.REG_STACK]: _decodeRegName,
+    [OpType.REG_GPR]: _decodeRegName,
+    [OpType.IMM]: (b, i) => [String(b[i]), 1],
+    [OpType.MEM]: (b, i) => [`[${hex(b[i], 2)}]`, 1],
+    [OpType.REGADDR]: _decodeRegaddrExpr,
+    [OpType.FP_REG]: (b, i) => [FPM_TO_NAME[b[i]] ?? `fpm(${hex(b[i])})`, 1],
+    [OpType.FP_IMM8]: (b, i) => [`0x${hex(b[i])}`, 1],
+    [OpType.FP_IMM16]: (b, i) => [`0x${hex(b[i] | (b[i + 1] << 8), 4)}`, 2],
+};
+
 function disasmInstr(absAddr) {
     const b0 = cpu.mem.get(absAddr);
     const def = BY_CODE[b0] ?? BY_CODE_FP[b0];
@@ -40,32 +64,11 @@ function disasmInstr(absAddr) {
     const parts = [];
     let bi = 1;
     for (const ot of def.format) {
-        let op;
-        if (ot === OpType.REG || ot === OpType.REG_ARITH || ot === OpType.REG_STACK || ot === OpType.REG_GPR) {
-            op = REG_NAMES[bytes[bi]] ?? `r${bytes[bi]}`;
-            bi++;
-        } else if (ot === OpType.IMM) {
-            op = String(bytes[bi]);
-            bi++;
-        } else if (ot === OpType.MEM) {
-            op = `[${hex(bytes[bi], 2)}]`;
-            bi++;
-        } else if (ot === OpType.REGADDR) {
-            const [rc, off] = decodeRegaddr(bytes[bi]);
-            const rn = REG_NAMES[rc] ?? `r${rc}`;
-            op = off === 0 ? `[${rn}]` : `[${rn}${off > 0 ? "+" : ""}${off}]`;
-            bi++;
-        } else if (ot === OpType.FP_REG) {
-            op = FPM_TO_NAME[bytes[bi]] ?? `fpm(${hex(bytes[bi])})`;
-            bi++;
-        } else if (ot === OpType.FP_IMM8) {
-            op = `0x${hex(bytes[bi])}`;
-            bi++;
-        } else if (ot === OpType.FP_IMM16) {
-            op = `0x${hex(bytes[bi] | (bytes[bi + 1] << 8), 4)}`;
-            bi += 2;
-        }
-        if (op !== undefined) parts.push(op);
+        const decode = _OP_DECODERS[ot];
+        if (!decode) continue;
+        const [op, advance] = decode(bytes, bi);
+        parts.push(op);
+        bi += advance;
     }
     return {
         text: def.mnemonic + (parts.length ? " " + parts.join(", ") : ""),
@@ -225,14 +228,11 @@ export function renderMemory() {
     const cellFont = parseInt(cssVar("--s-mem-cell-font")) || 10;
     const pageBase = page * PAGE_SIZE;
 
-    const rows = [];
     const hdrs = Array.from(
         { length: 16 },
         (_, c) => `<div class="mh" style="width:${cellW}px">${hex(c, 1)}</div>`,
     ).join("");
-    rows.push(`<div style="display:flex;"><div class="mr" style="width:${rowW}px"></div>${hdrs}</div>`);
-
-    for (let r = 0; r < 16; r++) {
+    const dataRows = Array.from({ length: 16 }, (_, r) => {
         const cells = Array.from({ length: 16 }, (_, c) => {
             const addr = r * 16 + c;
             const absAddr = pageBase + addr;
@@ -241,10 +241,12 @@ export function renderMemory() {
             const title = lname ? ` title="${escapeHtml(lname)}"` : "";
             return `<div class="${cellClass(addr, val, showInstr)}" style="width:${cellW}px;font-size:${cellFont}px" data-addr="${absAddr}"${title}>${fmtByte(val)}</div>`;
         }).join("");
-        rows.push(
-            `<div style="display:flex;"><div class="mr" style="width:${rowW}px">${hex(pageBase + r * 16, 4)}</div>${cells}</div>`,
-        );
-    }
+        return `<div style="display:flex;"><div class="mr" style="width:${rowW}px">${hex(pageBase + r * 16, 4)}</div>${cells}</div>`;
+    });
+    const rows = [
+        `<div style="display:flex;"><div class="mr" style="width:${rowW}px"></div>${hdrs}</div>`,
+        ...dataRows,
+    ];
 
     const legendItems = [
         [colors.mid, "data"],

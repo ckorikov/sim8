@@ -138,24 +138,28 @@ const _VU_MNEMONIC_TO_OP = {
     VMIN: Op.VMIN,
     VDOT: Op.VDOT,
     VSQRT: Op.VSQRT,
+    VEXP: Op.VEXP,
+    VFMADD: Op.VFMADD,
     VNEG: Op.VNEG,
     VABS: Op.VABS,
     VCMP: Op.VCMP,
     VSEL: Op.VSEL,
     VMOV: Op.VMOV,
-    VFILL: Op.VMOV,
+    VCVT: Op.VCVT,
     VGATHER: Op.VGATHER,
     VSCATTER: Op.VSCATTER,
 };
 
-const _VU_SINGLE_MODE = new Set(["VMOV", "VDOT", "VSQRT", "VNEG", "VABS", "VSEL", "VGATHER", "VSCATTER"]);
+const _VU_SINGLE_MODE = new Set(["VDOT", "VSQRT", "VEXP", "VNEG", "VABS", "VSEL", "VGATHER", "VSCATTER"]);
+// Mnemonics with no reduction mode — when only 2 VU regs are present and no
+// GPR/imm, the mode is vv, not r.
+const _VU_NO_R_MNEMONICS = new Set(["VMOV", "VFMADD"]);
 
 function _resolveVuModeCond(mnemonic, modeSuffix, operands, line) {
     if (mnemonic === "VCMP") {
         if (modeSuffix === null) throw new AsmError("VCMP requires a condition suffix", line);
         return [VU_MODE_VV, _lookupSuffix(modeSuffix, VU_CMP_SUFFIX, "Invalid VCMP condition", line)];
     }
-    if (mnemonic === "VFILL") return [VU_MODE_VI, 0];
     if (_VU_SINGLE_MODE.has(mnemonic)) return [0, 0];
 
     // Explicit suffix takes priority
@@ -165,9 +169,14 @@ function _resolveVuModeCond(mnemonic, modeSuffix, operands, line) {
     const hasGpr = operands.some((op) => op.tag === TAG_REG);
     const hasImm = operands.some((op) => op.tag === TAG_CONST);
     const vuCount = _filterByTag(operands, TAG_VU_REG).length;
-    if (hasGpr) return [VU_MODE_VS, 0];
+    if (hasGpr) {
+        throw new AsmError(
+            `${mnemonic}: GPR operand not allowed; use \`.vs\` suffix for memory-scalar broadcast`,
+            line,
+        );
+    }
     if (hasImm) return [VU_MODE_VI, 0];
-    if (vuCount <= 2 && mnemonic !== "VMOV") return [VU_MODE_R, 0];
+    if (vuCount <= 2 && !_VU_NO_R_MNEMONICS.has(mnemonic)) return [VU_MODE_R, 0];
     return [VU_MODE_VV, 0];
 }
 
@@ -186,27 +195,49 @@ function _encodeVuRegsFromOperands(operands, mnemonic, mode, line) {
     if (vuRegs.length === 0) {
         throw new AsmError(`${mnemonic} requires VU register operands`, line);
     }
-    for (const r of vuRegs) {
-        if (r.code > 3) {
-            throw new AsmError("Async VU operands must be pointer registers (VA-VM)", line);
-        }
+    if (vuRegs.some((r) => r.code > 3)) {
+        throw new AsmError("Async VU operands must be pointer registers (VA-VM)", line);
     }
     const dst = vuRegs[0].code;
-    const src1 = vuRegs.length > 1 ? vuRegs[1].code : 0;
+    let src1;
     let src2;
     if (mode === VU_MODE_VS) {
-        const gprOps = _filterByTag(operands, TAG_REG);
-        if (gprOps.length === 0) {
-            throw new AsmError(`${mnemonic} broadcast requires a GPR operand (A-D)`, line);
+        if (mnemonic === "VMOV") {
+            if (vuRegs.length !== 2) {
+                throw new AsmError("VMOV.vs requires exactly two VU pointer operands (dst, src_ptr)", line);
+            }
+            src1 = 0;
+            src2 = vuRegs[1].code;
+        } else {
+            if (vuRegs.length !== 3) {
+                throw new AsmError(`${mnemonic}.vs requires three VU pointer operands (dst, src1, src_ptr)`, line);
+            }
+            src1 = vuRegs[1].code;
+            src2 = vuRegs[2].code;
         }
-        if (gprOps[0].code > 3) {
-            throw new AsmError("Broadcast GPR must be A-D", line);
-        }
-        src2 = gprOps[0].code;
     } else {
+        src1 = vuRegs.length > 1 ? vuRegs[1].code : 0;
         src2 = vuRegs.length > 2 ? vuRegs[2].code : 0;
     }
     return encodeVuRegs(dst, src1, src2);
+}
+
+function _encodeVcvt(suffixes, operands, line) {
+    const dstSuffix = suffixes[0] || null;
+    const srcSuffix = suffixes[1] || null;
+    if (!dstSuffix || !srcSuffix) {
+        throw new AsmError("VCVT requires two format suffixes: VCVT.dstfmt.srcfmt", line);
+    }
+    const dstFmt = _resolveVuFmt("VCVT", dstSuffix, line);
+    const srcFmt = _resolveVuFmt("VCVT", srcSuffix, line);
+    const vuRegs = _filterByTag(operands, TAG_VU_REG);
+    if (vuRegs.length !== 2) {
+        throw new AsmError("VCVT requires exactly two VU register operands (dst, src)", line);
+    }
+    if (vuRegs.some((r) => r.code > 3)) {
+        throw new AsmError("VCVT operands must be pointer registers (VA-VM)", line);
+    }
+    return [Op.VCVT, encodeVfm(dstFmt, 0), encodeVfm(srcFmt, 0), encodeVuRegs(vuRegs[0].code, vuRegs[1].code, 0)];
 }
 
 function _encodeVuAsync(mnemonic, suffixes, operands, line) {
@@ -215,16 +246,13 @@ function _encodeVuAsync(mnemonic, suffixes, operands, line) {
         throw new AsmError(`Unknown VU async instruction: ${mnemonic}`, line);
     }
 
+    if (mnemonic === "VCVT") return _encodeVcvt(suffixes, operands, line);
+
     const fmtSuffix = suffixes[0] || null;
     const modeSuffix = suffixes[1] || null;
 
     const fmt = _resolveVuFmt(mnemonic, fmtSuffix, line);
     const [mode, cond] = _resolveVuModeCond(mnemonic, modeSuffix, operands, line);
-
-    // GPR broadcast restricted to byte formats
-    if (mode === VU_MODE_VS && (VU_FMT_ELEM_SIZE[fmt] || 1) > 1) {
-        throw new AsmError(`GPR broadcast only for byte formats (U/I/O3/O2), not .${fmtSuffix}`, line);
-    }
 
     const regs = _encodeVuRegsFromOperands(operands, mnemonic, mode, line);
     const result = [opcode, encodeVfm(fmt, mode), regs];
@@ -237,9 +265,7 @@ function _encodeVuAsync(mnemonic, suffixes, operands, line) {
         }
         const immVal = immOps[0].value;
         const elemSize = VU_FMT_ELEM_SIZE[fmt] || 1;
-        for (let i = 0; i < elemSize; i++) {
-            result.push((immVal >> (8 * i)) & 0xff);
-        }
+        result.push(...Array.from({ length: elemSize }, (_, i) => (immVal >> (8 * i)) & 0xff));
     }
 
     return result;

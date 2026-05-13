@@ -20,6 +20,7 @@ import {
     TAG_FP_IMM,
     TAG_PAGE_LABEL,
     MNEMONICS_VU,
+    MNEMONICS_MU,
     RE_INCLUDE_FULL,
     RE_INCLUDE_START,
     isUrl,
@@ -29,6 +30,7 @@ import {
 import { _encodeOperand, _findInstr } from "./asm-core.js";
 import { _encodeDb, _encodeFpInstruction, _encodeFmovImm } from "./asm-fp.js";
 import { _encodeVuInstr, _filterByTag } from "./asm-vu.js";
+import { _encodeMuInstr } from "./asm-mu.js";
 
 // Re-export for external consumers
 export { AsmError };
@@ -43,6 +45,11 @@ function _encodeInstruction(mnemonic, operands, line, dstSuffix, srcSuffix, arch
     if (arch >= 3 && MNEMONICS_VU.has(mnemonic)) {
         const suffixes = [pline.vuFmtSuffix, pline.vuModeSuffix, pline.vuCondSuffix].filter((s) => s !== null);
         return _encodeVuInstr(mnemonic, suffixes, operands, line);
+    }
+
+    if (arch >= 3 && MNEMONICS_MU.has(mnemonic)) {
+        const suffixes = [pline.muFmtSuffix, pline.muLayoutSuffix].filter((s) => s !== null);
+        return _encodeMuInstr(mnemonic, suffixes, operands, line);
     }
 
     if (arch >= 2 && MNEMONICS_FP.has(mnemonic)) {
@@ -69,11 +76,8 @@ const _RE_PAGE_NUM = /^\s*@page\s+(\d+)/i;
 
 /** Find the most recent @page number from emitted lines. */
 function _findCurrentPage(outLines) {
-    for (let i = outLines.length - 1; i >= 0; i--) {
-        const m = _RE_PAGE_NUM.exec(outLines[i]);
-        if (m) return parseInt(m[1], 10);
-    }
-    return 0;
+    const line = outLines.findLast((l) => _RE_PAGE_NUM.test(l));
+    return line ? parseInt(_RE_PAGE_NUM.exec(line)[1], 10) : 0;
 }
 
 /** Emit a line into outLines + lineMap. */
@@ -178,21 +182,18 @@ function _pass1HandlePage(st, pline) {
         const targetOffset = pline.operands[1].value;
         const currentLen = st.pageCodes[pageNum].length;
         if (targetOffset > currentLen) {
-            for (let i = currentLen; i < targetOffset; i++) {
-                st.pageCodes[pageNum].push(0);
-            }
+            st.pageCodes[pageNum].push(...new Array(targetOffset - currentLen).fill(0));
         }
         st.pageCursors[pageNum] = targetOffset;
     }
 }
 
 function _collectLabelPatches(operands, pline, pos, arch, page, isJump) {
-    const patches = [];
     const isFpData = arch >= 2 && MNEMONICS_FP.has(pline.mnemonic) && !FP_CONTROL_MNEMONICS.has(pline.mnemonic);
+    const fpCount = isFpData ? _filterByTag(operands, TAG_FP_REG).length : 0;
 
-    for (let i = 0; i < operands.length; i++) {
-        const op = operands[i];
-        if (op.tag !== TAG_LABEL && op.tag !== TAG_ADDR_LABEL && op.tag !== TAG_PAGE_LABEL) continue;
+    return operands.flatMap((op, i) => {
+        if (op.tag !== TAG_LABEL && op.tag !== TAG_ADDR_LABEL && op.tag !== TAG_PAGE_LABEL) return [];
         const isPageRef = op.tag === TAG_PAGE_LABEL;
         const lblOff = op.offset || 0;
         const mk = (patchPos, ref = isPageRef) => ({
@@ -206,26 +207,19 @@ function _collectLabelPatches(operands, pline, pos, arch, page, isJump) {
         });
 
         if (isFpData) {
-            const fpCount = _filterByTag(operands, TAG_FP_REG).length;
             const nonFpIdx = operands.slice(0, i).filter((o) => o.tag !== TAG_FP_REG).length;
-            patches.push(mk(pos + 1 + fpCount + nonFpIdx));
-        } else if (pline.mnemonic === "VSET") {
+            return [mk(pos + 1 + fpCount + nonFpIdx)];
+        }
+        if (pline.mnemonic === "VSET") {
             // 3-op [163, target, lo, hi]: i==1 → hi at pos+3, i==2 → lo at pos+2
             // 2-op bare label: auto-expand to full 16-bit — emit lo (pos+2) + hi (pos+3)
             // 2-op [165, target, addr]: addr always at pos+2
-            if (operands.length === 3) {
-                patches.push(mk(i === 1 ? pos + 3 : pos + 2));
-            } else if (op.tag === TAG_LABEL) {
-                patches.push(mk(pos + 2, false));
-                patches.push(mk(pos + 3, true));
-            } else {
-                patches.push(mk(pos + 2));
-            }
-        } else {
-            patches.push(mk(pos + 1 + i));
+            if (operands.length === 3) return [mk(i === 1 ? pos + 3 : pos + 2)];
+            if (op.tag === TAG_LABEL) return [mk(pos + 2, false), mk(pos + 3, true)];
+            return [mk(pos + 2)];
         }
-    }
-    return patches;
+        return [mk(pos + 1 + i)];
+    });
 }
 
 function _pass1(parsed, arch) {
@@ -276,18 +270,11 @@ function _pass1(parsed, arch) {
         labelPatches.push(..._collectLabelPatches(operands, pline, pos, arch, page, isJump));
 
         const codes = st.pageCodes[page];
-        const end = pos + encoded.length;
-        if (end <= codes.length) {
-            for (let i = 0; i < encoded.length; i++) codes[pos + i] = encoded[i];
-        } else {
-            if (pos < codes.length) {
-                for (let i = 0; i < codes.length - pos; i++) codes[pos + i] = encoded[i];
-                for (let i = codes.length - pos; i < encoded.length; i++) codes.push(encoded[i]);
-            } else {
-                codes.push(...encoded);
-            }
-        }
-        st.pageCursors[page] = end;
+        encoded.forEach((b, i) => {
+            if (pos + i < codes.length) codes[pos + i] = b;
+            else codes.push(b);
+        });
+        st.pageCursors[page] = pos + encoded.length;
     }
 
     return {
@@ -363,9 +350,9 @@ function _buildOutput(st) {
         code = new Array((maxPage + 1) * PAGE_SIZE).fill(0);
         for (const [page, data] of Object.entries(st.pageCodes)) {
             const base = Number(page) * PAGE_SIZE;
-            for (let i = 0; i < data.length; i++) {
-                code[base + i] = data[i];
-            }
+            data.forEach((b, i) => {
+                code[base + i] = b;
+            });
         }
     } else {
         code = st.pageCodes[0];
@@ -373,23 +360,13 @@ function _buildOutput(st) {
 
     const flatAddr = (page, offset) => (multi ? page * PAGE_SIZE + offset : offset);
 
-    // Labels: name → memory address
-    const labels = {};
-    for (const [name, info] of Object.entries(st.labelInfo)) {
-        labels[name] = flatAddr(info.page, info.offset);
-    }
-
-    // Mapping: flat code position → lineNo
-    const mapping = {};
-    for (const entry of st.pageMapping) {
-        mapping[flatAddr(entry.page, entry.offset)] = entry.lineNo;
-    }
-
-    // Actual bytes emitted (without page padding)
-    let usedBytes = 0;
-    for (const data of Object.values(st.pageCodes)) {
-        usedBytes += data.length;
-    }
+    const labels = Object.fromEntries(
+        Object.entries(st.labelInfo).map(([name, info]) => [name, flatAddr(info.page, info.offset)]),
+    );
+    const mapping = Object.fromEntries(
+        st.pageMapping.map((entry) => [flatAddr(entry.page, entry.offset), entry.lineNo]),
+    );
+    const usedBytes = Object.values(st.pageCodes).reduce((acc, data) => acc + data.length, 0);
 
     return { code, labels, mapping, usedBytes };
 }

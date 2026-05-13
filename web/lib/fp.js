@@ -133,6 +133,31 @@ export function fpSqrt(value, fmt, rm = 0) {
     return _reEncode(result, fmt, rm);
 }
 
+/** exp(value) in the given FP format. NaN → NaN+NV, +inf → +inf,
+ *  -inf → +0, ±0 → 1, overflow → +inf+OF+NX. */
+export function fpExp(value, fmt, rm = 0) {
+    if (Number.isNaN(value)) return _NAN_INVALID;
+    if (!Number.isFinite(value)) {
+        return value > 0 ? { result: Infinity, exc: NO_EXC } : { result: 0.0, exc: NO_EXC };
+    }
+    if (value === 0) return { result: 1.0, exc: NO_EXC };
+    const result = Math.exp(value);
+    if (!Number.isFinite(result)) {
+        return { result: Infinity, exc: exc({ overflow: true, inexact: true }) };
+    }
+    return _reEncode(result, fmt, rm);
+}
+
+/** Fused multiply-add: c + a*b in the given FP format. */
+export function fpFmadd(a, b, c, fmt, rm = 0) {
+    if (Number.isNaN(a) || Number.isNaN(b) || Number.isNaN(c)) return _NAN_INVALID;
+    // 0 * Inf in the multiply produces NaN regardless of c
+    if ((a === 0 && !Number.isFinite(b)) || (!Number.isFinite(a) && b === 0)) return _NAN_INVALID;
+    const product = a * b;
+    if (!Number.isFinite(product) && !Number.isFinite(c) && product !== c) return _NAN_INVALID;
+    return _addCore(c, product, fmt, rm);
+}
+
 export function fpCmp(a, b) {
     if (Number.isNaN(a) || Number.isNaN(b)) {
         return { zero: true, carry: true, exc: exc({ invalid: true }) };

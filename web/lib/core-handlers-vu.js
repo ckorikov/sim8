@@ -13,6 +13,7 @@ import {
     VU_ASYNC_OPS,
     VU_UNARY_OPS,
     VU_VV_ONLY_OPS,
+    VU_FP_ONLY_OPS,
     VU_INT_FMTS,
     VU_FMT_ELEM_SIZE,
     VU_MODE_VV,
@@ -25,7 +26,8 @@ import {
 
 // ── VU static helpers (module-level) ───────────────────────────────
 
-const _NO_S2_OPS = new Set([Op.VSQRT, Op.VNEG, Op.VABS, Op.VMOV, Op.VFILL, Op.VGATHER, Op.VSCATTER]);
+const _NO_S2_OPS = new Set([Op.VSQRT, Op.VEXP, Op.VNEG, Op.VABS, Op.VMOV, Op.VGATHER, Op.VSCATTER]);
+const _NO_R_OPS = new Set([Op.VFMADD]);
 
 /** Destination auto-increment: reduction/dot writes one element, others write the full vector. */
 function _vuDstInc(op, mode, vl, sz) {
@@ -36,10 +38,12 @@ function _vuDstInc(op, mode, vl, sz) {
     return vl * sz;
 }
 
-/** Source-1 auto-increment: zero for VFILL/VSEL (no src1 consumed), else full vector. */
-function _vuS1Inc(op, vl, sz) {
-    if (op === Op.VFILL || op === Op.VSEL) return 0;
-    if (op === Op.VSCATTER) return 0; // data-dependent, user must VSET
+/** Source-1 auto-increment.
+ * Zero when src1 is not consumed (VSEL alt-pointer, VSCATTER data-dependent,
+ * VMOV vs/vi where source is mem[s2_ptr] / imm). */
+function _vuS1Inc(op, mode, vl, sz) {
+    if (op === Op.VSEL || op === Op.VSCATTER) return 0;
+    if (op === Op.VMOV && (mode === VU_MODE_VS || mode === VU_MODE_VI)) return 0;
     return vl * sz;
 }
 
@@ -53,20 +57,19 @@ function _vuS2Inc(op, mode, vl, sz) {
 // ── VU helpers ──────────────────────────────────────────────────────
 
 function _vuRoundingMode() {
-    const fpu = this.regs.fpu;
-    return fpu !== null ? fpu.roundingMode : 0;
+    return this.regs.fpu?.roundingMode ?? 0;
 }
 
 function _getVuRegs() {
-    return this.vu !== null ? this.vu.regs : null;
+    return this.vu?.regs ?? null;
 }
 
 function _getVuState() {
-    return this.vu !== null ? this.vu.state : null;
+    return this.vu?.state ?? null;
 }
 
 function _getVuQueueItems() {
-    return this.vu !== null ? this.vu.queueItems : [];
+    return this.vu?.queueItems ?? [];
 }
 
 // ── VU dispatch table ───────────────────────────────────────────────
@@ -83,6 +86,7 @@ function _buildVuDispatch() {
     for (const opVal of VU_ASYNC_OPS) {
         d[opVal] = (instr) => this._hVasync(instr, opVal);
     }
+    d[Op.VCVT] = (instr) => this._hVcvt(instr);
 }
 
 // ── VU sync helpers ─────────────────────────────────────────────────
@@ -149,6 +153,48 @@ function _hVwait(instr) {
     }
 }
 
+// ── VCVT handler ────────────────────────────────────────────────────
+
+function _hVcvt(instr) {
+    const vu = this.vu;
+    const [dstFmt, dstMode] = decodeVfm(instr.operands[0]);
+    const [srcFmt] = decodeVfm(instr.operands[1]);
+    const [dstCode, s1Code] = decodeVuRegs(instr.operands[2]);
+
+    if (dstFmt > 6 || srcFmt > 6 || dstMode === VU_MODE_R) {
+        throw new CpuFault(ErrorCode.VU_FORMAT, this.regs.ip);
+    }
+
+    if (vu.regs.vl === 0) {
+        this.regs.ip += instr.size;
+        return;
+    }
+
+    const dstSz = VU_FMT_ELEM_SIZE[dstFmt] || 1;
+    const srcSz = VU_FMT_ELEM_SIZE[srcFmt] || 1;
+    const cmd = new VuCommand(
+        Op.VCVT,
+        dstFmt,
+        VU_MODE_VV,
+        0,
+        vu.regs.readPtr(dstCode),
+        vu.regs.readPtr(s1Code),
+        0,
+        vu.regs.vm,
+        vu.regs.vl,
+        0,
+        "VCVT",
+        dstCode,
+        s1Code,
+        0,
+    );
+    cmd.srcFmt = srcFmt;
+    vu.regs.incPtr(dstCode, vu.regs.vl * dstSz);
+    vu.regs.incPtr(s1Code, vu.regs.vl * srcSz);
+    this._vuDrainAndEnqueue(vu, cmd);
+    this.regs.ip += instr.size;
+}
+
 // ── VU async handler ────────────────────────────────────────────────
 
 function _hVasync(instr, opcode) {
@@ -172,7 +218,7 @@ function _hVasync(instr, opcode) {
 
 /** Build a VuCommand with snapshotted pointer values. */
 function _vuBuildCommand(vu, opcode, fmt, mode, cond, dstCode, s1Code, s2Code, instr) {
-    const imm = this._vuBuildImm(mode, s2Code, instr.operands);
+    const imm = this._vuBuildImm(mode, s2Code, instr.operands, opcode, fmt, vu, s1Code);
     return new VuCommand(
         opcode,
         fmt,
@@ -199,15 +245,20 @@ function _vuDrainAndEnqueue(vu, cmd) {
     vu.enqueue(cmd);
 }
 
-/** Return the immediate value for a VU instruction based on its addressing mode. */
-function _vuBuildImm(mode, s2Code, operands) {
+/** Return the immediate value for a VU instruction based on its addressing mode.
+ * For .vs (mem-scalar broadcast), snapshot sz bytes from mem[s2_ptr] into imm. */
+function _vuBuildImm(mode, s2Code, operands, _opcode, fmt, vu, _s1Code) {
     if (mode === VU_MODE_VI) {
-        // operands: [opcode, vfmEnc|regs, imm_byte_0, imm_byte_1, ...]
+        // operands: [vfmEnc, regs, imm_byte_0, imm_byte_1, ...]
+        return operands.slice(2).reduce((acc, b, i) => acc | (b << (8 * i)), 0);
+    }
+    if (mode === VU_MODE_VS) {
+        const sz = VU_FMT_ELEM_SIZE[fmt] || 1;
+        const base = vu.regs.readPtr(s2Code);
         let imm = 0;
-        for (let i = 2; i < operands.length; i++) imm |= operands[i] << (8 * (i - 2));
+        for (let i = 0; i < sz; i++) imm |= this.mem.get(base + i) << (8 * i);
         return imm;
     }
-    if (mode === VU_MODE_VS) return this.regs.read(s2Code);
     return 0;
 }
 
@@ -218,19 +269,19 @@ function _validateVfm(opcode, fmt, mode, cond, regsByte) {
     if (fmt > 6) fault();
     if (opcode !== Op.VCMP && cond !== 0) fault();
     if (opcode === Op.VCMP && cond > 5) fault();
-    if (VU_INT_FMTS.has(fmt) && (opcode === Op.VDOT || opcode === Op.VSQRT)) fault();
-    // GPR broadcast restricted to byte formats (elem_size == 1)
-    if (mode === VU_MODE_VS && (VU_FMT_ELEM_SIZE[fmt] || 1) > 1) fault();
+    if (VU_INT_FMTS.has(fmt) && VU_FP_ONLY_OPS.has(opcode)) fault();
     if (!this._vuValidMode(opcode, mode)) fault();
     // Reserved bits in regs byte
     if (regsByte & 0x03) fault();
 }
 
 function _vuValidMode(opcode, mode) {
-    if (VU_VV_ONLY_OPS.has(opcode)) return mode === VU_MODE_VV;
-    if (VU_UNARY_OPS.has(opcode)) return mode === VU_MODE_VV;
-    if (opcode === Op.VMOV) return mode === VU_MODE_VV || mode === VU_MODE_VI;
-    if (opcode === Op.VFILL) return mode === VU_MODE_VI;
+    if (VU_VV_ONLY_OPS.has(opcode) || VU_UNARY_OPS.has(opcode)) return mode === VU_MODE_VV;
+    if (opcode === Op.VMOV) {
+        // vv (copy), vs (mem-scalar broadcast), vi (imm broadcast). No reduction.
+        return mode === VU_MODE_VV || mode === VU_MODE_VS || mode === VU_MODE_VI;
+    }
+    if (_NO_R_OPS.has(opcode)) return mode === VU_MODE_VV || mode === VU_MODE_VS || mode === VU_MODE_VI;
     return true;
 }
 
@@ -253,7 +304,7 @@ function _vuAutoInc(vu, op, mode, dstCode, s1Code, s2Code, vl, sz) {
 }
 
 function _vuComputeIncrements(op, mode, vl, sz) {
-    return [_vuDstInc(op, mode, vl, sz), _vuS1Inc(op, vl, sz), _vuS2Inc(op, mode, vl, sz)];
+    return [_vuDstInc(op, mode, vl, sz), _vuS1Inc(op, mode, vl, sz), _vuS2Inc(op, mode, vl, sz)];
 }
 
 export const vuHandlers = {
@@ -279,6 +330,7 @@ export const vuHandlers = {
     _hVfstat,
     _hVfclr,
     _hVwait,
+    _hVcvt,
     _hVasync,
     _vuBuildCommand,
     _vuDrainAndEnqueue,
