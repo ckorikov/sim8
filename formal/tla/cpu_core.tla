@@ -1,5 +1,5 @@
 --------------------------- MODULE cpu_core ---------------------------
-EXTENDS cpu_base, cpu_ops_mov, cpu_ops_alu, cpu_ops_jump, cpu_ops_stack, cpu_ops_mul, cpu_ops_bit, cpu_ops_fp, cpu_ops_vector
+EXTENDS cpu_base, cpu_ops_mov, cpu_ops_alu, cpu_ops_jump, cpu_ops_stack, cpu_ops_mul, cpu_ops_bit, cpu_ops_fp, cpu_ops_vector, cpu_ops_matrix
 
 (*
    State Machine:
@@ -36,6 +36,9 @@ TypeInvariant ==
     /\ FA_reg \in Nat /\ FB_reg \in Nat /\ FPCR_reg \in BYTE /\ FPSR_reg \in BYTE
     /\ VA_reg \in Nat /\ VB_reg \in Nat /\ VC_reg \in Nat /\ VM_reg \in Nat
     /\ VL_reg \in Nat /\ VFPSR_reg \in BYTE /\ vu_fault \in BYTE
+    /\ MA_reg \in Nat /\ MB_reg \in Nat /\ MC_reg \in Nat
+    /\ MM_reg \in Nat /\ MN_reg \in Nat /\ MK_reg \in Nat
+    /\ MFPSR_reg \in BYTE /\ mu_fault \in BYTE
 
 -----------------------------------------------------------------------------
 (* State Machine Invariants *)
@@ -83,6 +86,7 @@ ExecHLT == memory[IP] = OP_HLT
     /\ state' = "HALTED" /\ IP' = IP
     /\ UNCHANGED <<SP, DP, A, B, C, D, Z, C_flag, F, memory, FA_reg, FB_reg, FPCR_reg, FPSR_reg>>
     /\ UNCHANGED vu_vars
+    /\ UNCHANGED mu_vars
 
 \* Invalid opcode - FAULT
 ExecInvalid == memory[IP] \notin OPCODES
@@ -109,6 +113,9 @@ Init ==
     /\ FA_reg = 0 /\ FB_reg = 0 /\ FPCR_reg = 0 /\ FPSR_reg = 0
     /\ VA_reg = 0 /\ VB_reg = 0 /\ VC_reg = 0 /\ VM_reg = 0
     /\ VL_reg = 0 /\ VFPSR_reg = 0 /\ vu_queue = <<>> /\ vu_fault = 0
+    /\ MA_reg = 0 /\ MB_reg = 0 /\ MC_reg = 0
+    /\ MM_reg = 0 /\ MN_reg = 0 /\ MK_reg = 0
+    /\ MFPSR_reg = 0 /\ mu_queue = <<>> /\ mu_fault = 0
 
 \* First step transitions IDLE -> RUNNING
 FirstStep ==
@@ -116,6 +123,7 @@ FirstStep ==
     /\ state' = "RUNNING"
     /\ UNCHANGED <<IP, SP, DP, A, B, C, D, Z, C_flag, F, memory, step_count, cycles, FA_reg, FB_reg, FPCR_reg, FPSR_reg>>
     /\ UNCHANGED vu_vars
+    /\ UNCHANGED mu_vars
 
 \* Execute one instruction (state must be RUNNING)
 \* IP overflow is checked first to ensure mutual exclusion with handlers
@@ -167,7 +175,12 @@ Step ==
             \/ ExecVMAX_174 \/ ExecVMIN_175 \/ ExecVDOT_176
             \/ ExecVSQRT_177 \/ ExecVNEG_178 \/ ExecVABS_179
             \/ ExecVCMP_180 \/ ExecVSEL_181 \/ ExecVMOV_182
-            \/ ExecVFILL_183
+            \/ ExecRESERVED_183
+            \/ ExecVGATHER_184 \/ ExecVSCATTER_185
+            \/ ExecVFMADD_186 \/ ExecVEXP_187
+            \/ ExecMSET_IMM16_188 \/ ExecMSET_GPR_189
+            \/ ExecMFSTAT_190 \/ ExecMFCLR_191 \/ ExecMWAIT_192
+            \/ ExecMMUL_193 \/ ExecMMAD_194
             \/ ExecInvalid
     /\ cycles' = IF state' = "RUNNING" THEN cycles + Cost(memory[IP], memory[IP+1]) ELSE cycles
 
@@ -184,16 +197,19 @@ Reset ==
     /\ FA_reg' = 0 /\ FB_reg' = 0 /\ FPCR_reg' = 0 /\ FPSR_reg' = 0
     /\ VA_reg' = 0 /\ VB_reg' = 0 /\ VC_reg' = 0 /\ VM_reg' = 0
     /\ VL_reg' = 0 /\ VFPSR_reg' = 0 /\ vu_queue' = <<>> /\ vu_fault' = 0
+    /\ MA_reg' = 0 /\ MB_reg' = 0 /\ MC_reg' = 0
+    /\ MM_reg' = 0 /\ MN_reg' = 0 /\ MK_reg' = 0
+    /\ MFPSR_reg' = 0 /\ mu_queue' = <<>> /\ mu_fault' = 0
 
 \* Stutter in terminal states (no Reset action taken)
 Stutter == state \in {"HALTED", "FAULT"} /\ UNCHANGED vars
 
 \* Next state relation
-Next == FirstStep \/ Step \/ Reset \/ Stutter \/ VuStep
+Next == FirstStep \/ Step \/ Reset \/ Stutter \/ VuStep \/ MuStep
 
 \* Specification
 Spec == Init /\ [][Next]_vars
-FairSpec == Spec /\ WF_vars(Step) /\ WF_vars(FirstStep) /\ WF_vars(VuStep)
+FairSpec == Spec /\ WF_vars(Step) /\ WF_vars(FirstStep) /\ WF_vars(VuStep) /\ WF_vars(MuStep)
 
 -----------------------------------------------------------------------------
 (* Temporal Properties *)

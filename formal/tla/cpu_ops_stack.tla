@@ -11,6 +11,7 @@ ExecPUSH_50 == memory[IP] = OP_PUSH_R
             /\ SP' = SP - 1 /\ IP' = IP + 2
             /\ UNCHANGED <<DP,A,B,C,D,F,state,Z,C_flag,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 ExecPUSH_51 == memory[IP] = OP_PUSH_I
     /\ LET dec == DecodeIndirect(Mem(IP+1)) IN
@@ -20,6 +21,7 @@ ExecPUSH_51 == memory[IP] = OP_PUSH_I
             /\ SP' = SP - 1 /\ IP' = IP + 2
             /\ UNCHANGED <<DP,A,B,C,D,F,state,Z,C_flag,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 ExecPUSH_52 == memory[IP] = OP_PUSH_A
     /\ LET a == DirectAddr(Mem(IP+1)) IN
@@ -28,6 +30,7 @@ ExecPUSH_52 == memory[IP] = OP_PUSH_A
             /\ SP' = SP - 1 /\ IP' = IP + 2
             /\ UNCHANGED <<DP,A,B,C,D,F,state,Z,C_flag,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 ExecPUSH_53 == memory[IP] = OP_PUSH_C
     /\ IF SP = 0 THEN Fault(ERR_STACK_OVERFLOW)
@@ -35,6 +38,7 @@ ExecPUSH_53 == memory[IP] = OP_PUSH_C
             /\ SP' = SP - 1 /\ IP' = IP + 2
             /\ UNCHANGED <<DP,A,B,C,D,F,state,Z,C_flag,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 \* POP (54) - check SP before read
 ExecPOP_54 == memory[IP] = OP_POP
@@ -46,6 +50,7 @@ ExecPOP_54 == memory[IP] = OP_POP
             /\ SP' = SP + 1 /\ IP' = IP + 2
             /\ UNCHANGED <<DP,F,state,memory,Z,C_flag,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 \* CALL (55-56) - check SP BEFORE memory write
 ExecCALL_55 == memory[IP] = OP_CALL_R
@@ -56,6 +61,7 @@ ExecCALL_55 == memory[IP] = OP_CALL_R
             /\ SP' = SP - 1 /\ IP' = RegValue(reg)
             /\ UNCHANGED <<DP,A,B,C,D,F,state,Z,C_flag,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 ExecCALL_56 == memory[IP] = OP_CALL
     /\ IF SP = 0 THEN Fault(ERR_STACK_OVERFLOW)
@@ -63,6 +69,7 @@ ExecCALL_56 == memory[IP] = OP_CALL
             /\ SP' = SP - 1 /\ IP' = Mem(IP+1)
             /\ UNCHANGED <<DP,A,B,C,D,F,state,Z,C_flag,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 \* RET (57) - check SP before read
 ExecRET_57 == memory[IP] = OP_RET
@@ -70,5 +77,6 @@ ExecRET_57 == memory[IP] = OP_RET
        ELSE SP' = SP + 1 /\ IP' = memory[SP+1]
             /\ UNCHANGED <<DP,A,B,C,D,F,state,memory,Z,C_flag,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 =============================================================================

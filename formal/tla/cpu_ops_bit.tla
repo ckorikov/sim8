@@ -10,6 +10,7 @@ ExecAND_70 == memory[IP] = OP_AND_RR
             SetRegNoSP(d, r) /\ Z' = (r = 0) /\ C_flag' = FALSE /\ IP' = IP + 3
             /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 ExecAND_71 == memory[IP] = OP_AND_RI
     /\ LET d == Mem(IP+1) dec == DecodeIndirect(Mem(IP+2)) IN
@@ -19,6 +20,7 @@ ExecAND_71 == memory[IP] = OP_AND_RI
             SetRegNoSP(d, r) /\ Z' = (r = 0) /\ C_flag' = FALSE /\ IP' = IP + 3
             /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 ExecAND_72 == memory[IP] = OP_AND_RA
     /\ LET d == Mem(IP+1) a == DirectAddr(Mem(IP+2)) IN
@@ -27,6 +29,7 @@ ExecAND_72 == memory[IP] = OP_AND_RA
             SetRegNoSP(d, r) /\ Z' = (r = 0) /\ C_flag' = FALSE /\ IP' = IP + 3
             /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 ExecAND_73 == memory[IP] = OP_AND_RC
     /\ LET d == Mem(IP+1) v == Mem(IP+2) IN
@@ -35,6 +38,7 @@ ExecAND_73 == memory[IP] = OP_AND_RC
             SetRegNoSP(d, r) /\ Z' = (r = 0) /\ C_flag' = FALSE /\ IP' = IP + 3
             /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 \* OR (74-77)
 ExecOR_74 == memory[IP] = OP_OR_RR
@@ -44,6 +48,7 @@ ExecOR_74 == memory[IP] = OP_OR_RR
             SetRegNoSP(d, r) /\ Z' = (r = 0) /\ C_flag' = FALSE /\ IP' = IP + 3
             /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 ExecOR_75 == memory[IP] = OP_OR_RI
     /\ LET d == Mem(IP+1) dec == DecodeIndirect(Mem(IP+2)) IN
@@ -53,6 +58,7 @@ ExecOR_75 == memory[IP] = OP_OR_RI
             SetRegNoSP(d, r) /\ Z' = (r = 0) /\ C_flag' = FALSE /\ IP' = IP + 3
             /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 ExecOR_76 == memory[IP] = OP_OR_RA
     /\ LET d == Mem(IP+1) a == DirectAddr(Mem(IP+2)) IN
@@ -61,6 +67,7 @@ ExecOR_76 == memory[IP] = OP_OR_RA
             SetRegNoSP(d, r) /\ Z' = (r = 0) /\ C_flag' = FALSE /\ IP' = IP + 3
             /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 ExecOR_77 == memory[IP] = OP_OR_RC
     /\ LET d == Mem(IP+1) v == Mem(IP+2) IN
@@ -69,6 +76,7 @@ ExecOR_77 == memory[IP] = OP_OR_RC
             SetRegNoSP(d, r) /\ Z' = (r = 0) /\ C_flag' = FALSE /\ IP' = IP + 3
             /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 \* XOR (78-81)
 ExecXOR_78 == memory[IP] = OP_XOR_RR
@@ -78,6 +86,7 @@ ExecXOR_78 == memory[IP] = OP_XOR_RR
             SetRegNoSP(d, r) /\ Z' = (r = 0) /\ C_flag' = FALSE /\ IP' = IP + 3
             /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 ExecXOR_79 == memory[IP] = OP_XOR_RI
     /\ LET d == Mem(IP+1) dec == DecodeIndirect(Mem(IP+2)) IN
@@ -87,6 +96,7 @@ ExecXOR_79 == memory[IP] = OP_XOR_RI
             SetRegNoSP(d, r) /\ Z' = (r = 0) /\ C_flag' = FALSE /\ IP' = IP + 3
             /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 ExecXOR_80 == memory[IP] = OP_XOR_RA
     /\ LET d == Mem(IP+1) a == DirectAddr(Mem(IP+2)) IN
@@ -95,6 +105,7 @@ ExecXOR_80 == memory[IP] = OP_XOR_RA
             SetRegNoSP(d, r) /\ Z' = (r = 0) /\ C_flag' = FALSE /\ IP' = IP + 3
             /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 ExecXOR_81 == memory[IP] = OP_XOR_RC
     /\ LET d == Mem(IP+1) v == Mem(IP+2) IN
@@ -103,6 +114,7 @@ ExecXOR_81 == memory[IP] = OP_XOR_RC
             SetRegNoSP(d, r) /\ Z' = (r = 0) /\ C_flag' = FALSE /\ IP' = IP + 3
             /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 \* NOT (82)
 ExecNOT_82 == memory[IP] = OP_NOT
@@ -112,6 +124,7 @@ ExecNOT_82 == memory[IP] = OP_NOT
             SetRegNoSP(reg, r) /\ C_flag' = FALSE /\ Z' = (r = 0) /\ IP' = IP + 2
             /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 \* SHL (90-93) - shift left (ARM-style carry)
 ExecSHL_90 == memory[IP] = OP_SHL_RR
@@ -121,6 +134,7 @@ ExecSHL_90 == memory[IP] = OP_SHL_RR
             SetRegNoSP(d, r[1]) /\ C_flag' = (IF cnt = 0 THEN C_flag ELSE r[2]) /\ Z' = r[3] /\ IP' = IP + 3
             /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 ExecSHL_91 == memory[IP] = OP_SHL_RI
     /\ LET d == Mem(IP+1) dec == DecodeIndirect(Mem(IP+2)) IN
@@ -130,6 +144,7 @@ ExecSHL_91 == memory[IP] = OP_SHL_RI
             SetRegNoSP(d, r[1]) /\ C_flag' = (IF cnt = 0 THEN C_flag ELSE r[2]) /\ Z' = r[3] /\ IP' = IP + 3
             /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 ExecSHL_92 == memory[IP] = OP_SHL_RA
     /\ LET d == Mem(IP+1) a == DirectAddr(Mem(IP+2)) IN
@@ -138,6 +153,7 @@ ExecSHL_92 == memory[IP] = OP_SHL_RA
             SetRegNoSP(d, r[1]) /\ C_flag' = (IF cnt = 0 THEN C_flag ELSE r[2]) /\ Z' = r[3] /\ IP' = IP + 3
             /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 ExecSHL_93 == memory[IP] = OP_SHL_RC
     /\ LET d == Mem(IP+1) cnt == Mem(IP+2) IN
@@ -146,6 +162,7 @@ ExecSHL_93 == memory[IP] = OP_SHL_RC
             SetRegNoSP(d, r[1]) /\ C_flag' = (IF cnt = 0 THEN C_flag ELSE r[2]) /\ Z' = r[3] /\ IP' = IP + 3
             /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 \* SHR (94-97) - shift right (ARM-style carry: C=1 if bits shifted out)
 ExecSHR_94 == memory[IP] = OP_SHR_RR
@@ -155,6 +172,7 @@ ExecSHR_94 == memory[IP] = OP_SHR_RR
             SetRegNoSP(d, r[1]) /\ C_flag' = (IF cnt = 0 THEN C_flag ELSE r[2]) /\ Z' = r[3] /\ IP' = IP + 3
             /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 ExecSHR_95 == memory[IP] = OP_SHR_RI
     /\ LET d == Mem(IP+1) dec == DecodeIndirect(Mem(IP+2)) IN
@@ -164,6 +182,7 @@ ExecSHR_95 == memory[IP] = OP_SHR_RI
             SetRegNoSP(d, r[1]) /\ C_flag' = (IF cnt = 0 THEN C_flag ELSE r[2]) /\ Z' = r[3] /\ IP' = IP + 3
             /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 ExecSHR_96 == memory[IP] = OP_SHR_RA
     /\ LET d == Mem(IP+1) a == DirectAddr(Mem(IP+2)) IN
@@ -172,6 +191,7 @@ ExecSHR_96 == memory[IP] = OP_SHR_RA
             SetRegNoSP(d, r[1]) /\ C_flag' = (IF cnt = 0 THEN C_flag ELSE r[2]) /\ Z' = r[3] /\ IP' = IP + 3
             /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 ExecSHR_97 == memory[IP] = OP_SHR_RC
     /\ LET d == Mem(IP+1) cnt == Mem(IP+2) IN
@@ -180,5 +200,6 @@ ExecSHR_97 == memory[IP] = OP_SHR_RC
             SetRegNoSP(d, r[1]) /\ C_flag' = (IF cnt = 0 THEN C_flag ELSE r[2]) /\ Z' = r[3] /\ IP' = IP + 3
             /\ UNCHANGED <<SP,DP,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 =============================================================================

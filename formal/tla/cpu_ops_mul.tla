@@ -10,6 +10,7 @@ ExecMUL_60 == memory[IP] = OP_MUL_R
             A' = r[1] /\ C_flag' = r[2] /\ Z' = r[3] /\ IP' = IP + 2
             /\ UNCHANGED <<SP,DP,B,C,D,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 ExecMUL_61 == memory[IP] = OP_MUL_I
     /\ LET dec == DecodeIndirect(Mem(IP+1)) IN
@@ -18,18 +19,21 @@ ExecMUL_61 == memory[IP] = OP_MUL_I
             A' = r[1] /\ C_flag' = r[2] /\ Z' = r[3] /\ IP' = IP + 2
             /\ UNCHANGED <<SP,DP,B,C,D,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 ExecMUL_62 == memory[IP] = OP_MUL_A
     /\ LET a == DirectAddr(Mem(IP+1)) r == CheckOp(A * Mem(a)) IN
        A' = r[1] /\ C_flag' = r[2] /\ Z' = r[3] /\ IP' = IP + 2
        /\ UNCHANGED <<SP,DP,B,C,D,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
        /\ UNCHANGED vu_vars
+       /\ UNCHANGED mu_vars
 
 ExecMUL_63 == memory[IP] = OP_MUL_C
     /\ LET v == Mem(IP+1) r == CheckOp(A * v) IN
        A' = r[1] /\ C_flag' = r[2] /\ Z' = r[3] /\ IP' = IP + 2
        /\ UNCHANGED <<SP,DP,B,C,D,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
        /\ UNCHANGED vu_vars
+       /\ UNCHANGED mu_vars
 
 \* DIV (64-67) - division by zero causes fault
 ExecDIV_64 == memory[IP] = OP_DIV_R
@@ -41,6 +45,7 @@ ExecDIV_64 == memory[IP] = OP_DIV_R
                  A' = r[1] /\ C_flag' = r[2] /\ Z' = r[3] /\ IP' = IP + 2
                  /\ UNCHANGED <<SP,DP,B,C,D,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
                  /\ UNCHANGED vu_vars
+                 /\ UNCHANGED mu_vars
 
 ExecDIV_65 == memory[IP] = OP_DIV_I
     /\ LET dec == DecodeIndirect(Mem(IP+1)) IN
@@ -51,6 +56,7 @@ ExecDIV_65 == memory[IP] = OP_DIV_I
                  A' = r[1] /\ C_flag' = r[2] /\ Z' = r[3] /\ IP' = IP + 2
                  /\ UNCHANGED <<SP,DP,B,C,D,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
                  /\ UNCHANGED vu_vars
+                 /\ UNCHANGED mu_vars
 
 ExecDIV_66 == memory[IP] = OP_DIV_A
     /\ LET a == DirectAddr(Mem(IP+1)) v == Mem(a) IN
@@ -59,6 +65,7 @@ ExecDIV_66 == memory[IP] = OP_DIV_A
             A' = r[1] /\ C_flag' = r[2] /\ Z' = r[3] /\ IP' = IP + 2
             /\ UNCHANGED <<SP,DP,B,C,D,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 ExecDIV_67 == memory[IP] = OP_DIV_C
     /\ LET v == Mem(IP+1) IN
@@ -67,5 +74,6 @@ ExecDIV_67 == memory[IP] = OP_DIV_C
             A' = r[1] /\ C_flag' = r[2] /\ Z' = r[3] /\ IP' = IP + 2
             /\ UNCHANGED <<SP,DP,B,C,D,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 =============================================================================

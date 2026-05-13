@@ -38,6 +38,7 @@ VSETWriteback(target, val, ip_inc) ==
          /\ IP' = IP + ip_inc
          /\ UNCHANGED unch_sync
          /\ UNCHANGED <<VFPSR_reg, vu_queue, vu_fault>>
+         /\ UNCHANGED mu_vars
 
 ExecVSET_163 == memory[IP] = OP_VSET_IMM16
     /\ LET t == Mem(IP+1) IN
@@ -72,11 +73,13 @@ ExecVFSTAT_167 == memory[IP] = OP_VFSTAT
        ELSE /\ SetRegABCD(g, VFPSR_reg) /\ IP' = IP + 2
             /\ UNCHANGED <<SP,DP,Z,C_flag,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 ExecVFCLR_168 == memory[IP] = OP_VFCLR
     /\ VFPSR_reg' = 0 /\ IP' = IP + 1
     /\ UNCHANGED unch_sync
     /\ UNCHANGED <<VA_reg, VB_reg, VC_reg, VM_reg, VL_reg, vu_queue, vu_fault>>
+    /\ UNCHANGED mu_vars
 
 ExecVWAIT_169_fault == memory[IP] = OP_VWAIT
     /\ vu_queue = <<>>
@@ -85,12 +88,14 @@ ExecVWAIT_169_fault == memory[IP] = OP_VWAIT
     /\ vu_fault' = 0
     /\ UNCHANGED <<IP,SP,DP,B,C,D,Z,C_flag,memory,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
     /\ UNCHANGED <<VA_reg,VB_reg,VC_reg,VM_reg,VL_reg,VFPSR_reg,vu_queue>>
+    /\ UNCHANGED mu_vars
 
 ExecVWAIT_169_ok == memory[IP] = OP_VWAIT
     /\ vu_queue = <<>>
     /\ vu_fault = 0
     /\ IP' = IP + 1
     /\ UNCHANGED unch_sync /\ UNCHANGED vu_vars
+    /\ UNCHANGED mu_vars
 
 ExecVWAIT_169 == ExecVWAIT_169_fault \/ ExecVWAIT_169_ok
 
@@ -114,8 +119,9 @@ AutoInc(op, mode, vl, sz) ==
                    ELSE IF op = OP_VCMP THEN vl
                    ELSE IF mode = 3 THEN s
                    ELSE S
-        s1_inc == IF op = OP_VSEL \/ (op = OP_VMOV /\ mode = 2) THEN 0 ELSE S
-        s2_inc == IF op \in {OP_VSQRT,OP_VNEG,OP_VABS,OP_VMOV} THEN 0
+        s1_inc == IF op = OP_VSEL \/ (op = OP_VMOV /\ mode \in {1, 2}) THEN 0
+                  ELSE S
+        s2_inc == IF op \in {OP_VSQRT,OP_VEXP,OP_VNEG,OP_VABS,OP_VMOV} THEN 0
                   ELSE IF mode \in {1, 2, 3} THEN 0
                   ELSE S
     IN <<dst_inc, s1_inc, s2_inc>>
@@ -152,6 +158,7 @@ ExecVAsync_noop(op) ==
     /\ VL_reg = 0
     /\ IP' = IP + InstrSize(op)
     /\ UNCHANGED unch_sync /\ UNCHANGED vu_vars
+    /\ UNCHANGED mu_vars
 
 \* Async: normal push to queue + auto-increment
 ExecVAsync_push(op) ==
@@ -185,6 +192,7 @@ ExecVAsync_push(op) ==
           /\ VM_reg' = (VM_reg + apply[3]) % MEM_SIZE
           /\ VL_reg' = VL_reg /\ VFPSR_reg' = VFPSR_reg
           /\ UNCHANGED unch_sync
+          /\ UNCHANGED mu_vars
 
 ExecVAsync(op) == ExecVAsync_fault(op) \/ ExecVAsync_noop(op) \/ ExecVAsync_push(op)
 
@@ -201,7 +209,12 @@ ExecVABS_179  == ExecVAsync(OP_VABS)
 ExecVCMP_180  == ExecVAsync(OP_VCMP)
 ExecVSEL_181  == ExecVAsync(OP_VSEL)
 ExecVMOV_182  == ExecVAsync(OP_VMOV)
-ExecVFILL_183 == memory[IP] = 183 /\ Fault(ERR_INVALID_OPCODE)
+\* opcode 183 is reserved (was VFILL alias) — executing it faults
+ExecRESERVED_183 == memory[IP] = 183 /\ Fault(ERR_INVALID_OPCODE)
+ExecVGATHER_184  == ExecVAsync(OP_VGATHER)
+ExecVSCATTER_185 == ExecVAsync(OP_VSCATTER)
+ExecVFMADD_186   == ExecVAsync(OP_VFMADD)
+ExecVEXP_187     == ExecVAsync(OP_VEXP)
 
 -----------------------------------------------------------------------------
 (* VU execution step — processes one command from queue *)
@@ -212,11 +225,12 @@ Mod(a, b) == a - (a \div b) * b
 WriteByte(mem, addr, val) ==
     [mem EXCEPT ![Mod(addr, MEM_SIZE)] = Mod(val, 256)]
 
-\* Shared: unchanged CPU + VU pointer state
+\* Shared: unchanged CPU + VU pointer state + all MU state
 VuUnchangedCPU ==
     UNCHANGED <<IP,SP,DP,A,B,C,D,Z,C_flag,F,state,step_count,cycles,
                 FA_reg,FB_reg,FPCR_reg,FPSR_reg,
-                VA_reg,VB_reg,VC_reg,VM_reg,VL_reg>>
+                VA_reg,VB_reg,VC_reg,VM_reg,VL_reg,
+                MA_reg,MB_reg,MC_reg,MM_reg,MN_reg,MK_reg,MFPSR_reg,mu_queue,mu_fault>>
 
 \* OOB check for a command
 VuOOB(cmd) ==
