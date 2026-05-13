@@ -1,6 +1,6 @@
 # Appendix B: Error Codes
 
-> Architecture v3 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [CPU Architecture](cpu.md), [Microarchitecture](uarch.md), [FPU](fp.md), [Vector Unit](vector.md)
+> Architecture v3 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [CPU Architecture](cpu.md), [Microarchitecture](uarch.md), [FPU](fp.md), [Vector Unit](vu.md)
 
 ## Fault Invariant
 
@@ -36,6 +36,6 @@ FP arithmetic exceptions (Invalid, DivZero, Overflow, Underflow, Inexact) do **n
 
 ## VU Exception Handling
 
-VU FP arithmetic exceptions (Invalid, DivZero, Overflow, Underflow, Inexact) do **not** cause FAULT. Instead, they set sticky flags in **VFPSR** (separate from scalar FPSR) and produce IEEE 754 default results. Programs detect exceptions by reading VFPSR via `VFSTAT` after `VWAIT`. See [VU Registers](vector.md#92-registers) for VFPSR details.
+VU FP arithmetic exceptions (Invalid, DivZero, Overflow, Underflow, Inexact) do **not** cause FAULT. Instead, they set sticky flags in **VFPSR** (separate from scalar FPSR) and produce IEEE 754 default results. Programs detect exceptions by reading VFPSR via `VFSTAT` after `VWAIT`. See [VU Registers](vu.md#92-registers) for VFPSR details.
 
 `ERR_VU_FORMAT` (code 14) is a decode-time FAULT triggered by invalid VFM byte encoding or unsupported format (e.g., VDOT.I, VSQRT.I). `ERR_VU_OOB` (code 13) is a runtime fault detected during VU execution when a vector access overflows the 16-bit address space. Runtime VU faults are deferred — the CPU discovers them at the next `VWAIT`.

@@ -1,6 +1,6 @@
 # 4. Microarchitecture: Interpreter Model
 
-> Architecture v3 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Memory Model & Addressing](mem.md), [CPU Architecture](cpu.md), [FPU](fp.md), [Vector Unit](vector.md)
+> Architecture v3 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Memory Model & Addressing](mem.md), [CPU Architecture](cpu.md), [FPU](fp.md), [Vector Unit](vu.md)
 
 ## 4.0 Pseudocode Conventions
 

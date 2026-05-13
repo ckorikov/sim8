@@ -1,6 +1,6 @@
 # 7. Floating-Point Unit (FPU)
 
-> Architecture v3 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Memory Model](mem.md), [CPU Architecture](cpu.md), [Microarchitecture](uarch.md), [Error Codes](errors.md), [Assembler](asm.md), [Vector Unit](vector.md)
+> Architecture v3 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Memory Model](mem.md), [CPU Architecture](cpu.md), [Microarchitecture](uarch.md), [Error Codes](errors.md), [Assembler](asm.md), [Vector Unit](vu.md)
 
 ## 7.1 Overview
 

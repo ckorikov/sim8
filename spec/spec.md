@@ -19,11 +19,24 @@
 | [3. CPU Architecture](cpu.md) | `cpu.md` |
 | [4. Microarchitecture: Interpreter Model](uarch.md) | `uarch.md` |
 | [5. Assembler Specification](asm.md) | `asm.md` |
-| [6. Test Specification](tests.md) | `tests.md` |
 | [7. Floating-Point Unit (FPU)](fp.md) | `fp.md` |
-| [8. FP Test Specification](tests-fp.md) | `tests-fp.md` |
-| [9. Vector Unit (VU)](vector.md) | `vector.md` |
+| [9. Vector Unit (VU)](vu.md) | `vu.md` |
+| [11. Matrix Unit (MU)](mu.md) | `mu.md` |
 | [Appendix B: Error Codes](errors.md) | `errors.md` |
+| **I/O** | |
+| [I/O: Display](io-display.md) | `io-display.md` |
+| [I/O: UART Terminal](io-uart.md) | `io-uart.md` |
+| [I/O: Pixel Pad](io-pad.md) | `io-pad.md` |
+| **Tests** | |
+| [CPU Tests](tests/tests-cpu.md) | `tests/tests-cpu.md` |
+| [FP Tests](tests/tests-fp.md) | `tests/tests-fp.md` |
+| [Memory Tests](tests/tests-mem.md) | `tests/tests-mem.md` |
+| [Display Tests](tests/tests-io-display.md) | `tests/tests-io-display.md` |
+| [UART Tests](tests/tests-io-uart.md) | `tests/tests-io-uart.md` |
+| [Pad Tests](tests/tests-io-pad.md) | `tests/tests-io-pad.md` |
+| [VU Tests](tests/tests-vu.md) | `tests/tests-vu.md` |
+| [MU Tests](tests/tests-mu.md) | `tests/tests-mu.md` |
+| [Error Code Tests](tests/tests-errors.md) | `tests/tests-errors.md` |
 
 ---
 
@@ -45,7 +58,7 @@ Redesigned architecture with formal specification and verification. Key changes 
 - 256 pages × 256 bytes (was 256 bytes flat)
 - New **DP register** (Data Page, code 5) selects active page for data access
 - IP/stack/jumps remain page-0 only; DP affects `[addr]` and `[reg±offset]` for GPRs
-- Memory-mapped console I/O: page 0, offsets 232-255 (24 characters)
+- Memory-mapped I/O: page 0, offsets 232-255 (display 0xE8–0xFB + UART 0xFC–0xFF; at v1 the full range was character display, later split by v3)
 
 **ISA changes:**
 
@@ -183,15 +196,17 @@ Asynchronous Vector Unit (VU) coprocessor for bulk data operations. Designed for
 - vi (immediate broadcast): inline immediate — inferred when 3rd operand is number
 - r (reduction): scalar result — inferred when 2 operands
 
-**Vector instructions (23 opcodes, 163–185):**
+**Vector instructions (25 opcodes, 163–187):**
 
 - Configuration: VSET (4 opcodes), VFSTAT, VFCLR, VWAIT
 - Arithmetic: VADD, VSUB, VMUL, VDIV, VMAX, VMIN (6 opcodes, each with vv/vs/vi/r modes)
 - Dot product: VDOT (all pointer operands auto-increment per universal rule)
 - Unary: VSQRT, VNEG, VABS
 - Mask: VCMP (6 conditions: EQ/NE/LT/LE/GT/GE) → byte mask at [VM]; VSEL (select by mask)
-- Memory: VMOV (copy with auto-increment), VFILL (fill with immediate)
+- Memory: VMOV (copy with auto-increment)
 - Gather/Scatter: VGATHER (mask compress), VSCATTER (mask expand)
+- Conversion: VCVT (element-wise format conversion; subsumes FCVT/FITOF/FFTOI analogues)
+- Extended: VFMADD (fused multiply-add), VEXP (exponential)
 
 **VFM Byte Encoding:**
 
@@ -217,4 +232,4 @@ Asynchronous Vector Unit (VU) coprocessor for bulk data operations. Designed for
 - ERR_VU_OOB (13): VU memory access overflow
 - ERR_VU_FORMAT (14): invalid VFM byte encoding
 
-**Totals:** 132 opcodes assigned (74 integer + 35 FP + 23 vector), 124 free, 9 error codes
+**Totals:** 134 opcodes assigned (74 integer + 35 FP + 25 vector), 122 free, 9 error codes

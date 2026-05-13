@@ -10,7 +10,7 @@ Asynchronous coprocessor for bulk SIMD operations on contiguous memory. The CPU 
 |----------|-------|
 | Queue | FIFO, in-order (see [uarch §4.6b](uarch.md#46b-vu-pipeline) for depth) |
 | Sync instructions | VSET (163–166), VFSTAT (167), VFCLR (168), VWAIT (169) |
-| Async commands | VADD–VSCATTER (170–185) — see `spec/isa.json` |
+| Async commands | VADD–VEXP (170–187), VCVT (183) — see `spec/isa.json` |
 | Memory | Shared 64 KB, absolute addressing (DP ignored), no coherence |
 
 ## 9.2 Registers
@@ -48,20 +48,20 @@ Codes 0–4: same as scalar [FPM](fp.md#75-fpm-byte-encoding). Plus two VU-only 
 | 6 | `.I` | INT8 | 1 B | Signed two's complement, wrapping |
 | 7 | — | Reserved | — | FAULT |
 
-Integer VDIV truncates toward zero. Integer division by zero → FAULT(`ERR_DIV_ZERO`) deferred via VWAIT. VDOT and VSQRT invalid for integer → FAULT.
+Integer VDIV truncates toward zero. Integer division by zero → FAULT(`ERR_DIV_ZERO`) deferred via VWAIT. VDOT, VSQRT, VFMADD and VEXP invalid for integer → FAULT.
 
 ## 9.4 SIMD Modes
 
 | mode | Semantics ($i = 0 \ldots \text{VL}{-}1$) | Inferred when |
 |------|-----------|---------------|
 | 0 (vv) | $d[i] = s1[i] \mathbin{op} s2[i]$ | 3rd operand is VU register |
-| 1 (vs) | $d[i] = s1[i] \mathbin{op} \text{gpr}$ (GPR scalar broadcast) | 3rd operand is GPR (A–D) |
+| 1 (vs) | $d[i] = s1[i] \mathbin{op} \text{mem}[s2\_ptr]$ (memory-scalar broadcast — CPU reads 1 element of `fmt` from `mem[s2_ptr]` at issue, snapshots into command, broadcasts) | explicit `.vs` mode suffix; 3rd VU register is the scalar pointer |
 | 2 (vi) | $d[i] = s1[i] \mathbin{op} \text{imm}$ (immediate broadcast, size = elem_size, LE) | 3rd operand is number |
 | 3 (r) | $[d] = s1[0] \mathbin{op} \ldots \mathbin{op} s1[\text{VL}{-}1]$ (reduction, left-to-right) | 2 operands |
 
 **Mode inference:** The assembler infers the mode from operand types. Explicit mode suffixes (`.vv`, `.vs`, `.vi`, `.r`) are accepted for backward compatibility but not required.
 
-**GPR broadcast (mode 1):** The CPU reads the GPR value (8-bit) at issue time and stores it in the command entry. The VU broadcasts this value to all lanes. Restricted to byte formats (O3, O2, U, I); multi-byte FP formats (F, H, BF) → FAULT(`ERR_VU_FORMAT`). Use VMOV vi mode for FP scalar broadcast. The register byte src2 field encodes the GPR code (A=0, B=1, C=2, D=3) when mode=1.
+**Memory-scalar broadcast (mode 1, .vs):** The CPU reads `elem_size` bytes from `mem[VU.read_ptr(s2_code)]` at issue time and stores them in the command entry. The VU broadcasts this value to all lanes. Works for **all** formats (FP and integer). The s2 field encodes a VU pointer register (VA=0, VB=1, VC=2, VM=3); the pointer itself does NOT auto-advance — snapshot once, reusable for repeated broadcasts.
 
 ## 9.5 Auto-Increment
 
@@ -75,7 +75,7 @@ $S = \text{VL} \times \text{elem\_size}$, $s = \text{elem\_size}$.
 | src1 | $+S$ | $+S$ | $+S$ | $+S$ |
 | src2 | $+S$ | — | — | — |
 
-**Overrides:** VDOT dst $+s$. VCMP dst $+\text{VL}$. VSEL mask no advance. VMOV unary — dst and src1 only. VMOV vi — dst only. VGATHER/VSCATTER — see §9.11.
+**Overrides:** VDOT dst $+s$. VCMP dst $+\text{VL}$. VSEL mask no advance. VMOV vv — dst and src1 only. VMOV vs/vi — dst only (s2 pointer in vs does not advance). VGATHER/VSCATTER — see §9.11. VCVT — dst $+\text{VL}\times\text{dst\_elem\_size}$, src1 $+\text{VL}\times\text{src\_elem\_size}$ (strides differ when converting across format boundaries).
 
 **Deduplication:** Same register in multiple roles → advance **once** by the largest stride. VL = 0 → no advance.
 
@@ -126,6 +126,20 @@ This cost is internal to the VU and does not appear in the CPU `cycles` counter 
 
 Bits [7:5] must be 000; non-zero → FAULT(`ERR_VU_FORMAT`).
 
+### VCVT Encoding (Opcode 183, 4 bytes)
+
+```
+[183, dst_vfm, src_vfm, reg_byte]
+```
+
+- **dst_vfm**: standard VFM byte — bits [7:5] reserved (000), bits [4:3] mode (vv=00, vs=01), bits [2:0] dst_fmt.
+- **src_vfm**: format-only VFM byte — bits [7:3] reserved (00000), bits [2:0] src_fmt. (Mode is encoded only in dst_vfm.)
+- **reg_byte**: standard register byte. For vs mode, src2 encodes the scalar pointer register; pointer does not auto-advance.
+
+Mode r is invalid for VCVT → FAULT(`ERR_VU_FORMAT`). Reserved bits non-zero → FAULT(`ERR_VU_FORMAT`).
+
+**vi mode:** `[183, dst_vfm, src_vfm, reg_byte, imm×src_elem_size]` — immediate is in src_fmt (src_elem_size bytes, LE), converted to dst_fmt and broadcast to VL elements. Total length: 4 + src_elem_size bytes.
+
 ### VCMP Cond Byte (4th byte, VCMP only)
 
 ```
@@ -152,15 +166,17 @@ Bits [7:3] must be 0. cond: EQ=0, NE=1, LT=2, LE=3, GT=4, GE=5. Values 6–7 →
 
 | Category | Instructions | Valid modes | Valid formats | Notes |
 |----------|-------------|-------------|---------------|-------|
-| Arithmetic | VADD–VMIN | vv, vs, vi, r | all | vs: byte formats only (O3/O2/U/I) |
+| Arithmetic | VADD–VMIN | vv, vs, vi, r | all | vs: explicit `.vs` suffix; s2 (3rd VU reg) is scalar pointer — read 1 element |
 | Dot product | VDOT | vv | FP only | Integer → FAULT(`ERR_VU_FORMAT`) |
-| Unary | VSQRT | vv (unary) | FP only | Integer → FAULT(`ERR_VU_FORMAT`) |
+| Fused MAC | VFMADD | vv, vs, vi | FP only | `dst += src1 * src2`; .vs: s2 is scalar pointer (read 1 elem from mem); integer → FAULT(`ERR_VU_FORMAT`) |
+| Unary | VSQRT, VEXP | vv (unary) | FP only | Integer → FAULT(`ERR_VU_FORMAT`) |
 | Unary | VNEG, VABS | vv (unary) | all | src2 must be 0 |
 | Compare | VCMP | vv | all | 4 bytes (cond in byte 3; see above) |
 | Select | VSEL | vv | all | Reads mask from VM |
-| Memory | VMOV | vv (unary), vi | all | vi mode: `VFILL` is an assembler alias |
+| Memory | VMOV | vv (unary), vs, vi | all | vv: copy VL elements; .vs: memory-scalar broadcast — s2 (2nd VU reg in syntax) is the scalar pointer; vi: immediate broadcast |
 | Gather | VGATHER | vv (unary) | all | Mask compress; see §9.11 |
 | Scatter | VSCATTER | vv (unary) | all | Mask expand; see §9.11 |
+| Conversion | VCVT | vv, vs, vi | any two formats (including same) | 4-byte base + src_elem_size for vi (see VCVT Encoding above); dst and src elem_size may differ; subsumes FCVT/FITOF/FFTOI scalar analogues |
 
 Invalid mode or format combination → FAULT(`ERR_VU_FORMAT`).
 
@@ -179,12 +195,21 @@ Invalid mode or format combination → FAULT(`ERR_VU_FORMAT`).
 - **VMAX/VMIN FP:** IEEE 754-2019 — NaN → return non-NaN operand.
 - **VMAX/VMIN integer:** `.U` unsigned comparison; `.I` signed comparison (e.g., `VMAX.I` of 0x80 and 0x01 returns 0x01, since −128 < 1).
 - **VDOT:** FP only. Intermediate precision ≥ source format.
+- **VFMADD:** Fused multiply-add `dst[i] = dst[i] + src1[i] × src2[i]`. FP only — integer → FAULT(`ERR_VU_FORMAT`). Modes vv/vs/vi (no reduction). `dst` is read-modify-write; auto-increment treats `dst` as a single output stride (`+S` per call), and accumulation into `dst[i]` happens before the pointer advances. Multiplication uses intermediate precision ≥ source format (same accumulator policy as VDOT). Exception flags accumulate across elements: NV (NaN/sNaN), OF (overflow on `a*b` or final sum), UF (underflow), NX (rounding).
+- **VEXP:** Element-wise exp `dst[i] = exp(src1[i])`. FP only — integer → FAULT(`ERR_VU_FORMAT`). vv mode only (unary). exp(±0)=1, exp(+∞)=+∞, exp(−∞)=+0, exp(NaN)=NaN (signaling NaN → NV). Overflow → +∞ + OF + NX; gradual underflow → ±0 + UF + NX. Inexact results set NX.
 - **VNEG:** FP flips sign; integer: two's complement negate (wrapping).
 - **VABS:** FP clears sign; .U: identity; .I: wrapping (-128 → -128).
 - **VCMP:** Byte mask (0xFF/0x00). FP NaN → false (except NE). Integer: `.U` unsigned; `.I` signed. 4-byte encoding (cond in byte 3, see §9.7). See §9.11.
 - **VSEL:** `dst[i] = mask[i] ? dst[i] : alt[i]`. Overlap undefined. See §9.11.
-- **VMOV:** Unary: raw byte copy, no conversion. vi mode: `dst[i] = imm` broadcast; `VFILL` is an assembler alias. Overlap undefined.
+- **VMOV:** Unary (vv): raw byte copy, no conversion. vs mode: `dst[i] = mem[s2_ptr]` — CPU reads 1 element of `fmt` from `mem[s2_ptr]` at issue, broadcasts to VL destinations. Works for all formats. vi mode: `dst[i] = imm` broadcast (immediate from instruction stream). vs/vi modes: src1 not used (no auto-increment of src1); s2 pointer in vs does NOT advance (snapshot once). Overlap undefined.
 - **VGATHER/VSCATTER:** Mask compress/expand. See §9.11.
+- **VCVT:** Element-wise format conversion: `dst[i] = convert<dst_fmt>(src[i])`. Subsumes scalar FCVT/FITOF/FFTOI analogues — the direction is determined by the format suffix pair.
+  - **FP → FP:** IEEE 754 rounding. NV if sNaN input. OF (→ ±∞) if narrowing overflows. UF for gradual underflow. NX if result is inexact.
+  - **int → FP:** UINT8/INT8 are exactly representable in F/H/BF formats; OFP8 formats (O3/O2) may round — NX only. No NV/OF/UF possible.
+  - **FP → UINT8:** Saturate to [0, 255]; truncate toward zero. NaN → 0, NV set. ±∞ or out-of-range → clamp to 0/255, NV set. NX if fractional part discarded.
+  - **FP → INT8:** Saturate to [−128, 127]; truncate toward zero. NaN → 0, NV set. Out-of-range → clamp, NV set. NX if fractional part discarded.
+  - Same src and dst format: valid identity conversion (equivalent to VMOV.vv, but pointer strides are still computed from the single format).
+  - Format 7 in either field → FAULT(`ERR_VU_FORMAT`).
 
 ## 9.10 Assembly
 
@@ -200,15 +225,26 @@ VADD.U VC, VA, 42             ; number → immediate broadcast (mode 2)
 VADD.U VC, VA                 ; 2 operands → reduction (mode 3)
 VDOT.F VC, VA, VB             ; single-mode (always vv)
 VCMP.U.LT VM, VA, VB          ; condition suffix (always vv), 4 bytes
-VMOV.U VC, VA                 ; unary: raw byte copy
-VMOV.U VC, 0                  ; vi mode: broadcast fill (VFILL alias)
-VFILL.U VC, 0                 ; same as above
+VMOV.U VC, VA                 ; vv: raw byte copy
+VMOV.BF.vs VC, VB             ; vs: read 1 bf16 from mem[VB], broadcast to VL bf16s
+VMOV.U VC, 0                  ; vi: broadcast immediate fill
+VADD.BF.vs VC, VA, VB         ; arithmetic .vs: VC[i] = VA[i] + mem[VB] (scalar broadcast)
 VGATHER.U VB, VA              ; mask compress: pack where VM[i]!=0
 VSCATTER.U VB, VA             ; mask expand: unpack where VM[i]!=0
+VCVT.H.F VC, VA               ; FP32→FP16 element-wise (FCVT analogue)
+VCVT.F.U VC, VA               ; UINT8→FP32 element-wise (FITOF analogue)
+VCVT.U.F VC, VA               ; FP32→UINT8 saturating (FFTOI analogue)
+VCVT.I.BF VC, VA              ; BF16→INT8 saturating
+VCVT.H.F.vs VC, VB            ; convert scalar FP32 at mem[VB] → FP16, broadcast VL times
+VCVT.F.U VC, 42               ; vi: convert uint8(42) → float32, broadcast VL times
 VWAIT                          ; sync
 ```
 
 Format suffix mandatory. Mode suffix optional — inferred from operands (see §9.4). Condition suffix required for VCMP.
+
+**VCVT double suffix:** `VCVT.dstfmt.srcfmt` — first suffix is the destination format, second is the source format. Order matches operand order (dst, src). Example: `VCVT.H.F VC, VA` converts VA (float32) → VC (float16).
+
+**Note on VCLASS:** A `VCLASS` instruction (bulk FP classification → UINT8 mask, analogue of scalar FCLASS) is a natural extension but is not included in v3 — no opcode slots remain in the VU range (163–187). Reserved for a future architecture revision.
 
 ## 9.11 Mask Operations
 
