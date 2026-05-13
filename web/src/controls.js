@@ -87,10 +87,10 @@ function tick() {
     runTimer = setTimeout(tick, tickDelay(hz));
 }
 
-async function startRun() {
+function startRun() {
     if (runTimer) return;
     if (isCpuTerminated()) {
-        await _onReset();
+        cpu.restart();
     }
     _skipBpOnce = true;
     setRunUI(true);
