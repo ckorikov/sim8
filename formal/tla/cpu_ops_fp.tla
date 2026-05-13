@@ -17,6 +17,7 @@ ExecFMOV_128 == memory[IP] = OP_FMOV_FA
                        /\ IP' = IP + 3
                        /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg,FPSR_reg>>
                        /\ UNCHANGED vu_vars
+                       /\ UNCHANGED mu_vars
 
 \* FMOV FP, [reg] (129) — Load via register indirect
 ExecFMOV_129 == memory[IP] = OP_FMOV_FI
@@ -33,6 +34,7 @@ ExecFMOV_129 == memory[IP] = OP_FMOV_FI
                                /\ IP' = IP + 3
                                /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg,FPSR_reg>>
                                /\ UNCHANGED vu_vars
+                               /\ UNCHANGED mu_vars
 
 \* FMOV [addr], FP (130) — Store to direct address
 ExecFMOV_130 == memory[IP] = OP_FMOV_AF
@@ -59,6 +61,7 @@ ExecFMOV_130 == memory[IP] = OP_FMOV_AF
                        /\ IP' = IP + 3
                        /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
                        /\ UNCHANGED vu_vars
+                       /\ UNCHANGED mu_vars
 
 \* FMOV [reg], FP (131) — Store via register indirect
 ExecFMOV_131 == memory[IP] = OP_FMOV_IF
@@ -87,6 +90,7 @@ ExecFMOV_131 == memory[IP] = OP_FMOV_IF
                                /\ IP' = IP + 3
                                /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
                                /\ UNCHANGED vu_vars
+                               /\ UNCHANGED mu_vars
 
 \* ===== FP Arithmetic Helpers =====
 
@@ -130,6 +134,7 @@ ExecFADD_132 == memory[IP] = OP_FADD_A
                                /\ IP' = IP + 3
                                /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                                /\ UNCHANGED vu_vars
+                               /\ UNCHANGED mu_vars
                        ELSE
                             \E result \in FP_ORACLE:
                                 LET new_val == FPWriteVal(phys, fmt, pos, result)
@@ -138,6 +143,7 @@ ExecFADD_132 == memory[IP] = OP_FADD_A
                                    /\ IP' = IP + 3
                                    /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                                    /\ UNCHANGED vu_vars
+                                   /\ UNCHANGED mu_vars
 
 ExecFADD_133 == memory[IP] = OP_FADD_I
     /\ LET fpm == Mem(IP+1) fv == ValidateFPM(fpm) IN
@@ -162,6 +168,7 @@ ExecFADD_133 == memory[IP] = OP_FADD_I
                                        /\ IP' = IP + 3
                                        /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                                        /\ UNCHANGED vu_vars
+                                       /\ UNCHANGED mu_vars
                                ELSE
                                     \E result \in FP_ORACLE:
                                         LET new_val == FPWriteVal(phys, fmt, pos, result)
@@ -170,6 +177,7 @@ ExecFADD_133 == memory[IP] = OP_FADD_I
                                            /\ IP' = IP + 3
                                            /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                                            /\ UNCHANGED vu_vars
+                                           /\ UNCHANGED mu_vars
 
 \* ===== FSUB (134-135) — same structure as FADD =====
 
@@ -194,6 +202,7 @@ ExecFSUB_134 == memory[IP] = OP_FSUB_A
                                /\ IP' = IP + 3
                                /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                                /\ UNCHANGED vu_vars
+                               /\ UNCHANGED mu_vars
                        ELSE
                             \E result \in FP_ORACLE:
                                 LET new_val == FPWriteVal(phys, fmt, pos, result)
@@ -202,6 +211,7 @@ ExecFSUB_134 == memory[IP] = OP_FSUB_A
                                    /\ IP' = IP + 3
                                    /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                                    /\ UNCHANGED vu_vars
+                                   /\ UNCHANGED mu_vars
 
 ExecFSUB_135 == memory[IP] = OP_FSUB_I
     /\ LET fpm == Mem(IP+1) fv == ValidateFPM(fpm) IN
@@ -226,6 +236,7 @@ ExecFSUB_135 == memory[IP] = OP_FSUB_I
                                        /\ IP' = IP + 3
                                        /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                                        /\ UNCHANGED vu_vars
+                                       /\ UNCHANGED mu_vars
                                ELSE
                                     \E result \in FP_ORACLE:
                                         LET new_val == FPWriteVal(phys, fmt, pos, result)
@@ -234,6 +245,7 @@ ExecFSUB_135 == memory[IP] = OP_FSUB_I
                                            /\ IP' = IP + 3
                                            /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                                            /\ UNCHANGED vu_vars
+                                           /\ UNCHANGED mu_vars
 
 \* ===== FMUL (136-137) =====
 
@@ -258,6 +270,7 @@ ExecFMUL_136 == memory[IP] = OP_FMUL_A
                                /\ IP' = IP + 3
                                /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                                /\ UNCHANGED vu_vars
+                               /\ UNCHANGED mu_vars
                        ELSE
                             \E result \in FP_ORACLE:
                                 LET new_val == FPWriteVal(phys, fmt, pos, result)
@@ -266,6 +279,7 @@ ExecFMUL_136 == memory[IP] = OP_FMUL_A
                                    /\ IP' = IP + 3
                                    /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                                    /\ UNCHANGED vu_vars
+                                   /\ UNCHANGED mu_vars
 
 ExecFMUL_137 == memory[IP] = OP_FMUL_I
     /\ LET fpm == Mem(IP+1) fv == ValidateFPM(fpm) IN
@@ -290,6 +304,7 @@ ExecFMUL_137 == memory[IP] = OP_FMUL_I
                                        /\ IP' = IP + 3
                                        /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                                        /\ UNCHANGED vu_vars
+                                       /\ UNCHANGED mu_vars
                                ELSE
                                     \E result \in FP_ORACLE:
                                         LET new_val == FPWriteVal(phys, fmt, pos, result)
@@ -298,6 +313,7 @@ ExecFMUL_137 == memory[IP] = OP_FMUL_I
                                            /\ IP' = IP + 3
                                            /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                                            /\ UNCHANGED vu_vars
+                                           /\ UNCHANGED mu_vars
 
 \* ===== FDIV (138-139) — also detects division by zero =====
 
@@ -325,6 +341,7 @@ ExecFDIV_138 == memory[IP] = OP_FDIV_A
                                /\ IP' = IP + 3
                                /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                                /\ UNCHANGED vu_vars
+                               /\ UNCHANGED mu_vars
                        ELSE IF is_div_zero THEN
                             LET rsign == BitXor(FP_sign(reg_val, fmt), FP_sign(mem_val, fmt))
                                 inf_result == IF rsign = 0 THEN FP_posInf(fmt) ELSE FP_negInf(fmt)
@@ -334,6 +351,7 @@ ExecFDIV_138 == memory[IP] = OP_FDIV_A
                                /\ IP' = IP + 3
                                /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                                /\ UNCHANGED vu_vars
+                               /\ UNCHANGED mu_vars
                        ELSE
                             \E result \in FP_ORACLE:
                                 LET new_val == FPWriteVal(phys, fmt, pos, result)
@@ -342,6 +360,7 @@ ExecFDIV_138 == memory[IP] = OP_FDIV_A
                                    /\ IP' = IP + 3
                                    /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                                    /\ UNCHANGED vu_vars
+                                   /\ UNCHANGED mu_vars
 
 ExecFDIV_139 == memory[IP] = OP_FDIV_I
     /\ LET fpm == Mem(IP+1) fv == ValidateFPM(fpm) IN
@@ -369,6 +388,7 @@ ExecFDIV_139 == memory[IP] = OP_FDIV_I
                                        /\ IP' = IP + 3
                                        /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                                        /\ UNCHANGED vu_vars
+                                       /\ UNCHANGED mu_vars
                                ELSE IF is_div_zero THEN
                                     LET rsign == BitXor(FP_sign(reg_val, fmt), FP_sign(mem_val, fmt))
                                         inf_result == IF rsign = 0 THEN FP_posInf(fmt) ELSE FP_negInf(fmt)
@@ -378,6 +398,7 @@ ExecFDIV_139 == memory[IP] = OP_FDIV_I
                                        /\ IP' = IP + 3
                                        /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                                        /\ UNCHANGED vu_vars
+                                       /\ UNCHANGED mu_vars
                                ELSE
                                     \E result \in FP_ORACLE:
                                         LET new_val == FPWriteVal(phys, fmt, pos, result)
@@ -386,6 +407,7 @@ ExecFDIV_139 == memory[IP] = OP_FDIV_I
                                            /\ IP' = IP + 3
                                            /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                                            /\ UNCHANGED vu_vars
+                                           /\ UNCHANGED mu_vars
 
 \* ===== FCMP (140-141) — Sets Z and C_flag =====
 
@@ -408,6 +430,7 @@ ExecFCMP_140 == memory[IP] = OP_FCMP_A
                             /\ IP' = IP + 3
                             /\ UNCHANGED <<SP,DP,A,B,C,D,F,memory,state,FA_reg,FB_reg,FPCR_reg>>
                             /\ UNCHANGED vu_vars
+                            /\ UNCHANGED mu_vars
                        ELSE
                             IF FP_isZero(reg_val, fmt) /\ FP_isZero(mem_val, fmt) THEN
                                 Z' = TRUE /\ C_flag' = FALSE
@@ -415,24 +438,28 @@ ExecFCMP_140 == memory[IP] = OP_FCMP_A
                                 /\ IP' = IP + 3
                                 /\ UNCHANGED <<SP,DP,A,B,C,D,F,memory,state,FA_reg,FB_reg,FPCR_reg>>
                                 /\ UNCHANGED vu_vars
+                                /\ UNCHANGED mu_vars
                             ELSE IF reg_val = mem_val THEN
                                 Z' = TRUE /\ C_flag' = FALSE
                                 /\ FPSR_reg' = FPSetFlags({})
                                 /\ IP' = IP + 3
                                 /\ UNCHANGED <<SP,DP,A,B,C,D,F,memory,state,FA_reg,FB_reg,FPCR_reg>>
                                 /\ UNCHANGED vu_vars
+                                /\ UNCHANGED mu_vars
                             ELSE IF FP_less(reg_val, mem_val, fmt) THEN
                                 Z' = FALSE /\ C_flag' = TRUE
                                 /\ FPSR_reg' = FPSetFlags({})
                                 /\ IP' = IP + 3
                                 /\ UNCHANGED <<SP,DP,A,B,C,D,F,memory,state,FA_reg,FB_reg,FPCR_reg>>
                                 /\ UNCHANGED vu_vars
+                                /\ UNCHANGED mu_vars
                             ELSE
                                 Z' = FALSE /\ C_flag' = FALSE
                                 /\ FPSR_reg' = FPSetFlags({})
                                 /\ IP' = IP + 3
                                 /\ UNCHANGED <<SP,DP,A,B,C,D,F,memory,state,FA_reg,FB_reg,FPCR_reg>>
                                 /\ UNCHANGED vu_vars
+                                /\ UNCHANGED mu_vars
 
 ExecFCMP_141 == memory[IP] = OP_FCMP_I
     /\ LET fpm == Mem(IP+1) fv == ValidateFPM(fpm) IN
@@ -454,6 +481,7 @@ ExecFCMP_141 == memory[IP] = OP_FCMP_I
                                     /\ IP' = IP + 3
                                     /\ UNCHANGED <<SP,DP,A,B,C,D,F,memory,state,FA_reg,FB_reg,FPCR_reg>>
                                     /\ UNCHANGED vu_vars
+                                    /\ UNCHANGED mu_vars
                                ELSE
                                     IF FP_isZero(reg_val, fmt) /\ FP_isZero(mem_val, fmt) THEN
                                         Z' = TRUE /\ C_flag' = FALSE
@@ -461,24 +489,28 @@ ExecFCMP_141 == memory[IP] = OP_FCMP_I
                                         /\ IP' = IP + 3
                                         /\ UNCHANGED <<SP,DP,A,B,C,D,F,memory,state,FA_reg,FB_reg,FPCR_reg>>
                                         /\ UNCHANGED vu_vars
+                                        /\ UNCHANGED mu_vars
                                     ELSE IF reg_val = mem_val THEN
                                         Z' = TRUE /\ C_flag' = FALSE
                                         /\ FPSR_reg' = FPSetFlags({})
                                         /\ IP' = IP + 3
                                         /\ UNCHANGED <<SP,DP,A,B,C,D,F,memory,state,FA_reg,FB_reg,FPCR_reg>>
                                         /\ UNCHANGED vu_vars
+                                        /\ UNCHANGED mu_vars
                                     ELSE IF FP_less(reg_val, mem_val, fmt) THEN
                                         Z' = FALSE /\ C_flag' = TRUE
                                         /\ FPSR_reg' = FPSetFlags({})
                                         /\ IP' = IP + 3
                                         /\ UNCHANGED <<SP,DP,A,B,C,D,F,memory,state,FA_reg,FB_reg,FPCR_reg>>
                                         /\ UNCHANGED vu_vars
+                                        /\ UNCHANGED mu_vars
                                     ELSE
                                         Z' = FALSE /\ C_flag' = FALSE
                                         /\ FPSR_reg' = FPSetFlags({})
                                         /\ IP' = IP + 3
                                         /\ UNCHANGED <<SP,DP,A,B,C,D,F,memory,state,FA_reg,FB_reg,FPCR_reg>>
                                         /\ UNCHANGED vu_vars
+                                        /\ UNCHANGED mu_vars
 
 \* ===== FABS (142) =====
 
@@ -493,6 +525,7 @@ ExecFABS_142 == memory[IP] = OP_FABS
                /\ IP' = IP + 2
                /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg,FPSR_reg>>
                /\ UNCHANGED vu_vars
+               /\ UNCHANGED mu_vars
 
 \* ===== FNEG (143) =====
 
@@ -507,6 +540,7 @@ ExecFNEG_143 == memory[IP] = OP_FNEG
                /\ IP' = IP + 2
                /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg,FPSR_reg>>
                /\ UNCHANGED vu_vars
+               /\ UNCHANGED mu_vars
 
 \* ===== FSQRT (144) =====
 
@@ -527,6 +561,7 @@ ExecFSQRT_144 == memory[IP] = OP_FSQRT
                        /\ IP' = IP + 2
                        /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                        /\ UNCHANGED vu_vars
+                       /\ UNCHANGED mu_vars
                ELSE IF is_neg THEN
                     LET new_val == FPWriteVal(phys, fmt, pos, FP_qNaN(fmt))
                     IN /\ FPSetRegs(phys, new_val)
@@ -534,6 +569,7 @@ ExecFSQRT_144 == memory[IP] = OP_FSQRT
                        /\ IP' = IP + 2
                        /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                        /\ UNCHANGED vu_vars
+                       /\ UNCHANGED mu_vars
                ELSE IF FP_isZero(val, fmt) THEN
                     \* sqrt(+/-0) = +/-0
                     LET new_val == FPWriteVal(phys, fmt, pos, val)
@@ -542,6 +578,7 @@ ExecFSQRT_144 == memory[IP] = OP_FSQRT
                        /\ IP' = IP + 2
                        /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                        /\ UNCHANGED vu_vars
+                       /\ UNCHANGED mu_vars
                ELSE IF FP_isInf(val, fmt) THEN
                     \* sqrt(+Inf) = +Inf (negative already handled above)
                     LET new_val == FPWriteVal(phys, fmt, pos, val)
@@ -550,6 +587,7 @@ ExecFSQRT_144 == memory[IP] = OP_FSQRT
                        /\ IP' = IP + 2
                        /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                        /\ UNCHANGED vu_vars
+                       /\ UNCHANGED mu_vars
                ELSE
                     \E result \in FP_ORACLE:
                         LET new_val == FPWriteVal(phys, fmt, pos, result)
@@ -558,6 +596,7 @@ ExecFSQRT_144 == memory[IP] = OP_FSQRT
                            /\ IP' = IP + 2
                            /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                            /\ UNCHANGED vu_vars
+                           /\ UNCHANGED mu_vars
 
 \* ===== FMOV_RR (145) — Register-to-Register Copy =====
 
@@ -578,6 +617,7 @@ ExecFMOV_RR_145 == memory[IP] = OP_FMOV_RR
                           /\ IP' = IP + 3
                           /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg,FPSR_reg>>
                           /\ UNCHANGED vu_vars
+                          /\ UNCHANGED mu_vars
 
 \* ===== FCVT (146) — Format Conversion =====
 
@@ -601,6 +641,7 @@ ExecFCVT_146 == memory[IP] = OP_FCVT
                           /\ IP' = IP + 3
                           /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                           /\ UNCHANGED vu_vars
+                          /\ UNCHANGED mu_vars
                   ELSE
                        \* Conversion: result is oracle, may raise OF/UF/NX
                        \E result \in FP_ORACLE:
@@ -611,6 +652,7 @@ ExecFCVT_146 == memory[IP] = OP_FCVT
                                   /\ IP' = IP + 3
                                   /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                                   /\ UNCHANGED vu_vars
+                                  /\ UNCHANGED mu_vars
 
 \* ===== FITOF (147) — Integer to FP =====
 
@@ -630,6 +672,7 @@ ExecFITOF_147 == memory[IP] = OP_FITOF
                               /\ IP' = IP + 3
                               /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                               /\ UNCHANGED vu_vars
+                              /\ UNCHANGED mu_vars
 
 \* ===== FFTOI (148) — FP to Integer =====
 
@@ -651,6 +694,7 @@ ExecFFTOI_148 == memory[IP] = OP_FFTOI
                                 /\ IP' = IP + 3
                                 /\ UNCHANGED <<Z,C_flag,F,memory,state,FA_reg,FB_reg,FPCR_reg>>
                                 /\ UNCHANGED vu_vars
+                                /\ UNCHANGED mu_vars
 
 \* ===== FSTAT (149) — Read FPSR -> GPR =====
 
@@ -662,6 +706,7 @@ ExecFSTAT_149 == memory[IP] = OP_FSTAT
             /\ IP' = IP + 2
             /\ UNCHANGED <<Z,C_flag,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 \* ===== FCFG (150) — Read FPCR -> GPR =====
 
@@ -673,6 +718,7 @@ ExecFCFG_150 == memory[IP] = OP_FCFG
             /\ IP' = IP + 2
             /\ UNCHANGED <<Z,C_flag,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
             /\ UNCHANGED vu_vars
+            /\ UNCHANGED mu_vars
 
 \* ===== FSCFG (151) — Write GPR -> FPCR =====
 
@@ -684,6 +730,7 @@ ExecFSCFG_151 == memory[IP] = OP_FSCFG
                /\ IP' = IP + 2
                /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FA_reg,FB_reg,FPSR_reg>>
                /\ UNCHANGED vu_vars
+               /\ UNCHANGED mu_vars
 
 \* ===== FCLR (152) — Clear FPSR =====
 
@@ -691,6 +738,7 @@ ExecFCLR_152 == memory[IP] = OP_FCLR
     /\ FPSR_reg' = 0 /\ IP' = IP + 1
     /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FA_reg,FB_reg,FPCR_reg>>
     /\ UNCHANGED vu_vars
+    /\ UNCHANGED mu_vars
 
 \* ===== Reg-Reg Arithmetic (153-157) =====
 
@@ -717,6 +765,7 @@ ExecFADD_RR_153 == memory[IP] = OP_FADD_RR
                                /\ IP' = IP + 3
                                /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                                /\ UNCHANGED vu_vars
+                               /\ UNCHANGED mu_vars
                        ELSE
                             \E result \in FP_ORACLE:
                                 LET new_val == FPWriteVal(dphys, fmt, dp, result)
@@ -725,6 +774,7 @@ ExecFADD_RR_153 == memory[IP] = OP_FADD_RR
                                    /\ IP' = IP + 3
                                    /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                                    /\ UNCHANGED vu_vars
+                                   /\ UNCHANGED mu_vars
 
 ExecFSUB_RR_154 == memory[IP] = OP_FSUB_RR
     /\ LET dfpm == Mem(IP+1) sfpm == Mem(IP+2)
@@ -749,6 +799,7 @@ ExecFSUB_RR_154 == memory[IP] = OP_FSUB_RR
                                /\ IP' = IP + 3
                                /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                                /\ UNCHANGED vu_vars
+                               /\ UNCHANGED mu_vars
                        ELSE
                             \E result \in FP_ORACLE:
                                 LET new_val == FPWriteVal(dphys, fmt, dp, result)
@@ -757,6 +808,7 @@ ExecFSUB_RR_154 == memory[IP] = OP_FSUB_RR
                                    /\ IP' = IP + 3
                                    /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                                    /\ UNCHANGED vu_vars
+                                   /\ UNCHANGED mu_vars
 
 ExecFMUL_RR_155 == memory[IP] = OP_FMUL_RR
     /\ LET dfpm == Mem(IP+1) sfpm == Mem(IP+2)
@@ -781,6 +833,7 @@ ExecFMUL_RR_155 == memory[IP] = OP_FMUL_RR
                                /\ IP' = IP + 3
                                /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                                /\ UNCHANGED vu_vars
+                               /\ UNCHANGED mu_vars
                        ELSE
                             \E result \in FP_ORACLE:
                                 LET new_val == FPWriteVal(dphys, fmt, dp, result)
@@ -789,6 +842,7 @@ ExecFMUL_RR_155 == memory[IP] = OP_FMUL_RR
                                    /\ IP' = IP + 3
                                    /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                                    /\ UNCHANGED vu_vars
+                                   /\ UNCHANGED mu_vars
 
 ExecFDIV_RR_156 == memory[IP] = OP_FDIV_RR
     /\ LET dfpm == Mem(IP+1) sfpm == Mem(IP+2)
@@ -816,6 +870,7 @@ ExecFDIV_RR_156 == memory[IP] = OP_FDIV_RR
                                /\ IP' = IP + 3
                                /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                                /\ UNCHANGED vu_vars
+                               /\ UNCHANGED mu_vars
                        ELSE IF is_div_zero THEN
                             LET rsign == BitXor(FP_sign(dst_val, fmt), FP_sign(src_val, fmt))
                                 inf_result == IF rsign = 0 THEN FP_posInf(fmt) ELSE FP_negInf(fmt)
@@ -825,6 +880,7 @@ ExecFDIV_RR_156 == memory[IP] = OP_FDIV_RR
                                /\ IP' = IP + 3
                                /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                                /\ UNCHANGED vu_vars
+                               /\ UNCHANGED mu_vars
                        ELSE
                             \E result \in FP_ORACLE:
                                 LET new_val == FPWriteVal(dphys, fmt, dp, result)
@@ -833,6 +889,7 @@ ExecFDIV_RR_156 == memory[IP] = OP_FDIV_RR
                                    /\ IP' = IP + 3
                                    /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                                    /\ UNCHANGED vu_vars
+                                   /\ UNCHANGED mu_vars
 
 ExecFCMP_RR_157 == memory[IP] = OP_FCMP_RR
     /\ LET dfpm == Mem(IP+1) sfpm == Mem(IP+2)
@@ -855,6 +912,7 @@ ExecFCMP_RR_157 == memory[IP] = OP_FCMP_RR
                             /\ IP' = IP + 3
                             /\ UNCHANGED <<SP,DP,A,B,C,D,F,memory,state,FA_reg,FB_reg,FPCR_reg>>
                             /\ UNCHANGED vu_vars
+                            /\ UNCHANGED mu_vars
                        ELSE
                             IF FP_isZero(dst_val, fmt) /\ FP_isZero(src_val, fmt) THEN
                                 Z' = TRUE /\ C_flag' = FALSE
@@ -862,24 +920,28 @@ ExecFCMP_RR_157 == memory[IP] = OP_FCMP_RR
                                 /\ IP' = IP + 3
                                 /\ UNCHANGED <<SP,DP,A,B,C,D,F,memory,state,FA_reg,FB_reg,FPCR_reg>>
                                 /\ UNCHANGED vu_vars
+                                /\ UNCHANGED mu_vars
                             ELSE IF dst_val = src_val THEN
                                 Z' = TRUE /\ C_flag' = FALSE
                                 /\ FPSR_reg' = FPSetFlags({})
                                 /\ IP' = IP + 3
                                 /\ UNCHANGED <<SP,DP,A,B,C,D,F,memory,state,FA_reg,FB_reg,FPCR_reg>>
                                 /\ UNCHANGED vu_vars
+                                /\ UNCHANGED mu_vars
                             ELSE IF FP_less(dst_val, src_val, fmt) THEN
                                 Z' = FALSE /\ C_flag' = TRUE
                                 /\ FPSR_reg' = FPSetFlags({})
                                 /\ IP' = IP + 3
                                 /\ UNCHANGED <<SP,DP,A,B,C,D,F,memory,state,FA_reg,FB_reg,FPCR_reg>>
                                 /\ UNCHANGED vu_vars
+                                /\ UNCHANGED mu_vars
                             ELSE
                                 Z' = FALSE /\ C_flag' = FALSE
                                 /\ FPSR_reg' = FPSetFlags({})
                                 /\ IP' = IP + 3
                                 /\ UNCHANGED <<SP,DP,A,B,C,D,F,memory,state,FA_reg,FB_reg,FPCR_reg>>
                                 /\ UNCHANGED vu_vars
+                                /\ UNCHANGED mu_vars
 
 \* ===== FCLASS (158) =====
 
@@ -895,6 +957,7 @@ ExecFCLASS_158 == memory[IP] = OP_FCLASS
                     /\ IP' = IP + 3
                     /\ UNCHANGED <<Z,C_flag,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg>>
                     /\ UNCHANGED vu_vars
+                    /\ UNCHANGED mu_vars
 
 \* ===== FMADD (159-160) — Fused Multiply-Add =====
 \* dst = src * mem[addr] + dst
@@ -928,6 +991,7 @@ ExecFMADD_A_159 == memory[IP] = OP_FMADD_A
                                     /\ IP' = IP + 4
                                     /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                                     /\ UNCHANGED vu_vars
+                                    /\ UNCHANGED mu_vars
                             ELSE \E result \in FP_ORACLE:
                                  LET new_val == FPWriteVal(dphys, fmt, dp, result)
                                  IN /\ FPSetRegs(dphys, new_val)
@@ -935,6 +999,7 @@ ExecFMADD_A_159 == memory[IP] = OP_FMADD_A
                                     /\ IP' = IP + 4
                                     /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                                     /\ UNCHANGED vu_vars
+                                    /\ UNCHANGED mu_vars
 
 ExecFMADD_I_160 == memory[IP] = OP_FMADD_I
     /\ LET dfpm == Mem(IP+1) sfpm == Mem(IP+2)
@@ -967,6 +1032,7 @@ ExecFMADD_I_160 == memory[IP] = OP_FMADD_I
                                          /\ IP' = IP + 4
                                          /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                                          /\ UNCHANGED vu_vars
+                                         /\ UNCHANGED mu_vars
                                  ELSE \E result \in FP_ORACLE:
                                       LET new_val == FPWriteVal(dphys, fmt, dp, result)
                                       IN /\ FPSetRegs(dphys, new_val)
@@ -974,6 +1040,7 @@ ExecFMADD_I_160 == memory[IP] = OP_FMADD_I
                                          /\ IP' = IP + 4
                                          /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg>>
                                          /\ UNCHANGED vu_vars
+                                         /\ UNCHANGED mu_vars
 
 \* ===== FMOV Immediate (161-162) =====
 
@@ -989,6 +1056,7 @@ ExecFMOV_161 == memory[IP] = OP_FMOV_FI8
                     /\ IP' = IP + 3
                     /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg,FPSR_reg>>
                     /\ UNCHANGED vu_vars
+                    /\ UNCHANGED mu_vars
 
 \* FMOV FP, imm16 (162) — Load 16-bit immediate into FP sub-register
 ExecFMOV_162 == memory[IP] = OP_FMOV_FI16
@@ -1002,5 +1070,6 @@ ExecFMOV_162 == memory[IP] = OP_FMOV_FI16
                     /\ IP' = IP + 4
                     /\ UNCHANGED <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FPCR_reg,FPSR_reg>>
                     /\ UNCHANGED vu_vars
+                    /\ UNCHANGED mu_vars
 
 =============================================================================

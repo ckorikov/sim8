@@ -16,12 +16,17 @@ VARIABLES
     \* Vector Unit (v3) - CPU-side registers
     VA_reg, VB_reg, VC_reg, VM_reg, VL_reg, VFPSR_reg,
     \* Vector Unit - async command queue
-    vu_queue, vu_fault
+    vu_queue, vu_fault,
+    \* Matrix Unit (v3) - CPU-side registers
+    MA_reg, MB_reg, MC_reg, MM_reg, MN_reg, MK_reg, MFPSR_reg,
+    \* Matrix Unit - async command queue
+    mu_queue, mu_fault
 
-vars == <<IP, SP, DP, A, B, C, D, Z, C_flag, F, memory, state, step_count, cycles, FA_reg, FB_reg, FPCR_reg, FPSR_reg, VA_reg, VB_reg, VC_reg, VM_reg, VL_reg, VFPSR_reg, vu_queue, vu_fault>>
+vars == <<IP, SP, DP, A, B, C, D, Z, C_flag, F, memory, state, step_count, cycles, FA_reg, FB_reg, FPCR_reg, FPSR_reg, VA_reg, VB_reg, VC_reg, VM_reg, VL_reg, VFPSR_reg, vu_queue, vu_fault, MA_reg, MB_reg, MC_reg, MM_reg, MN_reg, MK_reg, MFPSR_reg, mu_queue, mu_fault>>
 
 \* Convenience tuples for UNCHANGED
 vu_vars == <<VA_reg, VB_reg, VC_reg, VM_reg, VL_reg, VFPSR_reg, vu_queue, vu_fault>>
+mu_vars == <<MA_reg, MB_reg, MC_reg, MM_reg, MN_reg, MK_reg, MFPSR_reg, mu_queue, mu_fault>>
 cpu_vars == <<IP, SP, DP, A, B, C, D, Z, C_flag, F, memory, state, step_count, cycles, FA_reg, FB_reg, FPCR_reg, FPSR_reg>>
 
 -----------------------------------------------------------------------------
@@ -98,15 +103,27 @@ OP_VADD == 170   OP_VSUB == 171   OP_VMUL == 172   OP_VDIV == 173
 OP_VMAX == 174   OP_VMIN == 175   OP_VDOT == 176
 OP_VSQRT == 177  OP_VNEG == 178   OP_VABS == 179
 OP_VCMP == 180   OP_VSEL == 181
-OP_VMOV == 182   OP_VFILL == 183
+OP_VMOV == 182   \* opcode 183 reserved (was VFILL alias; VMOV vi/.b subsume it)
+OP_VGATHER == 184  OP_VSCATTER == 185
+OP_VFMADD == 186   OP_VEXP == 187
 
 VU_SYNC_OPCODES == 163..169
-VU_ASYNC_OPCODES == 170..182
+VU_ASYNC_OPCODES == (170..182) \cup {184, 185, 186, 187}
+
+\* Matrix Unit opcodes (v3)
+\* Synchronous
+OP_MSET_IMM16 == 188   OP_MSET_GPR == 189
+OP_MFSTAT == 190       OP_MFCLR == 191   OP_MWAIT == 192
+\* Asynchronous
+OP_MMUL == 193   OP_MMAD == 194
+
+MU_SYNC_OPCODES  == 188..192
+MU_ASYNC_OPCODES == {193, 194}
 
 OPCODES == {0} \cup (1..8) \cup (10..19) \cup (20..23)
            \cup (30..43) \cup (50..57) \cup (60..67)
            \cup (70..82) \cup (90..97)
-           \cup (128..162) \cup (163..183)
+           \cup (128..162) \cup (163..194)
 
 -----------------------------------------------------------------------------
 (* Helpers *)
@@ -199,11 +216,11 @@ BitNot(a)    == 255 - a
 \* Instruction size (bytes) by opcode
 InstrSize(op) ==
     IF op = OP_HLT \/ op = OP_RET THEN 1
-    ELSE IF op \in {OP_FCLR, OP_VFCLR, OP_VWAIT} THEN 1
+    ELSE IF op \in {OP_FCLR, OP_VFCLR, OP_VWAIT, OP_MFCLR, OP_MWAIT} THEN 1
     ELSE IF op \in {OP_INC, OP_DEC, OP_NOT} \cup (30..43) \cup (50..56)
                    \cup (60..67) THEN 2
     ELSE IF op \in {OP_FABS, OP_FNEG, OP_FSQRT,
-                    OP_FSTAT, OP_FCFG, OP_FSCFG, OP_VFSTAT} THEN 2
+                    OP_FSTAT, OP_FCFG, OP_FSCFG, OP_VFSTAT, OP_MFSTAT} THEN 2
     ELSE IF op = OP_VCMP THEN 4
     ELSE IF op \in VU_ASYNC_OPCODES THEN
         LET vfm == Mem(IP+1) IN
@@ -212,8 +229,10 @@ InstrSize(op) ==
         LET esz == IF fmt = 0 THEN 4 ELSE IF fmt \in {1,2} THEN 2 ELSE 1 IN
         IF mode = 2 THEN 3 + esz  \* .vi: opcode + vfm + regs + imm
         ELSE 3  \* opcode + vfm + regs
-    ELSE IF op \in {OP_FMADD_A, OP_FMADD_I, OP_FMOV_FI16, OP_VSET_IMM16} THEN 4
-    ELSE 3  \* MOV 1-8, ADD/SUB/CMP, AND/OR/XOR, SHL/SHR, FP 3-byte, VSET 3-byte
+    ELSE IF op \in MU_ASYNC_OPCODES THEN 3  \* opcode + mfm + mregs
+    ELSE IF op \in {OP_FMADD_A, OP_FMADD_I, OP_FMOV_FI16,
+                    OP_VSET_IMM16, OP_MSET_IMM16} THEN 4
+    ELSE 3  \* MOV 1-8, ADD/SUB/CMP, AND/OR/XOR, SHL/SHR, FP 3-byte, VSET 3-byte, MSET_GPR
 
 \* FP memory cost: proportional to bytes transferred (fmt = fpm mod 8)
 \* fmt 0=F32(4B), 1=F16(2B), 2=BF16(2B), 3=OFP8-E4M3(1B), 4=OFP8-E5M2(1B)
@@ -228,8 +247,9 @@ FmtMemCost(fpm) ==
 \* fpm = memory[IP+1] (FPM byte); ignored for non-FP and format-agnostic ops.
 Cost(op, fpm) ==
     IF op = OP_HLT THEN 0
-    \* VU sync and async: 1 tick to issue
-    ELSE IF op \in VU_SYNC_OPCODES \cup VU_ASYNC_OPCODES \cup {183} THEN 1
+    \* VU and MU sync/async: 1 tick to issue
+    ELSE IF op \in VU_SYNC_OPCODES \cup VU_ASYNC_OPCODES \cup {183}
+              \cup MU_SYNC_OPCODES \cup MU_ASYNC_OPCODES THEN 1
     ELSE IF op \in {OP_FSTAT, OP_FCFG, OP_FSCFG, OP_FCLR,
                     OP_FMOV_RR, OP_FMOV_FI8, OP_FMOV_FI16, OP_FCLASS} THEN 1
     ELSE IF op \in {OP_FMOV_FA, OP_FMOV_FI, OP_FMOV_AF, OP_FMOV_IF} THEN FmtMemCost(fpm)
@@ -266,17 +286,19 @@ Cost(op, fpm) ==
     ELSE 2                                         \* mem(2) only
 
 \* Common UNCHANGED patterns
-unch_jump == <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg,VA_reg,VB_reg,VC_reg,VM_reg,VL_reg,VFPSR_reg,vu_queue,vu_fault>>
-unch_cmp  == <<SP,DP,A,B,C,D,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg,VA_reg,VB_reg,VC_reg,VM_reg,VL_reg,VFPSR_reg,vu_queue,vu_fault>>
-unch_alu  == <<F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg,VA_reg,VB_reg,VC_reg,VM_reg,VL_reg,VFPSR_reg,vu_queue,vu_fault>>
-unch_fp_all == <<SP,DP,A,B,C,D,Z,C_flag,F,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg,VA_reg,VB_reg,VC_reg,VM_reg,VL_reg,VFPSR_reg,vu_queue,vu_fault>>
+unch_jump == <<SP,DP,A,B,C,D,Z,C_flag,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg,VA_reg,VB_reg,VC_reg,VM_reg,VL_reg,VFPSR_reg,vu_queue,vu_fault,MA_reg,MB_reg,MC_reg,MM_reg,MN_reg,MK_reg,MFPSR_reg,mu_queue,mu_fault>>
+unch_cmp  == <<SP,DP,A,B,C,D,F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg,VA_reg,VB_reg,VC_reg,VM_reg,VL_reg,VFPSR_reg,vu_queue,vu_fault,MA_reg,MB_reg,MC_reg,MM_reg,MN_reg,MK_reg,MFPSR_reg,mu_queue,mu_fault>>
+unch_alu  == <<F,memory,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg,VA_reg,VB_reg,VC_reg,VM_reg,VL_reg,VFPSR_reg,vu_queue,vu_fault,MA_reg,MB_reg,MC_reg,MM_reg,MN_reg,MK_reg,MFPSR_reg,mu_queue,mu_fault>>
+unch_fp_all == <<SP,DP,A,B,C,D,Z,C_flag,F,state,FA_reg,FB_reg,FPCR_reg,FPSR_reg,VA_reg,VB_reg,VC_reg,VM_reg,VL_reg,VFPSR_reg,vu_queue,vu_fault,MA_reg,MB_reg,MC_reg,MM_reg,MN_reg,MK_reg,MFPSR_reg,mu_queue,mu_fault>>
 
-\* FAULT helper (v3: includes VU vars, flushes queue)
+\* FAULT helper (v3: includes VU/MU vars, flushes queues)
 Fault(err) ==
     /\ F' = TRUE /\ A' = err /\ state' = "FAULT"
     /\ UNCHANGED <<IP, SP, DP, B, C, D, Z, C_flag, memory, FA_reg, FB_reg, FPCR_reg, FPSR_reg>>
     /\ vu_queue' = <<>> /\ vu_fault' = 0
     /\ UNCHANGED <<VA_reg, VB_reg, VC_reg, VM_reg, VL_reg, VFPSR_reg>>
+    /\ mu_queue' = <<>> /\ mu_fault' = 0
+    /\ UNCHANGED <<MA_reg, MB_reg, MC_reg, MM_reg, MN_reg, MK_reg, MFPSR_reg>>
 
 \* --- FP Helpers ---
 
@@ -529,11 +551,12 @@ ValidateVFM(vfm, op) ==
         cond == VFM_cond(vfm)
     IN IF fmt > 6 THEN ERR_VU_FORMAT
        ELSE IF cond # 0 THEN ERR_VU_FORMAT
-       ELSE IF fmt \in {5, 6} /\ op \in {OP_VDOT, OP_VSQRT} THEN ERR_VU_FORMAT
+       ELSE IF fmt \in {5, 6} /\ op \in {OP_VDOT, OP_VSQRT, OP_VFMADD, OP_VEXP} THEN ERR_VU_FORMAT
        \* Mode validation: vv-only, mode-0-only, mode-0-or-2-only
        ELSE IF op \in {OP_VDOT, OP_VCMP, OP_VSEL} /\ mode # 0 THEN ERR_VU_FORMAT
-       ELSE IF op \in {OP_VSQRT, OP_VNEG, OP_VABS} /\ mode # 0 THEN ERR_VU_FORMAT
-       ELSE IF op = OP_VMOV /\ mode \notin {0, 2} THEN ERR_VU_FORMAT
+       ELSE IF op \in {OP_VSQRT, OP_VNEG, OP_VABS, OP_VEXP} /\ mode # 0 THEN ERR_VU_FORMAT
+       ELSE IF op = OP_VMOV /\ mode \notin {0, 1, 2} THEN ERR_VU_FORMAT
+       ELSE IF op = OP_VFMADD /\ mode = 3 THEN ERR_VU_FORMAT
        \* GPR broadcast (mode=1) restricted to byte formats
        ELSE IF mode = 1 /\ VFmtBytes(fmt) > 1 THEN ERR_VU_FORMAT
        ELSE 0
