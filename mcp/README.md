@@ -39,9 +39,9 @@ uv run fastmcp dev src/sim8_mcp/server.py:mcp
 
 Opens a web UI where you can call each tool interactively.
 
-## Setup with Claude Desktop
+## Connect an MCP client
 
-Add to your `claude_desktop_config.json` (on macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`):
+Use this example with clients that accept an `mcpServers` configuration.
 
 ```json
 {
@@ -59,35 +59,6 @@ Add to your `claude_desktop_config.json` (on macOS: `~/Library/Application Suppo
 ```
 
 Replace `/absolute/path/to/sim8/mcp` with the actual path to the `mcp/` directory.
-
-Restart Claude Desktop after editing the config. The sim8 tools will appear automatically in new conversations.
-
-## Setup with Claude Code
-
-Run from the repo root:
-
-```bash
-claude mcp add sim8 -- uv run --directory ./mcp fastmcp run src/sim8_mcp/server.py:mcp
-```
-
-Or add manually to `.mcp.json` in the project root:
-
-```json
-{
-  "mcpServers": {
-    "sim8": {
-      "command": "uv",
-      "args": [
-        "run",
-        "--directory", "./mcp",
-        "fastmcp", "run", "src/sim8_mcp/server.py:mcp"
-      ]
-    }
-  }
-}
-```
-
-Verify with `/mcp` in Claude Code to check the server is connected and all 5 tools are listed.
 
 ## Tools
 

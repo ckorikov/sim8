@@ -131,7 +131,7 @@ See [vscode-sim8/README.md](vscode-sim8/README.md) for the full list of highligh
 
 ## MCP Server
 
-[Model Context Protocol](https://modelcontextprotocol.io/) server that exposes sim8 tools to LLMs (Claude Desktop, Claude Code, etc.).
+[Model Context Protocol](https://modelcontextprotocol.io/) server that exposes sim8 tools to MCP clients.
 
 Tools: `assemble_source`, `run_program`, `run_binary`, `disassemble`, `get_spec`.
 
@@ -142,13 +142,7 @@ uv run fastmcp dev src/sim8_mcp/server.py:mcp    # debug with Inspector
 uv run pytest                                      # tests
 ```
 
-Add to Claude Code from the repo root:
-
-```bash
-claude mcp add sim8 -- uv run --directory ./mcp fastmcp run src/sim8_mcp/server.py:mcp
-```
-
-See [mcp/README.md](mcp/README.md) for Claude Desktop config and tool details.
+See [mcp/README.md](mcp/README.md) for client configuration and tool details.
 
 ## License
 
