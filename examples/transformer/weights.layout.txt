@@ -1,0 +1,23 @@
+# trans8 bf16 weights layout — total 1056 bytes (4.12 pages)
+# columns: tensor, byte_offset, count, page, page_offset
+tok_emb.weight	0	24	1	0
+pos_emb.weight	48	60	1	48
+blocks.0.ln1.weight	168	6	1	168
+blocks.0.ln1.bias	180	6	1	180
+blocks.0.attn.qkv.weight	192	108	1	192
+blocks.0.attn.out.weight	408	36	2	152
+blocks.0.ln2.weight	480	6	2	224
+blocks.0.ln2.bias	492	6	2	236
+blocks.0.ffn.up.weight	504	18	2	248
+blocks.0.ffn.down.weight	540	18	3	28
+blocks.1.ln1.weight	576	6	3	64
+blocks.1.ln1.bias	588	6	3	76
+blocks.1.attn.qkv.weight	600	108	3	88
+blocks.1.attn.out.weight	816	36	4	48
+blocks.1.ln2.weight	888	6	4	120
+blocks.1.ln2.bias	900	6	4	132
+blocks.1.ffn.up.weight	912	18	4	144
+blocks.1.ffn.down.weight	948	18	4	180
+ln_f.weight	984	6	4	216
+ln_f.bias	996	6	4	228
+head.weight	1008	24	4	240
