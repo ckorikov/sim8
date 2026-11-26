@@ -6,7 +6,6 @@ import {
     cpu,
     colors,
     asm,
-    pad,
     hex,
     printableChar,
     escapeHtml,
@@ -18,7 +17,6 @@ import {
 } from "../state.js";
 import { decodeFloat32, decodeFloat16, decodeBfloat16, decodeOfp8E4M3, decodeOfp8E5M2 } from "../../lib/fp.js";
 import { BY_CODE, BY_CODE_FP, OpType, FP_REGISTERS, decodeRegaddr } from "../../lib/isa.js";
-import { isHidden } from "./marker-toggle.js";
 
 // ── Data inspector tooltip ───────────────────────────────────────
 
@@ -31,30 +29,6 @@ const FPM_TO_NAME = Object.fromEntries(
 );
 const REG_NAMES = ["A", "B", "C", "D", "SP", "DP"];
 
-function _decodeRegName(b, i) {
-    return [REG_NAMES[b[i]] ?? `r${b[i]}`, 1];
-}
-
-function _decodeRegaddrExpr(b, i) {
-    const [rc, off] = decodeRegaddr(b[i]);
-    const rn = REG_NAMES[rc] ?? `r${rc}`;
-    return [off === 0 ? `[${rn}]` : `[${rn}${off > 0 ? "+" : ""}${off}]`, 1];
-}
-
-// Each entry: (bytes, byteIndex) → [operandString, bytesConsumed]
-const _OP_DECODERS = {
-    [OpType.REG]: _decodeRegName,
-    [OpType.REG_ARITH]: _decodeRegName,
-    [OpType.REG_STACK]: _decodeRegName,
-    [OpType.REG_GPR]: _decodeRegName,
-    [OpType.IMM]: (b, i) => [String(b[i]), 1],
-    [OpType.MEM]: (b, i) => [`[${hex(b[i], 2)}]`, 1],
-    [OpType.REGADDR]: _decodeRegaddrExpr,
-    [OpType.FP_REG]: (b, i) => [FPM_TO_NAME[b[i]] ?? `fpm(${hex(b[i])})`, 1],
-    [OpType.FP_IMM8]: (b, i) => [`0x${hex(b[i])}`, 1],
-    [OpType.FP_IMM16]: (b, i) => [`0x${hex(b[i] | (b[i + 1] << 8), 4)}`, 2],
-};
-
 function disasmInstr(absAddr) {
     const b0 = cpu.mem.get(absAddr);
     const def = BY_CODE[b0] ?? BY_CODE_FP[b0];
@@ -63,18 +37,39 @@ function disasmInstr(absAddr) {
     const bytes = readBytes(absAddr, def.size);
     const parts = [];
     let bi = 1;
-    for (const ot of def.format) {
-        const decode = _OP_DECODERS[ot];
-        if (!decode) continue;
-        const [op, advance] = decode(bytes, bi);
-        parts.push(op);
-        bi += advance;
+    for (const ot of def.sig) {
+        let op;
+        if (ot === OpType.REG || ot === OpType.REG_ARITH || ot === OpType.REG_STACK || ot === OpType.REG_GPR) {
+            op = REG_NAMES[bytes[bi]] ?? `r${bytes[bi]}`;
+            bi++;
+        } else if (ot === OpType.IMM) {
+            op = String(bytes[bi]);
+            bi++;
+        } else if (ot === OpType.MEM) {
+            op = `[${hex(bytes[bi], 2)}]`;
+            bi++;
+        } else if (ot === OpType.REGADDR) {
+            const [rc, off] = decodeRegaddr(bytes[bi]);
+            const rn = REG_NAMES[rc] ?? `r${rc}`;
+            op = off === 0 ? `[${rn}]` : `[${rn}${off > 0 ? "+" : ""}${off}]`;
+            bi++;
+        } else if (ot === OpType.FP_REG) {
+            op = FPM_TO_NAME[bytes[bi]] ?? `fpm(${hex(bytes[bi])})`;
+            bi++;
+        } else if (ot === OpType.FP_IMM8) {
+            op = `0x${hex(bytes[bi])}`;
+            bi++;
+        } else if (ot === OpType.FP_IMM16) {
+            op = `0x${hex(bytes[bi] | (bytes[bi + 1] << 8), 4)}`;
+            bi += 2;
+        }
+        if (op !== undefined) parts.push(op);
     }
     return {
         text: def.mnemonic + (parts.length ? " " + parts.join(", ") : ""),
         size: def.size,
         cost: def.cost,
-        fmtDep: def.fmtDep,
+        formatDep: def.formatDep,
         confirmed: asm.instrStarts.has(absAddr),
     };
 }
@@ -133,7 +128,7 @@ function buildTooltip(absAddr) {
 function instrRow(absAddr, row, sep) {
     const instr = disasmInstr(absAddr);
     if (!instr) return "";
-    const costStr = instr.fmtDep ? `${instr.cost}+c` : `${instr.cost}c`;
+    const costStr = instr.formatDep ? `${instr.cost}+c` : `${instr.cost}c`;
     const tag = instr.confirmed ? "● asm" : "? asm";
     return sep + row(tag, escapeHtml(instr.text), `${instr.size}B ${costStr}`);
 }
@@ -159,68 +154,30 @@ function cellClass(addr, val, showInstr) {
     const absAddr = pageBase + addr;
     let cl = "mem-cell";
 
+    if (absAddr === cpu.ip) return cl + " marker-ip";
+    if (absAddr === cpu.sp) return cl + " marker-sp";
+
     if (showInstr && asm.instrStarts.has(absAddr)) {
         cl += " instr-start";
     } else if (page === 0 && addr >= IO_BASE) {
         cl += " io";
     } else if (page === 0 && addr >= STACK_BASE) {
         cl += " stack";
-    } else if (pad.visible && absAddr >= pad.start && absAddr < pad.end) {
-        cl += " pad-region";
-    } else if (showInstr && absAddr < asm.lastUsedBytes && val) {
+    } else if (showInstr && absAddr < asm.codeLen && val) {
         cl += " instr";
     }
 
     if (asm.labelAddrs.has(absAddr)) cl += " label";
 
-    for (const m of _markers) {
-        if (absAddr >= m.addr && absAddr < m.addr + m.len) {
-            if (m.exclusive) return cl + m.cls;
-            cl += m.cls;
-        }
-    }
+    const dpBase = cpu.dp * PAGE_SIZE;
+    if (dpBase + cpu.a === absAddr && absAddr !== cpu.ip) cl += " marker-a";
+    if (dpBase + cpu.b === absAddr && absAddr !== cpu.ip) cl += " marker-b";
+    if (dpBase + cpu.c === absAddr && absAddr !== cpu.ip) cl += " marker-c";
+    if (dpBase + cpu.d === absAddr && absAddr !== cpu.ip) cl += " marker-d";
     return cl;
 }
 
-/** Build pointer markers: [{addr, len, cls, exclusive}] for CPU and VU. */
-function _buildMarkers() {
-    const markers = [];
-    const seen = new Set();
-
-    function add(addr, len, cls, regName, exclusive = false) {
-        if (isHidden(regName)) return;
-        const key = `${addr}:${len}`;
-        if (seen.has(key)) return;
-        seen.add(key);
-        markers.push({ addr, len, cls: " " + cls, exclusive });
-    }
-
-    // CPU instruction/stack pointers (exclusive — override other markers)
-    add(cpu.ip, 1, "marker-ip", "IP", true);
-    add(cpu.sp, 1, "marker-sp", "SP", true);
-
-    // CPU scalar pointers
-    const dpBase = cpu.dp * PAGE_SIZE;
-    add(dpBase + cpu.a, 1, "marker-a", "A");
-    add(dpBase + cpu.b, 1, "marker-b", "B");
-    add(dpBase + cpu.c, 1, "marker-c", "C");
-    add(dpBase + cpu.d, 1, "marker-d", "D");
-
-    // VU pointers: single-cell marker at the current address
-    const vu = cpu.vu;
-    if (vu && vu.regs.vl > 0) {
-        add(vu.regs.va, 1, "marker-va", "VA");
-        add(vu.regs.vb, 1, "marker-vb", "VB");
-        add(vu.regs.vc, 1, "marker-vc", "VC");
-    }
-
-    return markers;
-}
-
-let _markers = [];
-
 export function renderMemory() {
-    _markers = _buildMarkers();
     const showInstr = document.getElementById("chk-instr").checked;
     const baseCw = parseInt(cssVar("--s-mem-cell-w")) || 28;
     const cellW = memFmt.get() === "dec" ? baseCw + 2 : baseCw;
@@ -228,11 +185,14 @@ export function renderMemory() {
     const cellFont = parseInt(cssVar("--s-mem-cell-font")) || 10;
     const pageBase = page * PAGE_SIZE;
 
+    const rows = [];
     const hdrs = Array.from(
         { length: 16 },
         (_, c) => `<div class="mh" style="width:${cellW}px">${hex(c, 1)}</div>`,
     ).join("");
-    const dataRows = Array.from({ length: 16 }, (_, r) => {
+    rows.push(`<div style="display:flex;"><div class="mr" style="width:${rowW}px"></div>${hdrs}</div>`);
+
+    for (let r = 0; r < 16; r++) {
         const cells = Array.from({ length: 16 }, (_, c) => {
             const addr = r * 16 + c;
             const absAddr = pageBase + addr;
@@ -241,23 +201,21 @@ export function renderMemory() {
             const title = lname ? ` title="${escapeHtml(lname)}"` : "";
             return `<div class="${cellClass(addr, val, showInstr)}" style="width:${cellW}px;font-size:${cellFont}px" data-addr="${absAddr}"${title}>${fmtByte(val)}</div>`;
         }).join("");
-        return `<div style="display:flex;"><div class="mr" style="width:${rowW}px">${hex(pageBase + r * 16, 4)}</div>${cells}</div>`;
-    });
-    const rows = [
-        `<div style="display:flex;"><div class="mr" style="width:${rowW}px"></div>${hdrs}</div>`,
-        ...dataRows,
-    ];
+        rows.push(
+            `<div style="display:flex;"><div class="mr" style="width:${rowW}px">${hex(pageBase + r * 16, 4)}</div>${cells}</div>`,
+        );
+    }
 
-    const legendItems = [
+    const legend = [
         [colors.mid, "data"],
         [colors.yl, "stack"],
         [colors.gr, "i/o"],
         [colors.or, "ip"],
         [colors.yl, "sp"],
         [colors.bl, "label"],
-    ];
-    if (pad.visible) legendItems.splice(3, 0, [colors.pu, "pad"]);
-    const legend = legendItems.map(([c, l]) => `<span><b style="color:${c};">&#9632;</b> ${l}</span>`).join("");
+    ]
+        .map(([c, l]) => `<span><b style="color:${c};">&#9632;</b> ${l}</span>`)
+        .join("");
 
     document.getElementById("mem-grid").innerHTML =
         `<div style="line-height:0;display:inline-block;">${rows.join("")}</div>` +
@@ -278,44 +236,6 @@ document.getElementById("page-prev").addEventListener("click", () => {
 });
 document.getElementById("page-next").addEventListener("click", () => {
     if (page < 255) setPage(page + 1);
-});
-
-// Click page-num to jump directly to a page
-const elPageNum = document.getElementById("page-num");
-const elPageInput = document.createElement("input");
-elPageInput.type = "number";
-elPageInput.min = "0";
-elPageInput.max = "255";
-elPageInput.style.cssText =
-    "width:42px;font-size:9px;text-align:center;font-weight:400;letter-spacing:0;" +
-    "background:var(--t-bg);color:var(--t-text);border:1px solid var(--t-border);border-radius:3px;" +
-    "padding:1px 2px;display:none";
-elPageNum.insertAdjacentElement("afterend", elPageInput);
-elPageNum.style.cursor = "pointer";
-
-function commitPageInput() {
-    const v = parseInt(elPageInput.value, 10);
-    if (Number.isFinite(v) && v >= 0 && v <= 255) setPage(v);
-    elPageInput.style.display = "none";
-    elPageNum.style.display = "";
-}
-
-elPageNum.addEventListener("click", () => {
-    elPageInput.value = page;
-    elPageNum.style.display = "none";
-    elPageInput.style.display = "";
-    elPageInput.select();
-});
-elPageInput.addEventListener("blur", commitPageInput);
-elPageInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-        e.preventDefault();
-        commitPageInput();
-    }
-    if (e.key === "Escape") {
-        elPageInput.style.display = "none";
-        elPageNum.style.display = "";
-    }
 });
 
 // Data inspector tooltip

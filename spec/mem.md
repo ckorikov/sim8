@@ -1,6 +1,6 @@
 # 2. Memory Model & Addressing
 
-> Architecture v3 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [CPU Architecture](cpu.md), [Microarchitecture](uarch.md), [Assembler](asm.md), [CPU Tests](tests/tests-cpu.md), [FP Tests](tests/tests-fp.md), [FPU](fp.md), [Vector Unit](vu.md), [I/O Display](io-display.md), [I/O UART](io-uart.md), [I/O Pad](io-pad.md)
+> Architecture v2 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [CPU Architecture](cpu.md), [Microarchitecture](uarch.md), [Assembler](asm.md), [Tests](tests.md), [FP Tests](tests-fp.md), [FPU](fp.md)
 
 This document is a focused reference for **memory layout**, **paged addressing via DP**, and **effective address calculation**.
 
@@ -17,10 +17,9 @@ Page 0 is special: it contains **code**, **stack**, and the **console I/O window
 | Region | Offsets | Size | Notes |
 | --- | ---: | ---: | --- |
 | General page-0 area | 0x00–0xE7 | 232 | Code/data/stack share this region |
-| Display cells (I/O) | 0xE8–0xFB | 20 | Memory-mapped character output |
-| UART terminal ports | 0xFC–0xFF | 4 | TX data/status, RX data/status |
+| Console output (I/O) | 0xE8–0xFF | 24 | Memory-mapped display cells |
 
-**Program size constraint:** code executed by IP must fit in **0x00–0xE7** (232 bytes). Writing beyond 0xE7 overwrites the I/O window.
+**Program size constraint:** code executed by IP must fit in **0x00–0xE7** (232 bytes). Writing beyond 0xE7 overwrites the console window.
 
 ## DP (Data Page) and Paged Memory
 
@@ -39,21 +38,24 @@ Page 0 is special: it contains **code**, **stack**, and the **console I/O window
 
 ## I/O (Memory-Mapped Console)
 
-The simulator exposes memory-mapped I/O on page 0, offsets 232–255.
+The simulator exposes a simple character display as a **memory-mapped I/O window**.
+
+- Location: **page 0 only**, offsets **232–255** (0xE8–0xFF)
+- Capacity: **24 characters**, left-to-right in increasing address order
+- Readable and writable like normal memory
 
 ### DP interaction (important)
 
-The I/O window exists **only on page 0**. Software must use `DP=0` and addresses `[232]..[255]` to reach I/O. With `DP≠0`, those offsets address normal data memory on the active page — no I/O effect.
+The console window exists **only on page 0**.
 
-### I/O Devices
+- To access the display, software must use `DP=0` and addresses `[232]..[255]`.
+- When `DP≠0`, `[232]..[255]` access normal data memory on that page, not the console.
 
-| Region | Offsets | Size | Spec |
-|--------|---------|------|------|
-| Display cells | 0xE8–0xFB | 20 | [I/O Display](io-display.md) |
-| UART terminal | 0xFC–0xFF | 4 | [I/O UART](io-uart.md) |
-| Pixel pad | configurable | N×N | [I/O Pad](io-pad.md) |
+### Display semantics
 
-See the individual I/O spec files for protocol details.
+- Each byte is interpreted as an ASCII character code for display.
+- Non-printable and whitespace characters display as blank space.
+- On reset, the I/O window displays as blanks.
 
 ## Effective Address Calculation
 
@@ -127,33 +129,6 @@ An FP memory access must not cross a page boundary. If `page_offset + size - 1 >
 ### Atomicity
 
 FP memory reads and writes are not atomic with respect to interrupts (sim8 has no interrupt model). A multi-byte read fetches bytes sequentially from low to high address. A multi-byte write stores bytes sequentially from low to high address.
-
-## VU Memory Access
-
-The Vector Unit accesses the same 64 KB address space as the CPU but uses a conceptually independent memory bus.
-
-### Addressing
-
-VU commands use **absolute 16-bit addresses** resolved from VA, VB, VC, VM registers. The DP register has no effect on vector memory access. A vector of VL elements in format fmt occupies contiguous bytes from address $A$ to $A + VL \times \text{elem\_size} - 1$.
-
-### Byte Ordering
-
-Multi-byte elements (float32, float16, bfloat16) use **little-endian** byte order, same as FPU memory access.
-
-### No Hardware Coherence
-
-There is no cache coherence or memory ordering guarantee between CPU and VU memory access. Concurrent access by both CPU and VU to overlapping memory regions is **undefined behavior**. Programs must use `VWAIT` to synchronize:
-
-- Before the CPU reads memory that the VU has written.
-- Before the CPU writes memory that the VU will read.
-
-### I/O Region
-
-The VU can access the page-0 I/O region (0x00E8–0x00FF). Writing to the display cells (0xE8–0xFB) from the VU updates the memory-mapped display, same as CPU writes. The UART ports (0xFC–0xFF) are not triggered by VU access (memory-only). See [I/O Display](io-display.md) and [I/O UART](io-uart.md).
-
-### Address Overflow
-
-If a VU command accesses an address range that exceeds 0xFFFF (i.e., start address + VL × elem_size > 65536), the VU raises FAULT(`ERR_VU_OOB`), discovered by the CPU at `VWAIT`.
 
 ## Conformance Notes
 

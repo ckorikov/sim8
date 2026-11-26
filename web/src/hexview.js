@@ -14,16 +14,25 @@ const BYTES_PER_ROW = 16;
  */
 export function renderHex(bytes) {
     if (!bytes.length) return "";
-    const numRows = Math.ceil(bytes.length / BYTES_PER_ROW);
-    return Array.from({ length: numRows }, (_, r) => {
-        const offset = r * BYTES_PER_ROW;
+    const lines = [];
+    for (let offset = 0; offset < bytes.length; offset += BYTES_PER_ROW) {
         const row = bytes.subarray(offset, offset + BYTES_PER_ROW);
-        const hexCells = Array.from({ length: BYTES_PER_ROW }, (_, i) => (i < row.length ? hex(row[i]) : "  "));
-        const ascii = Array.from({ length: BYTES_PER_ROW }, (_, i) =>
-            i < row.length ? printableChar(row[i]) || "." : " ",
-        );
-        return `${hex(offset, 4)}  ${hexCells.slice(0, 8).join(" ")}  ${hexCells.slice(8).join(" ")}  ${ascii.join("")}`;
-    }).join("\n");
+        const hexCells = [];
+        const ascii = [];
+        for (let i = 0; i < BYTES_PER_ROW; i++) {
+            if (i < row.length) {
+                hexCells.push(hex(row[i]));
+                ascii.push(printableChar(row[i]) || ".");
+            } else {
+                hexCells.push("  ");
+                ascii.push(" ");
+            }
+        }
+        const hex1 = hexCells.slice(0, 8).join(" ");
+        const hex2 = hexCells.slice(8).join(" ");
+        lines.push(`${hex(offset, 4)}  ${hex1}  ${hex2}  ${ascii.join("")}`);
+    }
+    return lines.join("\n");
 }
 
 function _hexClass(b) {
@@ -63,7 +72,8 @@ function _buildRow(offset, row) {
 
     div.appendChild(_text("  "));
 
-    for (const b of row) {
+    for (let i = 0; i < row.length; i++) {
+        const b = row[i];
         const ch = printableChar(b);
         div.appendChild(ch ? _span("hex-a-print", ch) : _span("hex-a-dot", "."));
     }
@@ -92,10 +102,9 @@ export function mountHexView(container, bytes) {
         empty.textContent = "(empty)";
         body.appendChild(empty);
     }
-    const numRows = Math.ceil(bytes.length / BYTES_PER_ROW);
-    Array.from({ length: numRows }, (_, r) => r * BYTES_PER_ROW).forEach((offset) =>
-        body.appendChild(_buildRow(offset, bytes.subarray(offset, offset + BYTES_PER_ROW))),
-    );
+    for (let offset = 0; offset < bytes.length; offset += BYTES_PER_ROW) {
+        body.appendChild(_buildRow(offset, bytes.subarray(offset, offset + BYTES_PER_ROW)));
+    }
 
     container.appendChild(info);
     container.appendChild(body);

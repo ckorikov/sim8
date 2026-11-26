@@ -226,8 +226,8 @@ __marimo__/
 # Node
 node_modules/
 
-# Directories
-reference/
-
 # Assembler build artifacts
 *.bin
+
+# TLC trace artifacts (generated on failed model checks)
+*_TTrace_*.tla

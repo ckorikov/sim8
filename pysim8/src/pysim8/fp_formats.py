@@ -8,22 +8,21 @@ from __future__ import annotations
 
 import math
 import struct
-from collections.abc import Callable
 from typing import NamedTuple, cast
 
-from pysim8.constants import (
+from pysim8.isa import (
     FP_FMT_BF as _FMT_BF,
 )
-from pysim8.constants import (
+from pysim8.isa import (
     FP_FMT_F as _FMT_F,
 )
-from pysim8.constants import (
+from pysim8.isa import (
     FP_FMT_H as _FMT_H,
 )
-from pysim8.constants import (
+from pysim8.isa import (
     FP_FMT_O2 as _FMT_O2,
 )
-from pysim8.constants import (
+from pysim8.isa import (
     FP_FMT_O3 as _FMT_O3,
 )
 
@@ -42,6 +41,15 @@ __all__ = [
     "encode_ofp8_e5m2",
     "decode_ofp8_e5m2",
     "RoundingMode",
+    "fp_add",
+    "fp_sub",
+    "fp_mul",
+    "fp_div",
+    "fp_sqrt",
+    "fp_cmp",
+    "fp_abs",
+    "fp_neg",
+    "fp_classify",
 ]
 
 
@@ -65,7 +73,6 @@ class FpExceptions(NamedTuple):
 
 
 NO_EXC = FpExceptions()
-_NAN_INVALID: tuple[float, FpExceptions] = (float("nan"), FpExceptions(invalid=True))
 
 # ── IEEE 754 boundary constants ──────────────────────────────────
 # Minimum positive normal: 2^-(bias-1)
@@ -74,57 +81,6 @@ _MIN_NORMAL_F16 = 6.103515625e-05  # 2^-14
 # RNE overflow threshold: MAX + half ULP (values at or above round to inf)
 _OVERFLOW_THRESH_F32 = 3.4028235677973366e38  # (2-2^-23)*2^127 + 2^103
 _OVERFLOW_THRESH_F16 = 65520.0  # 65504 + 16 (half ULP at max)
-
-
-# ── IEEE struct-based encoder (float32/float16 RNE) ──────────────
-
-
-class _IeeeParams(NamedTuple):
-    """Parameters for a struct-based IEEE format."""
-
-    pack_fmt: str  # struct format string
-    exp_bits: int
-    mant_bits: int
-    bias: int
-    overflow_thresh: float
-    min_normal: float
-
-
-_F32_PARAMS = _IeeeParams("<f", 8, 23, 127, _OVERFLOW_THRESH_F32, _MIN_NORMAL_F32)
-_F16_PARAMS = _IeeeParams("<e", 5, 10, 15, _OVERFLOW_THRESH_F16, _MIN_NORMAL_F16)
-
-
-def _encode_ieee_rne(
-    value: float,
-    p: _IeeeParams,
-) -> tuple[bytes, FpExceptions]:
-    """Encode a finite non-zero float using struct.pack with RNE rounding.
-
-    Common path for float32 and float16.
-    """
-    if abs(value) >= p.overflow_thresh:
-        sign = -1.0 if value < 0 else 1.0
-        data = struct.pack(p.pack_fmt, math.copysign(math.inf, sign))
-        return data, FpExceptions(overflow=True, inexact=True)
-    data = struct.pack(p.pack_fmt, value)
-    rt = struct.unpack(p.pack_fmt, data)[0]
-    overflow = math.isinf(rt) and not math.isinf(value)
-    bits = int.from_bytes(data, "little")
-    exp_mask = (1 << p.exp_bits) - 1
-    mant_mask = (1 << p.mant_bits) - 1
-    exp_val = (bits >> p.mant_bits) & exp_mask
-    is_subnormal = exp_val == 0 and (bits & mant_mask) != 0
-    flushed_to_zero = rt == 0.0 and value != 0.0
-    # IEEE 754 §7.5: underflow "before rounding" — exact value in
-    # subnormal range even if rounding pushes it to normal.
-    exact_subnormal = 0 < abs(value) < p.min_normal
-    underflow = is_subnormal or flushed_to_zero or exact_subnormal
-    inexact = rt != value
-    return data, FpExceptions(
-        overflow=overflow,
-        underflow=underflow,
-        inexact=inexact or overflow,
-    )
 
 
 # ── float32 ──────────────────────────────────────────────────────
@@ -137,9 +93,35 @@ def encode_float32(
     """Encode Python float as little-endian float32 bytes."""
     if math.isnan(value) or math.isinf(value) or value == 0.0:
         return struct.pack("<f", value), NO_EXC
+
     if rm != RoundingMode.RNE:
         return _encode_ieee_directed(value, 8, 23, 127, rm)
-    return _encode_ieee_rne(value, _F32_PARAMS)
+
+    # RNE: use struct.pack for hardware-accurate rounding.
+    # Overflow threshold = MAX_FLOAT32 + half ULP = (2 - 2^-23)*2^127 + 2^103.
+    # Values below this round back to MAX_FLOAT32 under RNE.
+    # struct.pack raises OverflowError above MAX_FLOAT32, so we guard here.
+    if abs(value) >= _OVERFLOW_THRESH_F32:
+        sign = -1.0 if value < 0 else 1.0
+        data = struct.pack("<f", math.copysign(math.inf, sign))
+        return data, FpExceptions(overflow=True, inexact=True)
+    data = struct.pack("<f", value)
+    rt = struct.unpack("<f", data)[0]
+    overflow = math.isinf(rt) and not math.isinf(value)
+    f32_bits = int.from_bytes(data, "little")
+    exp_bits = (f32_bits >> 23) & 0xFF
+    is_subnormal = exp_bits == 0 and (f32_bits & 0x7FFFFF) != 0
+    flushed_to_zero = rt == 0.0 and value != 0.0
+    # IEEE 754 §7.5: underflow "before rounding" — exact value in
+    # subnormal range even if rounding pushes it to normal.
+    exact_subnormal = 0 < abs(value) < _MIN_NORMAL_F32
+    underflow = is_subnormal or flushed_to_zero or exact_subnormal
+    inexact = rt != value
+    return data, FpExceptions(
+        overflow=overflow,
+        underflow=underflow,
+        inexact=inexact or overflow,
+    )
 
 
 def decode_float32(data: bytes) -> float:
@@ -157,9 +139,31 @@ def encode_float16(
     """Encode Python float as little-endian float16 (IEEE 754) bytes."""
     if math.isnan(value) or math.isinf(value) or value == 0.0:
         return struct.pack("<e", value), NO_EXC
+
     if rm != RoundingMode.RNE:
         return _encode_ieee_directed(value, 5, 10, 15, rm)
-    return _encode_ieee_rne(value, _F16_PARAMS)
+
+    # RNE: use struct.pack for hardware-accurate rounding.
+    # struct.pack("<e") raises OverflowError above MAX_F16, so we guard here.
+    if abs(value) >= _OVERFLOW_THRESH_F16:
+        sign = -1.0 if value < 0 else 1.0
+        data = struct.pack("<e", math.copysign(math.inf, sign))
+        return data, FpExceptions(overflow=True, inexact=True)
+    data = struct.pack("<e", value)
+    rt = struct.unpack("<e", data)[0]
+    overflow = math.isinf(rt) and not math.isinf(value)
+    f16_bits = int.from_bytes(data, "little")
+    exp_bits = (f16_bits >> 10) & 0x1F
+    is_subnormal = exp_bits == 0 and (f16_bits & 0x3FF) != 0
+    flushed_to_zero = rt == 0.0 and value != 0.0
+    exact_subnormal = 0 < abs(value) < _MIN_NORMAL_F16
+    underflow = is_subnormal or flushed_to_zero or exact_subnormal
+    inexact = rt != value
+    return data, FpExceptions(
+        overflow=overflow,
+        underflow=underflow,
+        inexact=inexact or overflow,
+    )
 
 
 def decode_float16(data: bytes) -> float:
@@ -253,60 +257,6 @@ def decode_bfloat16(data: bytes) -> float:
     return cast(float, struct.unpack("<f", padded)[0])
 
 
-# ── Generic mini-float decoder ────────────────────────────────────
-
-
-def _decode_mini_float(
-    byte_val: int,
-    exp_bits: int,
-    mant_bits: int,
-    bias: int,
-    *,
-    has_inf: bool = False,
-    nan_pred: Callable[[int, int], bool] | None = None,
-) -> float:
-    """Decode a mini-float byte to Python float.
-
-    Args:
-        byte_val: Raw byte value.
-        exp_bits: Number of exponent bits.
-        mant_bits: Number of mantissa bits.
-        bias: Exponent bias.
-        has_inf: If True, max_exp with mant=0 is Inf, mant!=0 is NaN.
-        nan_pred: Custom NaN predicate(exp, mant). If None, uses has_inf rule.
-    """
-    sign = (byte_val >> (exp_bits + mant_bits)) & 1
-    max_exp = (1 << exp_bits) - 1
-    exp = (byte_val >> mant_bits) & max_exp
-    mant = byte_val & ((1 << mant_bits) - 1)
-
-    # Special values
-    if nan_pred is not None:
-        if nan_pred(exp, mant):
-            return float("nan")
-    elif has_inf and exp == max_exp:
-        if mant == 0:
-            return float("-inf") if sign else float("inf")
-        return float("nan")
-
-    # Zero / denorm / normal
-    if exp == 0:
-        if mant == 0:
-            return -0.0 if sign else 0.0
-        val: float = (mant / (1 << mant_bits)) * float(2 ** (1 - bias))
-    else:
-        val = (1.0 + mant / (1 << mant_bits)) * float(2 ** (exp - bias))
-
-    return -val if sign else val
-
-
-def _extract_sign(value: float) -> tuple[int, float]:
-    """Return (sign, abs_value), treating -0.0 as negative."""
-    if value < 0 or (value == 0.0 and math.copysign(1.0, value) < 0):
-        return 1, -value
-    return 0, value
-
-
 # ── OFP8 E4M3 ───────────────────────────────────────────────────
 
 # E4M3: bias=7, 4-bit exponent, 3-bit mantissa.
@@ -328,15 +278,26 @@ def encode_ofp8_e4m3(
     if math.isnan(value):
         return b"\x7f", FpExceptions(invalid=True)
 
-    sign, value = _extract_sign(value)
+    sign = 0
+    if value < 0 or (value == 0.0 and math.copysign(1.0, value) < 0):
+        sign = 1
+        value = -value
+
+    if math.isinf(value):
+        # No Inf in E4M3 -- saturate to max finite, set overflow
+        byte_val = (sign << 7) | 0x7E  # exp=1111, mant=110
+        return bytes([byte_val]), FpExceptions(overflow=True, inexact=True)
 
     if value == 0.0:
         return bytes([sign << 7]), NO_EXC
 
-    # No Inf in E4M3 — Inf and out-of-range both saturate to max finite
-    if math.isinf(value) or value > _E4M3_MAX_FINITE:
-        byte_val = (sign << 7) | 0x7E  # exp=1111, mant=110
-        return bytes([byte_val]), FpExceptions(overflow=True, inexact=True)
+    # Overflow check
+    if value > _E4M3_MAX_FINITE:
+        byte_val = (sign << 7) | 0x7E
+        return bytes([byte_val]), FpExceptions(
+            overflow=True,
+            inexact=True,
+        )
 
     # Encode: find exponent and mantissa
     result_byte, exc = _encode_mini_float(
@@ -354,13 +315,22 @@ def encode_ofp8_e4m3(
 
 def decode_ofp8_e4m3(byte_val: int) -> float:
     """Decode OFP8 E4M3 byte to Python float."""
-    return _decode_mini_float(
-        byte_val,
-        _E4M3_EXP_BITS,
-        _E4M3_MANT_BITS,
-        _E4M3_BIAS,
-        nan_pred=lambda e, m: e == _E4M3_MAX_EXP and m == (1 << _E4M3_MANT_BITS) - 1,
-    )
+    sign = (byte_val >> 7) & 1
+    exp = (byte_val >> _E4M3_MANT_BITS) & _E4M3_MAX_EXP
+    mant = byte_val & ((1 << _E4M3_MANT_BITS) - 1)
+
+    if exp == _E4M3_MAX_EXP and mant == (1 << _E4M3_MANT_BITS) - 1:
+        return float("nan")
+
+    if exp == 0:
+        # Denorm or zero
+        if mant == 0:
+            return -0.0 if sign else 0.0
+        val: float = (mant / (1 << _E4M3_MANT_BITS)) * float(2 ** (1 - _E4M3_BIAS))
+    else:
+        val = (1.0 + mant / (1 << _E4M3_MANT_BITS)) * float(2 ** (exp - _E4M3_BIAS))
+
+    return -val if sign else val
 
 
 # ── OFP8 E5M2 ───────────────────────────────────────────────────
@@ -384,7 +354,10 @@ def encode_ofp8_e5m2(
         # Canonical NaN: exp=31, mant=1 (quiet NaN)
         return b"\x7d", FpExceptions(invalid=True)
 
-    sign, value = _extract_sign(value)
+    sign = 0
+    if value < 0 or (value == 0.0 and math.copysign(1.0, value) < 0):
+        sign = 1
+        value = -value
 
     if math.isinf(value):
         byte_val = (sign << 7) | (_E5M2_MAX_EXP << _E5M2_MANT_BITS)
@@ -408,13 +381,23 @@ def encode_ofp8_e5m2(
 
 def decode_ofp8_e5m2(byte_val: int) -> float:
     """Decode OFP8 E5M2 byte to Python float."""
-    return _decode_mini_float(
-        byte_val,
-        _E5M2_EXP_BITS,
-        _E5M2_MANT_BITS,
-        _E5M2_BIAS,
-        has_inf=True,
-    )
+    sign = (byte_val >> 7) & 1
+    exp = (byte_val >> _E5M2_MANT_BITS) & _E5M2_MAX_EXP
+    mant = byte_val & ((1 << _E5M2_MANT_BITS) - 1)
+
+    if exp == _E5M2_MAX_EXP:
+        if mant == 0:
+            return float("-inf") if sign else float("inf")
+        return float("nan")
+
+    if exp == 0:
+        if mant == 0:
+            return -0.0 if sign else 0.0
+        val: float = (mant / (1 << _E5M2_MANT_BITS)) * float(2 ** (1 - _E5M2_BIAS))
+    else:
+        val = (1.0 + mant / (1 << _E5M2_MANT_BITS)) * float(2 ** (exp - _E5M2_BIAS))
+
+    return -val if sign else val
 
 
 # ── Generic mini-float encoder ───────────────────────────────────
@@ -452,53 +435,6 @@ def _overflow_result(
     return byte_val, FpExceptions(overflow=True, inexact=True)
 
 
-def _encode_denorm_path(abs_val: float, mant_bits: int, bias: int, rm: int, sign: int) -> tuple[int, int]:
-    """Encode denormalized value. Returns (biased_exp, mant_int) after rounding.
-
-    biased_exp is 0 if still denorm, 1 if rounding promoted to normal.
-    """
-    # Denorm: value = mantissa_frac * 2^(1-bias)
-    scale = 2 ** (1 - bias)
-    mant_frac = abs_val / scale
-    mant_int = _round_mantissa(mant_frac, mant_bits, rm, sign, is_denorm=True)
-    # Check if rounding promoted to normal
-    if mant_int >= (1 << mant_bits):
-        return 1, mant_int - (1 << mant_bits)
-    return 0, mant_int
-
-
-def _encode_normal_path(
-    abs_val: float,
-    log2_val: int,
-    biased_exp: int,
-    mant_bits: int,
-    max_normal_biased: int,
-    sign: int,
-    exp_bits: int,
-    has_inf: bool,
-    nan_pattern: int | None,
-    rm: int,
-) -> tuple[int, int] | None:
-    """Encode normal value. Returns (biased_exp, mant_int) or None on mantissa-overflow."""
-    significand = abs_val / (2**log2_val)  # 1.xxx
-    # Clamp to [0, 1) — float64 division may produce tiny negative
-    mant_frac = max(0.0, significand - 1.0)
-    mant_int = _round_mantissa(mant_frac, mant_bits, rm, sign, is_denorm=False)
-    # Rounding may cause mantissa overflow
-    if mant_int >= (1 << mant_bits):
-        mant_int = 0
-        biased_exp += 1
-        if biased_exp > max_normal_biased:
-            return None  # overflow
-    # Check for E4M3 NaN collision (defensive — currently unreachable
-    # because encode_ofp8_e4m3 catches overflow before _encode_mini_float)
-    if not has_inf and nan_pattern is not None:
-        candidate = (biased_exp << mant_bits) | mant_int
-        if candidate == (nan_pattern & ((1 << (exp_bits + mant_bits)) - 1)):
-            mant_int -= 1
-    return biased_exp, mant_int
-
-
 def _encode_mini_float(
     abs_val: float,
     sign: int,
@@ -516,25 +452,80 @@ def _encode_mini_float(
     """
     max_exp = (1 << exp_bits) - 1
     # For formats with Inf, max stored normal exponent = max_exp - 1
-    # For E4M3 (no Inf), max stored exponent = max_exp (but NaN steals one pattern)
-    max_normal_biased = max_exp - 1 if has_inf else max_exp
+    # For E4M3 (no Inf), max stored exponent = max_exp (but NaN
+    # steals one pattern)
+    if has_inf:
+        max_normal_biased = max_exp - 1
+    else:
+        max_normal_biased = max_exp
 
     # Compute unbiased exponent (abs_val > 0 guaranteed by callers)
     log2_val = math.floor(math.log2(abs_val))
+
     biased_exp = log2_val + bias
 
     if biased_exp <= 0:
-        biased_exp, mant_int = _encode_denorm_path(abs_val, mant_bits, bias, rm, sign)
+        # Denormalized number
+        biased_exp = 0
+        # Denorm: value = mantissa_frac * 2^(1-bias)
+        scale = 2 ** (1 - bias)
+        mant_frac = abs_val / scale
+        mant_int = _round_mantissa(
+            mant_frac,
+            mant_bits,
+            rm,
+            sign,
+            is_denorm=True,
+        )
+        # Check if rounding promoted to normal
+        if mant_int >= (1 << mant_bits):
+            biased_exp = 1
+            mant_int -= 1 << mant_bits
         underflow = True
     elif biased_exp > max_normal_biased:
-        return _overflow_result(sign, exp_bits, mant_bits, max_exp, max_normal_biased, has_inf, nan_pattern, rm)
-    else:
-        result = _encode_normal_path(
-            abs_val, log2_val, biased_exp, mant_bits, max_normal_biased, sign, exp_bits, has_inf, nan_pattern, rm
+        return _overflow_result(
+            sign,
+            exp_bits,
+            mant_bits,
+            max_exp,
+            max_normal_biased,
+            has_inf,
+            nan_pattern,
+            rm,
         )
-        if result is None:
-            return _overflow_result(sign, exp_bits, mant_bits, max_exp, max_normal_biased, has_inf, nan_pattern, rm)
-        biased_exp, mant_int = result
+    else:
+        # Normal number
+        significand = abs_val / (2**log2_val)  # 1.xxx
+        # Clamp to [0, 1) — float64 division may produce tiny negative
+        mant_frac = max(0.0, significand - 1.0)
+        mant_int = _round_mantissa(
+            mant_frac,
+            mant_bits,
+            rm,
+            sign,
+            is_denorm=False,
+        )
+        # Rounding may cause mantissa overflow
+        if mant_int >= (1 << mant_bits):
+            mant_int = 0
+            biased_exp += 1
+            if biased_exp > max_normal_biased:
+                return _overflow_result(
+                    sign,
+                    exp_bits,
+                    mant_bits,
+                    max_exp,
+                    max_normal_biased,
+                    has_inf,
+                    nan_pattern,
+                    rm,
+                )
+        # Check for E4M3 NaN collision (defensive — currently unreachable
+        # because encode_ofp8_e4m3 catches overflow before _encode_mini_float)
+        if not has_inf and nan_pattern is not None:
+            candidate = (biased_exp << mant_bits) | mant_int
+            if candidate == (nan_pattern & ((1 << (exp_bits + mant_bits)) - 1)):
+                mant_int -= 1
         underflow = False
 
     byte_val = (sign << (exp_bits + mant_bits)) | (biased_exp << mant_bits) | mant_int
@@ -546,7 +537,10 @@ def _encode_mini_float(
         rt_val = (1.0 + mant_int / (1 << mant_bits)) * (2 ** (biased_exp - bias))
     inexact = rt_val != abs_val
 
-    return byte_val, FpExceptions(underflow=underflow, inexact=inexact)
+    return byte_val, FpExceptions(
+        underflow=underflow,
+        inexact=inexact,
+    )
 
 
 def _encode_ieee_directed(
@@ -560,7 +554,11 @@ def _encode_ieee_directed(
 
     Works for float32 (8/23/127) and float16 (5/10/15).
     """
-    sign, abs_val = _extract_sign(value)
+    sign = 0
+    abs_val = value
+    if value < 0:
+        sign = 1
+        abs_val = -value
     bits, exc = _encode_mini_float(
         abs_val,
         sign,
@@ -621,34 +619,6 @@ def _round_mantissa(
         return floor_val
 
 
-# ── Dispatch tables ──────────────────────────────────────────────
-
-_ENCODERS: dict[int, Callable[[float, int], tuple[bytes, FpExceptions]]] = {
-    _FMT_F: encode_float32,
-    _FMT_H: encode_float16,
-    _FMT_BF: encode_bfloat16,
-    _FMT_O3: encode_ofp8_e4m3,
-    _FMT_O2: encode_ofp8_e5m2,
-}
-
-# Byte width per format (for decoder slicing)
-_FMT_BYTES: dict[int, int] = {
-    _FMT_F: 4,
-    _FMT_H: 2,
-    _FMT_BF: 2,
-    _FMT_O3: 1,
-    _FMT_O2: 1,
-}
-
-_DECODERS_RAW: dict[int, Callable[..., float]] = {
-    _FMT_F: decode_float32,
-    _FMT_H: decode_float16,
-    _FMT_BF: decode_bfloat16,
-    _FMT_O3: decode_ofp8_e4m3,
-    _FMT_O2: decode_ofp8_e5m2,
-}
-
-
 # ── Dispatcher functions ─────────────────────────────────────────
 
 
@@ -667,10 +637,17 @@ def float_to_bytes(
     Returns:
         (bytes_le, exceptions)
     """
-    encoder = _ENCODERS.get(fmt)
-    if encoder is None:
-        raise ValueError(f"unsupported FP format code: {fmt}")
-    return encoder(value, rm)
+    if fmt == _FMT_F:
+        return encode_float32(value, rm)
+    if fmt == _FMT_H:
+        return encode_float16(value, rm)
+    if fmt == _FMT_BF:
+        return encode_bfloat16(value, rm)
+    if fmt == _FMT_O3:
+        return encode_ofp8_e4m3(value, rm)
+    if fmt == _FMT_O2:
+        return encode_ofp8_e5m2(value, rm)
+    raise ValueError(f"unsupported FP format code: {fmt}")
 
 
 def bytes_to_float(data: bytes, fmt: int) -> float:
@@ -683,9 +660,247 @@ def bytes_to_float(data: bytes, fmt: int) -> float:
     Returns:
         Python float value.
     """
-    width = _FMT_BYTES.get(fmt)
-    if width is None:
-        raise ValueError(f"unsupported FP format code: {fmt}")
-    raw = data[:width]
-    decoder = _DECODERS_RAW[fmt]
-    return decoder(raw[0]) if width == 1 else decoder(raw)
+    if fmt == _FMT_F:
+        return decode_float32(data[:4])
+    if fmt == _FMT_H:
+        return decode_float16(data[:2])
+    if fmt == _FMT_BF:
+        return decode_bfloat16(data[:2])
+    if fmt == _FMT_O3:
+        return decode_ofp8_e4m3(data[0])
+    if fmt == _FMT_O2:
+        return decode_ofp8_e5m2(data[0])
+    raise ValueError(f"unsupported FP format code: {fmt}")
+
+
+# ── FP arithmetic helpers ────────────────────────────────────────
+
+
+def _re_encode(
+    result: float,
+    fmt: int,
+    rm: int,
+) -> tuple[float, FpExceptions]:
+    """Re-encode a float result through the target format.
+
+    Detects overflow/underflow/inexact from the format's precision.
+    """
+    data, exc = float_to_bytes(result, fmt, rm)
+    rt = bytes_to_float(data, fmt)
+    return rt, exc
+
+
+def _add_core(
+    a: float,
+    b: float,
+    fmt: int,
+    rm: int,
+) -> tuple[float, FpExceptions]:
+    """Add two floats, handling float64 absorption of tiny operands.
+
+    When the exponent gap exceeds float64's 53-bit significand, ``a + b``
+    returns the larger operand exactly.  For RNE this doesn't affect the
+    final float32 value (both round to the same representable number), but
+    for directed rounding we must nudge the float64 result so that
+    ``_re_encode`` rounds in the correct direction.
+    """
+    result = a + b
+    absorbed = False
+    if not math.isinf(result):
+        if a != 0.0 and result == b:
+            absorbed = True
+            # True sum is slightly shifted toward a's sign
+            result = math.nextafter(b, math.copysign(math.inf, a))
+        elif b != 0.0 and result == a:
+            absorbed = True
+            result = math.nextafter(a, math.copysign(math.inf, b))
+    rt, exc = _re_encode(result, fmt, rm)
+    if absorbed and not exc.inexact:
+        exc = exc._replace(inexact=True)
+    return rt, exc
+
+
+def fp_add(
+    a: float,
+    b: float,
+    fmt: int,
+    rm: int = 0,
+) -> tuple[float, FpExceptions]:
+    """Perform a + b in the given FP format."""
+    if math.isnan(a) or math.isnan(b):
+        return float("nan"), FpExceptions(invalid=True)
+    # Inf - Inf = NaN
+    if math.isinf(a) and math.isinf(b) and a != b:
+        return float("nan"), FpExceptions(invalid=True)
+    return _add_core(a, b, fmt, rm)
+
+
+def fp_sub(
+    a: float,
+    b: float,
+    fmt: int,
+    rm: int = 0,
+) -> tuple[float, FpExceptions]:
+    """Perform a - b in the given FP format."""
+    if math.isnan(a) or math.isnan(b):
+        return float("nan"), FpExceptions(invalid=True)
+    # Inf - Inf = NaN
+    if math.isinf(a) and math.isinf(b) and a == b:
+        return float("nan"), FpExceptions(invalid=True)
+    return _add_core(a, -b, fmt, rm)
+
+
+def fp_mul(
+    a: float,
+    b: float,
+    fmt: int,
+    rm: int = 0,
+) -> tuple[float, FpExceptions]:
+    """Perform a * b in the given FP format."""
+    if math.isnan(a) or math.isnan(b):
+        return float("nan"), FpExceptions(invalid=True)
+    # 0 * Inf or Inf * 0 = NaN
+    if (a == 0.0 and math.isinf(b)) or (math.isinf(a) and b == 0.0):
+        return float("nan"), FpExceptions(invalid=True)
+    result = a * b
+    return _re_encode(result, fmt, rm)
+
+
+def fp_div(
+    a: float,
+    b: float,
+    fmt: int,
+    rm: int = 0,
+) -> tuple[float, FpExceptions]:
+    """Perform a / b in the given FP format."""
+    if math.isnan(a) or math.isnan(b):
+        return float("nan"), FpExceptions(invalid=True)
+    # 0/0 = NaN (invalid)
+    if a == 0.0 and b == 0.0:
+        return float("nan"), FpExceptions(invalid=True)
+    # Inf/Inf = NaN (invalid)
+    if math.isinf(a) and math.isinf(b):
+        return float("nan"), FpExceptions(invalid=True)
+    # finite/0 = Inf (div_zero)
+    if b == 0.0:
+        sign = math.copysign(1.0, a) * math.copysign(1.0, b)
+        return math.copysign(float("inf"), sign), FpExceptions(
+            div_zero=True,
+        )
+    result = a / b
+    return _re_encode(result, fmt, rm)
+
+
+def fp_sqrt(
+    value: float,
+    fmt: int,
+    rm: int = 0,
+) -> tuple[float, FpExceptions]:
+    """Compute sqrt(value) in the given FP format."""
+    if math.isnan(value):
+        return float("nan"), FpExceptions(invalid=True)
+    if value < 0.0:
+        return float("nan"), FpExceptions(invalid=True)
+    if value == 0.0:
+        return math.copysign(0.0, value), NO_EXC
+    if math.isinf(value):
+        return float("inf"), NO_EXC
+    result = math.sqrt(value)
+    return _re_encode(result, fmt, rm)
+
+
+def fp_cmp(
+    a: float,
+    b: float,
+) -> tuple[bool, bool, FpExceptions]:
+    """Compare two floats, returning (zero_flag, carry_flag, exc).
+
+    - a == b -> (True, False, ...)  [including +0 == -0]
+    - a < b  -> (False, True, ...)
+    - a > b  -> (False, False, ...)
+    - Unordered (NaN) -> (True, True, ...)
+    """
+    if math.isnan(a) or math.isnan(b):
+        return True, True, FpExceptions(invalid=True)
+    if a == b:  # handles +0 == -0
+        return True, False, NO_EXC
+    if a < b:
+        return False, True, NO_EXC
+    return False, False, NO_EXC
+
+
+def fp_abs(raw_bits: int, width: int) -> int:
+    """Clear the sign bit. Pure bit manipulation."""
+    sign_mask = 1 << (width - 1)
+    return raw_bits & ~sign_mask
+
+
+def fp_neg(raw_bits: int, width: int) -> int:
+    """Toggle the sign bit. Pure bit manipulation."""
+    sign_mask = 1 << (width - 1)
+    return raw_bits ^ sign_mask
+
+
+def fp_classify(
+    value: float,
+    raw_bits: int,
+    width: int,
+    fmt: int,
+) -> int:
+    """Return 8-bit classification bitmask per spec.
+
+    Bits:
+        0: ZERO (+/-0)
+        1: SUB  (subnormal)
+        2: NORM (normal finite)
+        3: INF  (+/-Inf)
+        4: QNAN (quiet NaN)
+        5: SNAN (signaling NaN) -- not distinguishable in Python,
+           so we always report qNaN for NaN inputs
+        6: NEG  (sign bit set)
+    """
+    result = 0
+    sign_mask = 1 << (width - 1)
+    if raw_bits & sign_mask:
+        result |= 0x40  # bit 6: NEG
+
+    if math.isnan(value):
+        result |= 0x10  # bit 4: QNAN
+        return result
+
+    if math.isinf(value):
+        result |= 0x08  # bit 3: INF
+        return result
+
+    if value == 0.0:
+        result |= 0x01  # bit 0: ZERO
+        return result
+
+    # Check subnormal by examining exponent bits
+    if _is_subnormal(raw_bits, width, fmt):
+        result |= 0x02  # bit 1: SUB
+    else:
+        result |= 0x04  # bit 2: NORM
+
+    return result
+
+
+_FMT_SHAPE: dict[int, tuple[int, int]] = {
+    # fmt: (mant_bits, exp_bits)
+    _FMT_F: (23, 8),
+    _FMT_H: (10, 5),
+    _FMT_BF: (7, 8),
+    _FMT_O3: (3, 4),
+    _FMT_O2: (2, 5),
+}
+
+
+def _is_subnormal(raw_bits: int, width: int, fmt: int) -> bool:
+    """Check if the raw bits represent a subnormal number."""
+    shape = _FMT_SHAPE.get(fmt)
+    if shape is None:
+        return False
+    mant_bits, exp_bits = shape
+    exp = (raw_bits >> mant_bits) & ((1 << exp_bits) - 1)
+    mant = raw_bits & ((1 << mant_bits) - 1)
+    return exp == 0 and mant != 0

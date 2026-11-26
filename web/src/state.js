@@ -3,35 +3,17 @@
  * Single source of truth for CPU instance, assembly results, theme colors, and utilities.
  */
 
-import {
-    CPU,
-    IO_START,
-    IO_DISPLAY_END,
-    IO_TX_DATA,
-    IO_TX_STATUS,
-    IO_RX_DATA,
-    IO_RX_STATUS,
-    SP_INIT,
-    PAGE_SIZE,
-} from "../lib/core.js";
+import { CPU, IO_START, SP_INIT, PAGE_SIZE } from "../lib/core.js";
 
 // ── CPU instance ────────────────────────────────────────────────
 
-export const cpu = new CPU({ arch: 3 });
+export const cpu = new CPU();
 
 // ── Constants ───────────────────────────────────────────────────
 
 export const STACK_BASE = SP_INIT - 2;
 export const IO_BASE = IO_START;
-export { PAGE_SIZE, IO_DISPLAY_END, IO_TX_DATA, IO_TX_STATUS, IO_RX_DATA, IO_RX_STATUS };
-
-// ── Pad state (mutated by pad.js) ──────────────────────────────
-
-export const pad = {
-    visible: false,
-    start: 0, // base address
-    end: 0, // base address + size
-};
+export { PAGE_SIZE };
 
 // ── Assembly state (mutated by orchestrator) ────────────────────
 
@@ -42,8 +24,7 @@ export const asm = {
     instrStarts: new Set(),
     labelAddrs: new Set(), // absolute addresses that are label entry points (globals only)
     labelNames: new Map(), // absolute address → label name (globals only)
-    lastCode: null,
-    lastUsedBytes: 0,
+    codeLen: 0,
 };
 
 // ── CSS helper ──────────────────────────────────────────────────
@@ -65,7 +46,6 @@ export function refreshColors() {
         gr: cssVar("--a-green"),
         rd: cssVar("--a-red"),
         yl: cssVar("--a-yellow"),
-        pu: cssVar("--a-purple"),
         dim: cssVar("--t-dim"),
         mid: cssVar("--t-mid"),
         txt: cssVar("--t-text"),
@@ -109,23 +89,6 @@ export function initFormatToggle(blockId, tabsSelector, attr, renderFn, initial 
         renderFn();
     });
     return { get: () => state.fmt };
-}
-
-/** FP status register flag layout — shared by FPU (FPSR) and VU (VFPSR). */
-const FPSR_FLAGS = [
-    { n: "NV", bit: 0 },
-    { n: "DZ", bit: 1 },
-    { n: "OF", bit: 2 },
-    { n: "UF", bit: 3 },
-    { n: "NX", bit: 4 },
-];
-
-/** Render FPSR/VFPSR flag bits as HTML spans. onColor is used for active flags. */
-export function fpsrFlagsHtml(register, onColor) {
-    return FPSR_FLAGS.map((f) => {
-        const on = (register >> f.bit) & 1;
-        return `<span class="fb" style="font-size:8px;border-color:${on ? onColor : "var(--t-border)"};color:${on ? onColor : colors.dim};">${f.n}</span>`;
-    }).join("");
 }
 
 export function escapeHtml(s) {

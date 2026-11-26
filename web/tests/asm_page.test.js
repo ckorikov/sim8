@@ -212,30 +212,8 @@ describe("@page errors", () => {
         expect(asmError(`HLT\n@page 1\nDB ${data}`).message).toMatch(/overflow/i);
     });
 
-    it("backward seek overwrites existing bytes", () => {
-        // HLT + MOV A,1 = [0, 6, 0, 1] → 4 bytes
-        // @page 0, 1 → cursor at 1; DB 0xFF overwrites byte 1
-        const c = asm("HLT\nMOV A, 1\n@page 0, 1\nDB 0xFF\n@page 1\nDB 0");
-        expect(c[0]).toBe(0); // HLT untouched
-        expect(c[1]).toBe(0xff); // overwritten
-        expect(c[2]).toBe(0); // original MOV A operand
-        expect(c[3]).toBe(1); // original MOV constant
-    });
-
-    it("backward seek then forward append", () => {
-        // DB 1,2,3,4 → [1,2,3,4] (len 4)
-        // @page 0, 1 → cursor at 1; DB 0xAA,0xBB,0xCC,0xDD writes at 1-4
-        const c = asm("DB 1, 2, 3, 4\n@page 0, 1\nDB 0xAA, 0xBB, 0xCC, 0xDD\n@page 1\nDB 0");
-        expect(c[0]).toBe(1); // untouched
-        expect(c[1]).toBe(0xaa);
-        expect(c[2]).toBe(0xbb);
-        expect(c[3]).toBe(0xcc);
-        expect(c[4]).toBe(0xdd); // appended
-    });
-
-    it("label after backward seek gets correct offset", () => {
-        const c = asm("DB 1, 2, 3\n@page 0, 1\nmarker: DB 42\n@page 1\nDB 0");
-        expect(c[1]).toBe(42);
+    it("offset before current position → error", () => {
+        expect(asmError("HLT\nMOV A, 1\n@page 0, 1").message).toContain("before current position");
     });
 });
 
@@ -300,31 +278,5 @@ describe("overlay code", () => {
     it("{label} in overlay resolves to page number", () => {
         const c = asm("HLT\n@page 1\ndata: DB 42\n@page 2\nMOV DP, {data}");
         expect(c[514]).toBe(1);
-    });
-});
-
-// ── VSET label (full 16-bit address) ────────────────────────────────
-
-describe("VSET label (full 16-bit address)", () => {
-    it("VSET VA, label: page-0 label → lo=offset, hi=0", () => {
-        const c = asm("data: DB 0\nVSET VA, data\nHLT", 3);
-        expect(c[1]).toBe(163); // VSET_IMM16
-        expect(c[3]).toBe(0); // lo = 0
-        expect(c[4]).toBe(0); // hi = page 0
-    });
-
-    it("VSET VA, label: page-0 offset resolves correctly", () => {
-        // JMP(2) + DB×3(3) = VSET at offset 5; data at offset 2
-        const c = asm("JMP start\ndata: DB 1,2,3\nstart: VSET VA, data\nHLT", 3);
-        expect(c[7]).toBe(2); // lo = offset(data) = 2
-        expect(c[8]).toBe(0); // hi = page 0
-    });
-
-    it("VSET VA, label: cross-page label → lo=offset, hi=page", () => {
-        // @page 2 data first, then @page 0 VSET → VSET at c[0]
-        const c = asm("@page 2\ndata: DB 42\n@page 0\nVSET VA, data\nHLT", 3);
-        expect(c[0]).toBe(163); // VSET_IMM16
-        expect(c[2]).toBe(0); // lo = offset(data on page 2) = 0
-        expect(c[3]).toBe(2); // hi = page 2
     });
 });

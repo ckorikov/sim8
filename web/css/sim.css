@@ -1,4 +1,4 @@
-/* sim8 v3 — Styles */
+/* sim8 v2 — Styles */
 * {
     box-sizing: border-box;
 }
@@ -24,14 +24,13 @@
     --a-green: #3a9a3a;
     --a-red: #c44;
     --a-blue: #48c;
-    --a-purple: #a6e;
     --a-orange-a20: rgb(204 85 0 / 20%);
     --a-green-a40: rgb(58 154 58 / 40%);
     --t-exec-bg: rgb(204 85 0 / 15%);
 
     /* ── Layout sizes (for resizable diagram) ── */
     --s-split: 38%;
-    --s-diagram-w: 980px;
+    --s-diagram-w: 840px;
     --s-block-radius: 4px;
     --s-block-font: 11px;
     --s-hdr-font: 10px;
@@ -43,19 +42,20 @@
     --s-label-font: 8px;
     --s-row-gap: 10px;
     --s-wire-gap: 56px;
-    --s-cpu-w: 220px;
-    --s-fpu-w: 340px;
-    --s-mem-w: 620px;
-    --s-disp-w: 620px;
+    --s-cpu-w: 312px;
+    --s-fpu-w: 360px;
+    --s-mem-w: 544px;
+    --s-disp-w: 544px;
     --s-cpu-x: 48px;
+    --s-fpu-x: 432px;
     --s-top-y: 32px;
     --s-mem-cell-w: 28px;
-    --s-mem-cell-h: 22px;
+    --s-mem-cell-h: 20px;
     --s-mem-cell-font: 10px;
     --s-mem-hdr-w: 28px;
     --s-mem-row-w: 24px;
-    --s-disp-char-w: 22px;
-    --s-disp-char-h: 22px;
+    --s-disp-char-w: 20px;
+    --s-disp-char-h: 24px;
     --s-ri-label-font: 8px;
     --s-ri-label-pad: 3px 5px;
     --s-ri-val-font: 11px;
@@ -67,14 +67,6 @@
     --s-tab-pad: 2px 8px;
     --s-page-btn: 20px;
     --s-fp-cell-h: 22px;
-
-    /* ── VU block ── */
-    --s-vu-w: 220px;
-    --s-vu-x: 724px; /* memRight(668) + wireGap(56) = 724 */
-    --s-vu-queue-h: 22px;
-
-    /* ── Pad block ── */
-    --s-pad-w: 220px;
 }
 
 :root.light {
@@ -97,7 +89,6 @@
     --a-green: #3a7a50;
     --a-red: #9a4040;
     --a-blue: #3a6090;
-    --a-purple: #7a4a90;
     --a-orange-a20: rgb(138 90 48 / 15%);
     --a-green-a40: rgb(58 122 80 / 30%);
     --t-exec-bg: rgb(138 90 48 / 18%);
@@ -219,10 +210,6 @@ body {
     color: var(--a-green);
 }
 
-.mem-cell.pad-region {
-    color: var(--a-purple);
-}
-
 .mem-cell.marker-ip {
     background: var(--a-orange);
     color: var(--t-marker-text);
@@ -253,32 +240,6 @@ body {
 
 .mem-cell.marker-d {
     border-color: var(--a-red);
-}
-
-/* ── VU window markers (dashed border, distinct from scalar) ── */
-.mem-cell.marker-va {
-    border: 1px dashed var(--a-green);
-}
-
-.mem-cell.marker-vb {
-    border: 1px dashed var(--a-blue);
-}
-
-.mem-cell.marker-vc {
-    border: 1px dashed var(--a-orange);
-}
-
-/* ── Section label (used in CPU, FPU, VU, Pad block headers) ── */
-.hw-label {
-    font-size: var(--s-label-font);
-    color: var(--t-dim);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    margin-bottom: 4px;
-}
-
-span.hw-label {
-    margin-bottom: 0;
 }
 
 /* ── Register rows ── */
@@ -335,82 +296,21 @@ span.hw-label {
 }
 
 /* ── Console char ── */
-#disp-chars {
-    display: flex;
-    flex-direction: row;
-    width: 100%;
-    align-self: stretch;
-    gap: 1px;
-}
-
 .cc {
-    flex: none;
-    width: var(--s-disp-char-w);
-    height: var(--s-disp-char-h);
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: 13px;
+    width: var(--s-disp-char-w);
+    height: var(--s-disp-char-h);
+    font-size: var(--s-block-font);
     border: 1px solid var(--t-border);
     color: var(--t-dim);
+    flex-shrink: 0;
 }
 
 .cc.on {
     color: var(--a-green);
     text-shadow: 0 0 4px var(--a-green-a40);
-}
-
-/* ── Terminal ── */
-#term-body {
-    align-items: stretch;
-    padding: 0;
-}
-
-#term-body .xterm {
-    width: 100%;
-    padding: 6px 8px;
-}
-
-#term-body .xterm-viewport {
-    border-radius: 0;
-}
-
-/* ── Pad ── */
-#pad-canvas {
-    display: block;
-    width: 192px;
-    height: 192px;
-    image-rendering: pixelated;
-    cursor: crosshair;
-    border: 1px solid var(--t-border);
-    border-radius: 2px;
-}
-
-#pad-page,
-#pad-addr {
-    width: 48px;
-    font-size: 10px;
-    font-family: "JetBrains Mono", monospace;
-    background: var(--t-bg);
-    color: var(--t-text);
-    border: 1px solid var(--t-border);
-    border-radius: 2px;
-    padding: 1px 4px;
-    text-align: center;
-}
-
-#pad-page:focus,
-#pad-addr:focus {
-    outline: 1px solid var(--a-orange);
-    border-color: var(--a-orange);
-}
-
-#pad-page::-webkit-inner-spin-button,
-#pad-page::-webkit-outer-spin-button,
-#pad-addr::-webkit-inner-spin-button,
-#pad-addr::-webkit-outer-spin-button {
-    appearance: none;
-    margin: 0;
 }
 
 /* ── Memory headers ── */
@@ -488,15 +388,6 @@ span.hw-label {
     color: var(--a-orange);
 }
 
-#pad-size-tabs {
-    display: flex;
-    gap: 4px;
-}
-
-#pad-size-tabs .ft {
-    flex: 1;
-}
-
 /* ── Page buttons ── */
 .pb {
     width: var(--s-page-btn);
@@ -534,26 +425,16 @@ span.hw-label {
 
 /* ── Split drag handle ── */
 #split-handle {
-    width: 8px;
+    width: 5px;
     cursor: col-resize;
     flex-shrink: 0;
     background: var(--t-border);
     transition: background 0.15s;
-    background-image: repeating-linear-gradient(
-        0deg,
-        transparent,
-        transparent 3px,
-        color-mix(in srgb, var(--t-text) 20%, transparent) 3px,
-        color-mix(in srgb, var(--t-text) 20%, transparent) 4px
-    );
-    background-size: 100% 24px;
-    background-position: center;
-    background-repeat: no-repeat;
 }
 
 #split-handle:hover,
 #split-handle.active {
-    background-color: var(--a-orange);
+    background: var(--a-orange);
 }
 
 /* ── CodeMirror syntax highlighting via CSS vars ── */
@@ -955,59 +836,4 @@ span.hw-label {
     outline: none;
     width: 120px;
     padding: 0;
-}
-
-/* ── Vector Unit queue ── */
-.vu-queue {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    width: 100%;
-}
-
-#vu-state-dot.vu-busy {
-    animation: dot-pulse 0.6s ease-in-out infinite;
-}
-
-@keyframes dot-pulse {
-    0%,
-    100% {
-        opacity: 1;
-    }
-
-    50% {
-        opacity: 0.2;
-    }
-}
-
-.vu-queue-slot {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    height: var(--s-vu-queue-h);
-    font-size: 9px;
-    border: 1px solid var(--t-border);
-    border-radius: 2px;
-    color: var(--t-dim);
-}
-
-.vu-queue-slot.pending {
-    color: var(--t-mid);
-}
-
-.vu-queue-slot.active {
-    color: var(--a-orange);
-    border-color: var(--a-orange);
-    background: var(--a-orange-a20);
-    font-weight: 700;
-}
-
-.vu-q-mn {
-    font-weight: 700;
-}
-
-.vu-q-op {
-    font-weight: 400;
-    font-size: 8px;
 }

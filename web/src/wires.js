@@ -1,33 +1,13 @@
 /**
  * X6 wire diagram: initialization, flash animation, theme sync.
- *
- * 3-column layout: CPU (left) | FPU (middle) | VU (right) in row 1.
- * Γ-bus: horizontal segment below row-1, vertical segment between FPU and VU.
- * Horizontal bus: from Memory left to BUS_X at BUS_Y (midpoint between row-1
- *   bottom and Memory top). CPU and FPU both drop vertical wires to BUS_Y.
- * Vertical bus: from VU top down through VU/PAD stub connections.
- * BUS_X: midpoint between FPU right and VU left (equal 28px clearance each).
- *
- * Wire indices (for flashWire):
- *   0 WIRE_DATA  — CPU bottom → horizontal bus (vertical drop, yellow)
- *   1 WIRE_FP    — FPU bottom → horizontal bus (vertical drop, orange)
- *   2 WIRE_VU_A  — VU left ← vertical bus (horizontal stub, yellow)
- *   3 WIRE_IO    — Memory bottom → Display (i/o)
- *   4 WIRE_PAD   — Pad left ← vertical bus (horizontal stub, purple)
  */
 
-import { colors, pad } from "./state.js";
-import { isTermActive } from "./ui/term.js";
+import { colors } from "./state.js";
 
 const WIRE_FLASH_MS = 350;
 export const WIRE_DATA = 0;
 export const WIRE_FP = 1;
-export const WIRE_VU_A = 2;
-export const WIRE_IO = 3;
-export const WIRE_PAD = 4;
-
-// SVG bus line elements — updated on theme change
-let _busLines = [];
+export const WIRE_IO = 2;
 
 export function flashWire(idx) {
     const edge = document.querySelectorAll("#wire-canvas .x6-edge")[idx];
@@ -38,8 +18,10 @@ export function flashWire(idx) {
 
 export function updateWireColors() {
     document.querySelectorAll("#wire-canvas rect[rx]").forEach((r) => r.setAttribute("fill", colors.canvas));
-    const c = colors.yl;
-    document.querySelectorAll("#wire-canvas .x6-edge").forEach((edge) => {
+    const wireColors = [colors.yl, colors.or, colors.gr];
+    document.querySelectorAll("#wire-canvas .x6-edge").forEach((edge, i) => {
+        const c = wireColors[i];
+        if (!c) return;
         const line = edge.querySelector("path[stroke-dasharray]");
         if (line) line.setAttribute("stroke", c);
         edge.querySelectorAll("marker path, marker polygon").forEach((m) => {
@@ -49,12 +31,9 @@ export function updateWireColors() {
         const txt = edge.querySelector("text");
         if (txt) txt.setAttribute("fill", c);
     });
-    _busLines.forEach((el) => el.setAttribute("stroke", colors.yl));
 }
 
 export function initWires() {
-    _busLines = [];
-
     if (typeof X6 === "undefined") {
         document.getElementById("wire-canvas").innerHTML =
             '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#cc4444;">X6 failed to load</div>';
@@ -64,7 +43,6 @@ export function initWires() {
     const container = document.getElementById("diagram-container");
     const cRect = container.getBoundingClientRect();
     const canvas = document.getElementById("wire-canvas");
-    canvas.innerHTML = "";
     const cW = container.offsetWidth;
     const cH = container.offsetHeight;
     canvas.style.width = cW + "px";
@@ -80,136 +58,69 @@ export function initWires() {
         interacting: false,
     });
 
-    const fromTop = (y) => Math.round(y - cRect.top);
-    const fromLeft = (x) => Math.round(x - cRect.left);
-
     function portPos(portId) {
-        const pr = document.getElementById(portId).getBoundingClientRect();
-        return { x: fromLeft(pr.left + pr.width / 2), y: fromTop(pr.top + pr.height / 2) };
+        const port = document.getElementById(portId);
+        const pr = port.getBoundingClientRect();
+        return {
+            x: Math.round(pr.left - cRect.left + pr.width / 2),
+            y: Math.round(pr.top - cRect.top + pr.height / 2),
+        };
     }
 
-    // ── Γ bus geometry: 3-column layout (CPU | FPU | VU in row 1) ──
-    // Horizontal bus below row 1; vertical bus between FPU and VU columns.
-    const cpuR = document.getElementById("blk-cpu").getBoundingClientRect();
-    const memR = document.getElementById("blk-mem").getBoundingClientRect();
-    const fpuR = document.getElementById("blk-fpu").getBoundingClientRect();
-    const vuEl = document.getElementById("blk-vu");
-    const vuR = vuEl ? vuEl.getBoundingClientRect() : null;
-
-    const cpuBottomY = fromTop(cpuR.bottom);
-    const fpuBottomY = fromTop(fpuR.bottom);
-    const memTopY = fromTop(memR.top);
-    const memLeftX = fromLeft(memR.left);
-    const memRightX = fromLeft(memR.right);
-    const vuLeftX = vuR ? fromLeft(vuR.left) : memRightX + 56;
-
-    // BUS_Y: midpoint between row-1 bottom and Memory top → equal clearance
-    const row1BottomY = Math.max(cpuBottomY, fpuBottomY);
-    const BUS_Y = Math.round((row1BottomY + memTopY) / 2);
-    // BUS_X: midpoint between Memory right and VU left → equal clearance
-    const BUS_X = Math.round((memRightX + vuLeftX) / 2);
-
-    // Vertical bus: upper branch fixed by VU port, lower branch mirrors or extends for Pad
-    const vuPortY = vuR ? fromTop(vuR.top + vuR.height * 0.5) : BUS_Y;
-    const upperArm = BUS_Y - Math.min(BUS_Y, vuPortY);
-    let lowerArm = vuR ? fromTop(vuR.bottom) - BUS_Y : upperArm;
-    const padEl = pad.visible ? document.getElementById("blk-pad") : null;
-    if (padEl) {
-        const padR = padEl.getBoundingClientRect();
-        lowerArm = Math.max(lowerArm, fromTop(padR.bottom) - BUS_Y);
-    }
-    // Without Pad, mirror arms; with Pad, lower extends independently
-    if (!pad.visible) lowerArm = Math.max(lowerArm, upperArm);
-    const busTop = BUS_Y - upperArm;
-    const busBottom = BUS_Y + lowerArm;
-
-    // ── Draw Γ bus as SVG lines, inserted behind X6 edges ──
-    const svgEl = canvas.querySelector("svg");
-    const busGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
-    const defs = svgEl.querySelector("defs");
-    if (defs) defs.insertAdjacentElement("afterend", busGroup);
-    else svgEl.insertBefore(busGroup, svgEl.firstChild);
-
-    function addBusLine(x1, y1, x2, y2) {
-        const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-        line.setAttribute("x1", x1);
-        line.setAttribute("y1", y1);
-        line.setAttribute("x2", x2);
-        line.setAttribute("y2", y2);
-        line.setAttribute("stroke", colors.yl);
-        line.setAttribute("stroke-width", "4");
-        line.setAttribute("stroke-linecap", "round");
-        busGroup.appendChild(line);
-        _busLines.push(line);
+    function bentVerts(from, to) {
+        const dx = Math.abs(to.x - from.x);
+        const dy = Math.abs(to.y - from.y);
+        if (dx < 4 || dy < 4) return [];
+        const midY = Math.round((from.y + to.y) / 2);
+        return [
+            { x: from.x, y: midY },
+            { x: to.x, y: midY },
+        ];
     }
 
-    // Horizontal bus: from Memory left to BUS_X corner (Γ horizontal bar)
-    addBusLine(memLeftX, BUS_Y, BUS_X, BUS_Y);
-    // Vertical bus: from row-1 top down to PAD/VU bottom (Γ vertical bar)
-    addBusLine(BUS_X, busTop, BUS_X, busBottom);
-
-    // ── Helper: add a dashed X6 edge between two { x, y } points ──
-    function addWire(from, to, color, label, opts = {}) {
+    function addWire(fromId, toId, color, label, opts = {}) {
+        const from = portPos(fromId);
+        const to = portPos(toId);
+        const bidir = opts.bidir !== false;
         const labelOffset = opts.labelOffset || 0;
-        const strokeWidth = opts.strokeWidth ?? 1.5;
         const lineAttrs = {
             stroke: color,
-            strokeWidth,
+            strokeWidth: 1.5,
             strokeDasharray: "6 3",
-            targetMarker: null,
-            sourceMarker: null,
+            targetMarker: { name: "block", width: 6, height: 4, fill: color, stroke: color },
         };
+        if (bidir) {
+            lineAttrs.sourceMarker = { name: "block", width: 6, height: 4, fill: color, stroke: color };
+        }
+
+        const verts = opts.vertices ?? bentVerts(from, to);
 
         graph.addEdge({
             source: { x: from.x, y: from.y },
             target: { x: to.x, y: to.y },
-            vertices: opts.vertices ?? [],
+            vertices: verts,
             router: { name: "normal" },
             connector: { name: "rounded", args: { radius: 8 } },
             attrs: { line: lineAttrs },
-            labels: label
-                ? [
-                      {
-                          position: { distance: 0.5, offset: labelOffset },
-                          attrs: {
-                              text: {
-                                  text: label,
-                                  fontSize: 9,
-                                  fontFamily: "'JetBrains Mono',monospace",
-                                  fill: color,
-                                  letterSpacing: "0.05em",
-                              },
-                              rect: { fill: colors.canvas, rx: 2, ry: 2 },
-                          },
-                      },
-                  ]
-                : [],
+            labels: [
+                {
+                    position: { distance: 0.5, offset: labelOffset },
+                    attrs: {
+                        text: {
+                            text: label,
+                            fontSize: 9,
+                            fontFamily: "'JetBrains Mono',monospace",
+                            fill: color,
+                            letterSpacing: "0.05em",
+                        },
+                        rect: { fill: colors.canvas, rx: 2, ry: 2 },
+                    },
+                },
+            ],
         });
     }
 
-    // ── Wire 0: WIRE_DATA — CPU bottom → horizontal bus (vertical drop) ──
-    const cpuBot = portPos("port-cpu-bottom");
-    addWire(cpuBot, { x: cpuBot.x, y: BUS_Y }, colors.yl, null);
-
-    // ── Wire 1: WIRE_FP — FPU bottom → horizontal bus (vertical drop) ──
-    const fpuBot = portPos("port-fpu-bottom");
-    addWire(fpuBot, { x: fpuBot.x, y: BUS_Y }, colors.yl, null);
-
-    // ── Wire 2: WIRE_VU_A — VU left ← vertical bus (horizontal stub) ──
-    if (vuR) {
-        const vuLeft = portPos("port-vu-left-a");
-        addWire({ x: BUS_X, y: vuLeft.y }, vuLeft, colors.yl, null);
-    }
-
-    // ── Wire 3: WIRE_IO — Memory bottom → Display or Terminal top ──
-    const memBot = portPos("port-mem-bottom");
-    const ioPortId = isTermActive() ? "port-term-top" : "port-disp-top";
-    const ioTop = portPos(ioPortId);
-    addWire(memBot, ioTop, colors.yl, "i/o", { labelOffset: 20 });
-
-    // ── Wire 4: WIRE_PAD — Pad left ← vertical bus (horizontal stub) ──
-    if (pad.visible && document.getElementById("port-pad-left")) {
-        const padLeft = portPos("port-pad-left");
-        addWire({ x: BUS_X, y: padLeft.y }, padLeft, colors.yl, null);
-    }
+    addWire("port-cpu-bottom", "port-mem-top", colors.yl, "data bus");
+    addWire("port-cpu-right", "port-fpu-left", colors.or, "fp bus", { labelOffset: -12 });
+    addWire("port-mem-bottom", "port-disp-top", colors.gr, "i/o", { bidir: false, labelOffset: 20 });
 }

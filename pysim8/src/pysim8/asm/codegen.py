@@ -3,37 +3,56 @@
 from __future__ import annotations
 
 import warnings
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import NamedTuple
 
-from pysim8.asm._codegen_core import AssemblerError, _encode_operand, _find_instr
-from pysim8.asm._codegen_fp import _encode_db, _encode_fmov_imm, _encode_fp_instruction
-from pysim8.asm._codegen_mu import _encode_mu_instruction
-from pysim8.asm._codegen_vu import _encode_vu_instruction
 from pysim8.asm.parser import (
+    AsmError,
+    OpAddr,
     OpAddrLabel,
     OpConst,
     Operand,
+    OpFloat,
     OpFpImm,
     OpFpReg,
     OpLabel,
     OpPageLabel,
+    OpReg,
+    OpRegAddr,
+    OpString,
     ParsedLine,
     ParseError,
     parse_lines,
 )
 from pysim8.asm.preprocess import PreprocessError, PreprocessResult, SourceLoc, preprocess
+from pysim8.fp_formats import FpExceptions, float_to_bytes
 from pysim8.isa import (
+    ARITH_CODES,
+    BY_MNEMONIC,
     BY_MNEMONIC_FP,
     FP_CONTROL_MNEMONICS,
-    IO_START,
+    FP_FMT_O3,
+    FP_FMT_WIDTH,
+    FP_SUFFIX_TO_FMT,
+    FP_WIDTH_REGS,
+    GPR_CODES,
     MNEMONICS_FP,
-    MNEMONICS_MU,
-    MNEMONICS_VU,
-    PAGE_SIZE,
+    STACK_CODES,
+    InstrDef,
+    Op,
+    OpType,
+    encode_fpm,
+    encode_regaddr,
 )
+from pysim8.sim.memory import IO_START, PAGE_SIZE
 
 __all__ = ["assemble", "AssemblerError", "AssembleResult"]
+
+
+class AssemblerError(AsmError):
+    """Assembler error (encoding/resolution phase)."""
 
 
 @dataclass(slots=True)
@@ -43,6 +62,235 @@ class AssembleResult:
     code: list[int] = field(default_factory=list)
     labels: dict[str, int] = field(default_factory=dict)
     mapping: dict[int, SourceLoc] = field(default_factory=dict)
+
+
+# ── Operand matching and encoding ──────────────────────────────────
+
+
+def _operand_matches(op: Operand, ot: OpType) -> bool:
+    """Check if a parsed operand matches an ISA operand type."""
+    match ot:
+        case OpType.REG:
+            return isinstance(op, OpReg)
+        case OpType.REG_ARITH:
+            return isinstance(op, OpReg) and op.code in ARITH_CODES
+        case OpType.REG_GPR:
+            return isinstance(op, OpReg) and op.code in GPR_CODES
+        case OpType.REG_STACK:
+            return isinstance(op, OpReg) and op.code in STACK_CODES
+        case OpType.IMM:
+            return isinstance(op, (OpConst, OpLabel, OpPageLabel))
+        case OpType.MEM:
+            return isinstance(op, (OpAddr, OpAddrLabel))
+        case OpType.REGADDR:
+            return isinstance(op, OpRegAddr)
+        case OpType.FP_REG:
+            return isinstance(op, OpFpReg)
+        case OpType.FP_IMM8 | OpType.FP_IMM16:
+            return isinstance(op, OpFpImm)
+    return False
+
+
+def _encode_operand(op: Operand) -> int:
+    """Encode one operand into a single byte."""
+    match op:
+        case OpReg(code=c):
+            return c
+        case OpConst(value=v):
+            return v
+        case OpAddr(value=v):
+            return v
+        case OpRegAddr() as ra:
+            return encode_regaddr(ra.reg_code, ra.offset)
+        case OpLabel():
+            return 0  # placeholder for pass 2
+        case OpAddrLabel():
+            return 0  # placeholder for pass 2
+        case OpPageLabel():
+            return 0  # placeholder for pass 2
+    raise AssertionError(f"unexpected operand: {op!r}")
+
+
+def _find_instr(
+    mnemonic: str,
+    operands: list[Operand],
+    line: int,
+    table: Mapping[str, tuple[InstrDef, ...]] | None = None,
+) -> InstrDef:
+    """Find matching InstrDef by mnemonic and operands."""
+    if table is None:
+        table = BY_MNEMONIC
+    candidates = table.get(mnemonic)
+    if candidates is None:
+        raise AssemblerError(f"Invalid instruction: {mnemonic}", line)
+
+    for instr in candidates:
+        if len(instr.sig) != len(operands):
+            continue
+        if all(_operand_matches(op, ot) for op, ot in zip(operands, instr.sig)):
+            return instr
+
+    max_arity = max(len(i.sig) for i in candidates)
+    if len(operands) > max_arity:
+        raise AssemblerError(f"{mnemonic}: too many arguments", line)
+    raise AssemblerError(f"{mnemonic} does not support this operand(s)", line)
+
+
+# ── DB encoding ────────────────────────────────────────────────────
+
+
+def _encode_db_operand(
+    op: Operand,
+    line: int,
+    result: list[int],
+) -> None:
+    """Encode one DB operand, appending bytes to result."""
+    if isinstance(op, OpConst):
+        result.append(op.value)
+        return
+    if isinstance(op, OpString):
+        if not op.text:
+            raise AssemblerError("DB string must not be empty", line)
+        result.extend(ord(c) for c in op.text)
+        return
+    if isinstance(op, OpFloat):
+        data, exc = float_to_bytes(op.value, op.fmt)
+        _check_e4m3_range(exc, op.fmt, line)
+        result.extend(data)
+        return
+    raise AssemblerError("DB does not support this operand", line)
+
+
+def _encode_db(operands: list[Operand], line: int) -> list[int]:
+    """Encode DB pseudo-instruction."""
+    result: list[int] = []
+    for op in operands:
+        _encode_db_operand(op, line, result)
+    return result
+
+
+# ── FP instruction encoding ──────────────────────────────────────
+
+
+def _validate_fp_suffix(suffix: str, line: int) -> int:
+    """Resolve and validate FP format suffix to fmt code."""
+    upper = suffix.upper()
+    if upper not in FP_SUFFIX_TO_FMT:
+        raise AssemblerError(f"Invalid FP format suffix: .{suffix}", line)
+    return FP_SUFFIX_TO_FMT[upper]
+
+
+def _check_e4m3_range(exc: FpExceptions, fmt: int, line: int) -> None:
+    if exc.overflow and fmt == FP_FMT_O3:
+        raise AssemblerError("Float value out of range for format E4M3", line)
+
+
+def _validate_fp_reg_width(reg: OpFpReg, fmt: int, line: int) -> None:
+    """Check that register width matches format width."""
+    fmt_width = FP_FMT_WIDTH[fmt]
+    allowed = FP_WIDTH_REGS.get(fmt_width, frozenset())
+    if reg.name not in allowed:
+        raise AssemblerError(
+            "FP format suffix does not match register width",
+            line,
+        )
+
+
+def _encode_fp_instruction(
+    instr: InstrDef,
+    operands: list[Operand],
+    dst_suffix: str | None,
+    src_suffix: str | None,
+    line: int,
+) -> list[int]:
+    """Encode one FP instruction into bytes.
+
+    FPM bytes always come before non-FP bytes in encoding,
+    regardless of assembly operand order.
+    """
+    # Determine format code(s) from suffix
+    dst_fmt = _validate_fp_suffix(dst_suffix, line) if dst_suffix else None
+    src_fmt = _validate_fp_suffix(src_suffix, line) if src_suffix else None
+
+    # FCVT special case: dual suffix
+    if instr.op == Op.FCVT_FP_FP:
+        if dst_fmt is None or src_fmt is None:
+            raise AssemblerError("FCVT requires two format suffixes", line)
+        if dst_fmt == src_fmt:
+            raise AssemblerError("FCVT with identical formats (use FMOV)", line)
+        dst_reg = operands[0]
+        src_reg = operands[1]
+        if not isinstance(dst_reg, OpFpReg) or not isinstance(src_reg, OpFpReg):
+            raise AssemblerError("FCVT requires two FP register operands", line)
+        _validate_fp_reg_width(dst_reg, dst_fmt, line)
+        _validate_fp_reg_width(src_reg, src_fmt, line)
+        dst_fpm = encode_fpm(dst_reg.phys, dst_reg.pos, dst_fmt)
+        src_fpm = encode_fpm(src_reg.phys, src_reg.pos, src_fmt)
+        return [int(instr.op), dst_fpm, src_fpm]
+
+    if dst_fmt is None:
+        raise AssemblerError("FP instruction requires a format suffix", line)
+
+    # Separate FP reg operands from non-FP operands
+    fp_ops: list[OpFpReg] = []
+    non_fp_ops: list[Operand] = []
+    for op in operands:
+        if isinstance(op, OpFpReg):
+            _validate_fp_reg_width(op, dst_fmt, line)
+            fp_ops.append(op)
+        else:
+            non_fp_ops.append(op)
+
+    # Encode FPM bytes
+    fpm_bytes = [encode_fpm(fp_op.phys, fp_op.pos, dst_fmt) for fp_op in fp_ops]
+
+    # Encode non-FP bytes
+    non_fp_bytes = [_encode_operand(op) for op in non_fp_ops]
+
+    return [int(instr.op)] + fpm_bytes + non_fp_bytes
+
+
+# ── FMOV immediate encoding ──────────────────────────────────────
+
+
+def _encode_fmov_imm(
+    operands: list[Operand],
+    dst_suffix: str | None,
+    line: int,
+) -> list[int]:
+    """Encode FMOV with FP immediate operand."""
+    if not isinstance(operands[0], OpFpReg):
+        raise AssemblerError("FMOV does not support this operand(s)", line)
+    if dst_suffix is None:
+        raise AssemblerError("FMOV immediate requires a format suffix", line)
+
+    dst_reg = operands[0]
+    fp_imm = operands[1]
+    if not isinstance(fp_imm, OpFpImm):
+        raise AssemblerError("FMOV second operand must be a float literal", line)
+
+    dst_fmt = _validate_fp_suffix(dst_suffix, line)
+    fmt_width = FP_FMT_WIDTH[dst_fmt]
+
+    if fmt_width == 32:
+        raise AssemblerError("FP immediate not supported for float32", line)
+    if fmt_width == 4:
+        raise AssemblerError("FP immediate not supported for 4-bit formats", line)
+
+    if fp_imm.fmt is not None and fp_imm.fmt != dst_fmt:
+        raise AssemblerError("FP immediate suffix mismatch", line)
+
+    _validate_fp_reg_width(dst_reg, dst_fmt, line)
+
+    data, exc = float_to_bytes(fp_imm.value, dst_fmt)
+    _check_e4m3_range(exc, dst_fmt, line)
+
+    fpm_byte = encode_fpm(dst_reg.phys, dst_reg.pos, dst_fmt)
+
+    if fmt_width == 8:
+        return [int(Op.FMOV_FP_IMM8), fpm_byte, data[0]]
+    else:
+        return [int(Op.FMOV_FP_IMM16), fpm_byte, data[0], data[1]]
 
 
 # ── Instruction encoding ──────────────────────────────────────────
@@ -60,17 +308,14 @@ def _encode_instruction(
     if mnemonic == "DB":
         return _encode_db(operands, line)
 
-    if arch >= 3 and mnemonic in MNEMONICS_VU:
-        return _encode_vu_instruction(mnemonic, operands, dst_suffix, src_suffix, line)
-
-    if arch >= 3 and mnemonic in MNEMONICS_MU:
-        return _encode_mu_instruction(mnemonic, operands, dst_suffix, src_suffix, line)
-
     if arch >= 2 and mnemonic in MNEMONICS_FP:
+        # FMOV immediate special case (bypasses _find_fp_insn)
         if mnemonic == "FMOV" and len(operands) == 2 and isinstance(operands[1], OpFpImm):
             return _encode_fmov_imm(operands, dst_suffix, line)
+
         instr = _find_instr(mnemonic, operands, line, table=BY_MNEMONIC_FP)
         if mnemonic in FP_CONTROL_MNEMONICS:
+            # Control: no FPM, just opcode + operand bytes
             return [int(instr.op)] + [_encode_operand(op) for op in operands]
         return _encode_fp_instruction(instr, operands, dst_suffix, src_suffix, line)
 
@@ -85,8 +330,7 @@ _JUMP_MNEMONICS = frozenset({"JMP", "JC", "JNC", "JZ", "JNZ", "JA", "JNA", "CALL
 # ── Patch descriptor ─────────────────────────────────────────────
 
 
-@dataclass(frozen=True, slots=True)
-class LabelPatch:
+class LabelPatch(NamedTuple):
     """Describes a label reference that needs resolution in Pass 2."""
 
     page: int
@@ -95,7 +339,6 @@ class LabelPatch:
     is_page_ref: bool
     is_jump: bool
     loc: SourceLoc
-    label_offset: int = 0
 
 
 # ── Pass 1 state ─────────────────────────────────────────────────
@@ -106,13 +349,12 @@ class _Pass1State:
     """Mutable state accumulated during Pass 1."""
 
     page_codes: dict[int, list[int]] = field(default_factory=lambda: {0: []})
-    page_cursors: dict[int, int] = field(default_factory=lambda: {0: 0})
     current_page: int = 0
     seen_pages: set[int] = field(default_factory=lambda: {0})
     has_page_directive: bool = False
     label_info: dict[str, tuple[int, int]] = field(default_factory=dict)
     page_mapping: dict[tuple[int, int], SourceLoc] = field(default_factory=dict)
-    patches: list[LabelPatch] = field(default_factory=list)
+    label_patches: list[LabelPatch] = field(default_factory=list)
     page_locs: dict[int, SourceLoc] = field(default_factory=dict)
 
 
@@ -120,57 +362,42 @@ class _Pass1State:
 
 
 def _pass1_handle_page(
-    state: _Pass1State,
+    st: _Pass1State,
     operands: list[Operand],
     loc: SourceLoc,
 ) -> None:
     """Handle @PAGE directive."""
-    state.has_page_directive = True
+    st.has_page_directive = True
     if not operands or not isinstance(operands[0], OpConst):
         raise AssemblerError("@page: internal error (bad operand)", loc[1], filename=loc[0])
     page_num = operands[0].value
     filename, orig_line = loc
 
-    if page_num not in state.seen_pages:
-        state.seen_pages.add(page_num)
-        state.page_codes[page_num] = []
-        state.page_cursors[page_num] = 0
+    if page_num not in st.seen_pages:
+        st.seen_pages.add(page_num)
+        st.page_codes[page_num] = []
 
-    state.current_page = page_num
-    state.page_locs[page_num] = loc
+    st.current_page = page_num
+    st.page_locs[page_num] = loc
 
+    # Handle optional offset
     if len(operands) > 1:
         if not isinstance(operands[1], OpConst):
             raise AssemblerError("@page: internal error (bad offset operand)", orig_line, filename=filename)
         target_offset = operands[1].value
-        current_len = len(state.page_codes[page_num])
-        if target_offset > current_len:
-            state.page_codes[page_num].extend([0] * (target_offset - current_len))
-        state.page_cursors[page_num] = target_offset
+        current_len = len(st.page_codes[page_num])
+        if target_offset < current_len:
+            raise AssemblerError(
+                f"@page {page_num}: offset {target_offset} is before current position {current_len}",
+                orig_line,
+                filename=filename,
+            )
+        # Pad with zeros to reach target offset
+        st.page_codes[page_num].extend([0] * (target_offset - current_len))
 
 
-def _label_patch_pos(
-    operands: list[Operand],
-    i: int,
-    mnemonic: str,
-    pos: int,
-    arch: int,
-) -> int:
-    """Compute the byte offset for a label patch in the encoded output."""
-    is_fp_data = arch >= 2 and mnemonic in MNEMONICS_FP and mnemonic not in FP_CONTROL_MNEMONICS
-    if is_fp_data:
-        fp_count = sum(1 for o in operands if isinstance(o, OpFpReg))
-        non_fp_idx = sum(1 for o in operands[:i] if not isinstance(o, OpFpReg))
-        return pos + 1 + fp_count + non_fp_idx
-    if mnemonic == "VSET":
-        if len(operands) == 3:
-            return pos + 3 if i == 1 else pos + 2
-        return pos + 2  # OpAddrLabel case
-    return pos + 1 + i
-
-
-def _pass1_collect_patches(
-    state: _Pass1State,
+def _pass1_collect_label_patches(
+    st: _Pass1State,
     operands: list[Operand],
     pos: int,
     mnemonic: str,
@@ -183,37 +410,37 @@ def _pass1_collect_patches(
         if not isinstance(op, (OpLabel, OpAddrLabel, OpPageLabel)):
             continue
         is_page_ref = isinstance(op, OpPageLabel)
-        # VSET/MSET 2-op bare label: emit lo patch (pos+2) + hi patch (pos+3)
-        if mnemonic in ("VSET", "MSET") and len(operands) == 2 and isinstance(op, OpLabel):
-            state.patches.append(LabelPatch(state.current_page, pos + 2, op.name, False, is_jump, loc))
-            state.patches.append(LabelPatch(state.current_page, pos + 3, op.name, True, is_jump, loc))
-            continue
-        patch_pos = _label_patch_pos(operands, i, mnemonic, pos, arch)
-        lbl_off = op.offset if isinstance(op, OpAddrLabel) else 0
-        state.patches.append(LabelPatch(state.current_page, patch_pos, op.name, is_page_ref, is_jump, loc, lbl_off))
+        # For FP data instructions, FPM bytes are reordered before non-FP bytes.
+        is_fp_data = arch >= 2 and mnemonic in MNEMONICS_FP and mnemonic not in FP_CONTROL_MNEMONICS
+        if is_fp_data:
+            fp_count = sum(1 for o in operands if isinstance(o, OpFpReg))
+            non_fp_idx = sum(1 for o in operands[:i] if not isinstance(o, OpFpReg))
+            patch_pos = pos + 1 + fp_count + non_fp_idx
+        else:
+            patch_pos = pos + 1 + i
+        st.label_patches.append(LabelPatch(st.current_page, patch_pos, op.name, is_page_ref, is_jump, loc))
 
 
 def _pass1(parsed: list[ParsedLine], prep: PreprocessResult, arch: int) -> _Pass1State:
     """Pass 1: generate code, collect labels and patches."""
-    state = _Pass1State()
+    st = _Pass1State()
 
     for pline in parsed:
         loc = prep.line_map.get(pline.line_no, (None, pline.line_no))
 
         if pline.label is not None:
-            pos = state.page_cursors[state.current_page]
-            state.label_info[pline.label] = (state.current_page, pos)
+            pos = len(st.page_codes[st.current_page])
+            st.label_info[pline.label] = (st.current_page, pos)
 
         if pline.mnemonic is None:
             continue
 
         if pline.mnemonic == "@PAGE":
-            _pass1_handle_page(state, pline.operands or [], loc)
+            _pass1_handle_page(st, pline.operands or [], loc)
             continue
 
         operands = pline.operands if pline.operands is not None else []
-        page = state.current_page
-        pos = state.page_cursors[page]
+        pos = len(st.page_codes[st.current_page])
 
         try:
             encoded = _encode_instruction(
@@ -229,10 +456,10 @@ def _pass1(parsed: list[ParsedLine], prep: PreprocessResult, arch: int) -> _Pass
             raise AssemblerError(e.message, orig_line, filename=filename) from e
 
         if pline.mnemonic != "DB":
-            state.page_mapping[(page, pos)] = loc
+            st.page_mapping[(st.current_page, pos)] = loc
 
-        _pass1_collect_patches(
-            state,
+        _pass1_collect_label_patches(
+            st,
             operands,
             pos,
             pline.mnemonic,
@@ -241,38 +468,29 @@ def _pass1(parsed: list[ParsedLine], prep: PreprocessResult, arch: int) -> _Pass
             arch,
         )
 
-        codes = state.page_codes[page]
-        end = pos + len(encoded)
-        if end <= len(codes):
-            codes[pos:end] = encoded
-        else:
-            if pos < len(codes):
-                codes[pos:] = encoded
-            else:
-                codes.extend(encoded)
-        state.page_cursors[page] = end
+        st.page_codes[st.current_page].extend(encoded)
 
-    return state
+    return st
 
 
 # ── Page overflow check ──────────────────────────────────────────
 
 
-def _validate_page_overflow(state: _Pass1State) -> None:
+def _check_page_overflow(st: _Pass1State) -> None:
     """Check page size limits (only when @page directives are present)."""
-    if not state.has_page_directive:
+    if not st.has_page_directive:
         return
-    for page, data in state.page_codes.items():
+    for page, data in st.page_codes.items():
         if len(data) > PAGE_SIZE:
-            filename, line = state.page_locs.get(page, (None, 1))
+            filename, line = st.page_locs.get(page, (None, 1))
             raise AssemblerError(
                 f"Page {page} overflow: {len(data)} bytes exceeds {PAGE_SIZE}",
                 line,
                 filename=filename,
             )
-    if 0 in state.page_codes and len(state.page_codes[0]) > IO_START:
+    if 0 in st.page_codes and len(st.page_codes[0]) > IO_START:
         warnings.warn(
-            f"Page 0 output is {len(state.page_codes[0])} bytes; I/O region ({IO_START}-{PAGE_SIZE - 1}) will be overwritten",
+            f"Page 0 output is {len(st.page_codes[0])} bytes; I/O region ({IO_START}-{PAGE_SIZE - 1}) will be overwritten",
             stacklevel=3,
         )
 
@@ -280,68 +498,69 @@ def _validate_page_overflow(state: _Pass1State) -> None:
 # ── Pass 2: label resolution ─────────────────────────────────────
 
 
-def _pass2(state: _Pass1State) -> None:
+def _pass2(st: _Pass1State) -> None:
     """Resolve label references and validate cross-page jumps."""
-    for patch in state.patches:
+    for patch in st.label_patches:
         patch_page, patch_pos, label_name = patch.page, patch.pos, patch.name
         is_page_ref, is_jump = patch.is_page_ref, patch.is_jump
         filename, orig_line = patch.loc
-        if label_name not in state.label_info:
+        if label_name not in st.label_info:
             raise AssemblerError(f"Undefined label: {label_name}", orig_line, filename=filename)
-        label_page, label_offset = state.label_info[label_name]
-        resolved = label_offset + patch.label_offset
+        label_page, label_offset = st.label_info[label_name]
 
         if is_page_ref:
-            state.page_codes[patch_page][patch_pos] = label_page
-            continue
-        if resolved < 0 or resolved > 255:
-            raise AssemblerError(
-                f"[{label_name} + {patch.label_offset}]: resolved address {resolved} out of range 0-255",
-                orig_line,
-                filename=filename,
-            )
-        if is_jump and label_page != patch_page:
-            if patch_page == 0:
+            st.page_codes[patch_page][patch_pos] = label_page
+        else:
+            if label_offset < 0 or label_offset > 255:
                 raise AssemblerError(
-                    f"jump target '{label_name}' is on page {label_page}, but IP executes only on page 0",
+                    f"{label_offset} must have a value between 0-255",
                     orig_line,
                     filename=filename,
                 )
-            raise AssemblerError(
-                f"cross-page jump from page {patch_page} to page {label_page}",
-                orig_line,
-                filename=filename,
-            )
-        state.page_codes[patch_page][patch_pos] = resolved
+            if is_jump and label_page != patch_page:
+                if patch_page == 0:
+                    raise AssemblerError(
+                        f"jump target '{label_name}' is on page {label_page}, but IP executes only on page 0",
+                        orig_line,
+                        filename=filename,
+                    )
+                else:
+                    raise AssemblerError(
+                        f"cross-page jump from page {patch_page} to page {label_page}",
+                        orig_line,
+                        filename=filename,
+                    )
+            st.page_codes[patch_page][patch_pos] = label_offset
 
 
 # ── Build output ─────────────────────────────────────────────────
 
 
-def _build_output(state: _Pass1State) -> AssembleResult:
+def _build_output(st: _Pass1State) -> AssembleResult:
     """Flatten page codes into final AssembleResult."""
-    multi = state.has_page_directive
+    multi = st.has_page_directive
 
+    # Flatten code
     if multi:
-        max_page = max(state.page_codes.keys())
+        max_page = max(st.page_codes.keys())
         code: list[int] = [0] * ((max_page + 1) * PAGE_SIZE)
-        for page, data in state.page_codes.items():
+        for page, data in st.page_codes.items():
             base = page * PAGE_SIZE
             for i, b in enumerate(data):
                 code[base + i] = b
     else:
-        code = state.page_codes[0]
+        code = st.page_codes[0]
 
-    def flat(p: int, o: int) -> int:
-        return p * PAGE_SIZE + o if multi else o
-
+    # Labels: name → memory address
     labels: dict[str, int] = {}
-    for name, (page, offset) in state.label_info.items():
-        labels[name] = flat(page, offset)
+    for name, (page, offset) in st.label_info.items():
+        labels[name] = page * PAGE_SIZE + offset if multi else offset
 
+    # Mapping: flat code position → SourceLoc
     mapping: dict[int, SourceLoc] = {}
-    for (page, offset), loc in state.page_mapping.items():
-        mapping[flat(page, offset)] = loc
+    for (page, offset), loc in st.page_mapping.items():
+        flat_pos = page * PAGE_SIZE + offset if multi else offset
+        mapping[flat_pos] = loc
 
     return AssembleResult(code=code, labels=labels, mapping=mapping)
 
@@ -361,12 +580,13 @@ def assemble(
 
     Args:
         source: Assembly source text.
-        arch: Architecture version (1=integer-only, 2=with FPU, 3=FPU+VU). Default 1.
+        arch: Architecture version (1=integer-only, 2=with FPU). Default 1.
         base_path: Directory for resolving @include paths.
         include_paths: Additional search directories for @include (like -I in C).
 
     Returns AssembleResult with code, labels, and source mapping.
     """
+    # Phase 0: preprocessing (@include resolution)
     try:
         prep = preprocess(source, base_path, include_paths=include_paths)
     except PreprocessError as e:
@@ -378,8 +598,13 @@ def assemble(
         filename, orig_line = prep.line_map.get(e.line, (None, e.line))
         raise AssemblerError(e.message, orig_line, filename=filename) from e
 
-    state = _pass1(parsed, prep, arch)
-    _validate_page_overflow(state)
-    _pass2(state)
+    # Pass 1: generate code, collect labels
+    st = _pass1(parsed, prep, arch)
 
-    return _build_output(state)
+    # Page overflow check (multi-page only)
+    _check_page_overflow(st)
+
+    # Pass 2: resolve labels
+    _pass2(st)
+
+    return _build_output(st)

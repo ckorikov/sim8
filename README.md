@@ -10,36 +10,19 @@ Simulator of an 8-bit computer with CPU and peripherals. Formally verified with 
 spec/           Specification
   spec.md         Overview
   isa.md          Instruction set architecture
-  isa.json        Opcode table (canonical, machine-readable)
+  opcodes.md      Opcode table
   cpu.md          CPU states and instruction cycle
   mem.md          Memory model and addressing
   uarch.md        Microarchitecture (interpreter pseudocode)
-  fp.md           FPU coprocessor (IEEE 754)
-  vu.md           Vector Unit (VU) coprocessor
-  mu.md           Matrix Unit (MU) coprocessor
   asm.md          Assembler
   errors.md       Error/fault codes
-  io-display.md   I/O: display cells (0xE8–0xFB)
-  io-uart.md      I/O: UART terminal (0xFC–0xFF)
-  io-pad.md       I/O: pixel pad (configurable memory-mapped grid)
-  tests/
-    tests-cpu.md        Test specification (CPU/integer)
-    tests-fp.md         Test specification (FPU)
-    tests-vu.md         Test specification (VU)
-    tests-mu.md         Test specification (MU)
-    tests-mem.md        Test specification (memory model)
-    tests-io-display.md Test specification (display I/O)
-    tests-io-uart.md    Test specification (UART I/O)
-    tests-io-pad.md     Test specification (pixel pad I/O)
-    tests-errors.md     Test specification (error codes & fault machine)
+  tests.md        Test specification
 
-formal/         Formal verification
-  tla/              TLA+ formal model and tests
-    cpu_base.tla      Constants, helpers
-    cpu_core.tla      CPU state machine
-    cpu_ops_*.tla     Instruction semantics
-    tests/            TLC test suites
-  z3/               Z3 encoding verification
+formal/         TLA+ formal model and tests
+  cpu_base.tla      Constants, helpers
+  cpu_core.tla      CPU state machine
+  cpu_ops_*.tla     Instruction semantics
+  tests/            TLC test suites
 
 pysim8/         Python toolchain (assembler, simulator, disassembler)
 
@@ -65,17 +48,17 @@ ieee754-test-suite/  IEEE 754 conformance test vectors (.fptest)
 
 Requires Java and [TLA+ Tools](https://github.com/tlaplus/tlaplus).
 
-Download `tla2tools.jar` into `formal/tla/`:
+Download `tla2tools.jar` into `formal/`:
 
 ```bash
-cd formal/tla
+cd formal
 curl -LO https://github.com/tlaplus/tlaplus/releases/latest/download/tla2tools.jar
 ```
 
 Run tests:
 
 ```bash
-cd formal/tla
+cd formal
 
 make test          # all tests
 make test_basic    # single test

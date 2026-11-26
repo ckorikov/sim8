@@ -1,6 +1,6 @@
 # 5. Assembler Specification
 
-> Architecture v3 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Memory Model](mem.md), [Instruction Encoding](isa.md#18-instruction-encoding-format), [FPU](fp.md), [Vector Unit](vu.md)
+> Architecture v2 | Part of [Technical Specification](spec.md) | See also: [ISA](isa.md), [Memory Model & Addressing](mem.md), [Instruction Encoding](isa.md#18-instruction-encoding-format), [FPU](fp.md)
 
 ## 5.1 Assembly Pipeline
 
@@ -28,7 +28,7 @@ Forward label references (including `{label}`) may be left unresolved during pas
 **Pass 2 — Label Resolution:**
 
 Resolve all label references in operands:
-- `label`, `[label]`, `[label ± N]` → page-local offset (0–255)
+- `label` and `[label]` → page-local offset (0–255)
 - `{label}` → page number (0–255); see §5.11
 
 Cross-page jump validation: JMP/CALL to a label on a different page is an error (see §5.9).
@@ -57,7 +57,6 @@ The assembler produces:
 - Forbidden names: `A`, `B`, `C`, `D`, `SP`, `DP`, `FA`, `FB`, `FC`, `FD`, `FHA`, `FHB`, `FHC`, `FHD`, `FHE`, `FHF`, `FHG`, `FHH`, `FQA`, `FQB`, `FQC`, `FQD`, `FQE`, `FQF`, `FQG`, `FQH`, `FQI`, `FQJ`, `FQK`, `FQL`, `FQM`, `FQN`, `FQO`, `FQP`, `FOA`, `FOB`, `FOC`, `FOD`, `FOE`, `FOF`, `FOG`, `FOH`, `FOI`, `FOJ`, `FOK`, `FOL`, `FOM`, `FON`, `FOO`, `FOP` (conflict with register names; `FC`/`FD` and phys 2-3 sub-register names are reserved for future expansion)
 - Forward references allowed — a label can be used before its definition
 - Labels can be used inside brackets: `[label]` is equivalent to `[addr]` where addr is the label's resolved page-local offset. Uses the same direct addressing opcode as `[number]`
-- Label offset arithmetic: `[label + N]` and `[label - N]` add or subtract a constant from the resolved offset. N is a non-negative integer. The result must be 0–255; out-of-range is an assembler error
 - Labels can be used inside curly braces: `{label}` resolves to the page number where the label is defined (see §5.11)
 - Each label stores `(page, offset)` internally: page = current page at definition point, offset = position within that page
 - In operand position, `label` and `[label]` resolve to the page-local **offset** (0–255); `{label}` resolves to the **page number** (0–255)
@@ -95,7 +94,7 @@ FP registers are used with FP instructions only (opcodes 128-162). FP register n
 
 See [FPU](fp.md) for the full register model and aliasing rules.
 
-**DP (Data Page):** Controls which 256-byte page is accessed by all data addressing: both `[addr]` (direct) and `[reg±offset]` (indirect). It does not affect control flow (jumps/CALL/RET) or the fact that PUSH/POP always write to the stack on page 0. Memory-mapped I/O (display 0xE8–0xFB, UART 0xFC–0xFF) lives on page 0 — software must use `DP=0` to reach it. See [Memory Model & Addressing](mem.md).
+**DP (Data Page):** Controls which 256-byte page is accessed by all data addressing: both `[addr]` (direct) and `[reg±offset]` (indirect). It does not affect control flow (jumps/CALL/RET) or the fact that PUSH/POP always write to the stack on page 0. **Console I/O is memory-mapped on page 0**, so to access `[232]..[255]` as I/O via direct addressing, software must use `DP=0`. See [Memory Model & Addressing](mem.md).
 
 **SP in indirect addressing:** `[SP±offset]` always uses page 0, regardless of DP. This ensures stack-relative access is consistent with PUSH/POP.
 
@@ -304,9 +303,7 @@ Escape sequences in the path are not supported.
 
 **Error reporting:** All errors include a source location as `filename:line` (1-based). `filename` is the path of each file normalized to be relative to the root file's directory (or an absolute path if the file is outside that directory tree). For the root file, `filename` is its own name (or `<stdin>`). This format is used consistently regardless of whether any `@include` directives are present.
 
-**Binary files:** If the included file is not valid UTF-8, it is treated as a raw binary blob. Its bytes are embedded at the include point as DB directives. Empty binary files are silently skipped. The source-location entry in the line map for the emitted data refers to the `@include` directive's own file and line. Binary files are not scanned for nested `@include` directives.
-
-**Cross-page binary:** If a binary file is ≤ 256 bytes, it is emitted as a single `DB b0, b1, ..., bn` directive on the current page. If it exceeds 256 bytes, the preprocessor auto-splits it into 256-byte chunks across consecutive pages: the first chunk stays on the current page, and each subsequent chunk is preceded by an `@page N+1` directive (where N is determined by scanning backwards for the most recent `@page` directive; default 0 if none). It is an error if the resulting pages exceed page 255.
+**Binary files:** If the included file is not valid UTF-8, it is treated as a raw binary blob. Its bytes are embedded at the include point as if the source contained `DB b0, b1, ..., bn` (a single data directive with all byte values). Empty binary files are silently skipped. The source-location entry in the line map for the emitted data refers to the `@include` directive's own file and line. Binary files are not scanned for nested `@include` directives.
 
 **URL includes:** The path in an `@include` directive may be an absolute HTTP or HTTPS URL (must start with `http://` or `https://`). URL includes are fetched at assemble time before the two-pass assembly begins. The same binary detection rule applies: if the response body is not valid UTF-8, it is embedded as `DB` bytes. Relative paths inside a URL-fetched file are not supported (only absolute URLs or, in CLI mode, absolute filesystem paths). Circular URL detection uses the URL string directly. The error `@include: fetch failed: X` is raised if the fetch fails for any reason (network error, non-2xx status, etc.).
 
@@ -328,7 +325,7 @@ The `@page` directive switches the assembler's output cursor to page N, optional
 **Rules:**
 
 - N = 0–255. `@page N` resumes output from the page's current position (initially 0).
-- M (offset) is optional, 0–255. When specified, the page cursor moves to offset M. If M > current length, the gap is zero-filled. If M < current length, the cursor moves backward; subsequent bytes overwrite existing data at that position.
+- M (offset) is optional, 0–255. When specified, the page cursor advances to offset M; the gap is zero-filled. M must be ≥ the page's current position.
 - The directive must occupy its own line (like `@include`). A label on the same line is an error.
 - Trailing comments are allowed: `@page 1 ; matrix data`.
 - Page order is arbitrary: `@page 3` then `@page 1` is valid.
@@ -412,104 +409,11 @@ All errors include a source location in `filename:line` format (1-based line num
 | `@include: fetch failed: X` | URL fetch failed (network error, non-2xx response, etc.) |
 | `@page value must be 0-255` | `@page` page number out of range |
 | `@page offset must be 0-255` | `@page` offset out of range |
+| `@page N: offset M is before current position K` | Offset would move cursor backward |
 | `@page: missing page number` | `@page` without an argument |
 | `@page: invalid syntax` | Malformed `@page` directive (non-numeric, extra tokens) |
 | `@page: invalid offset` | Offset is not a valid number |
-| `@include: binary file spans beyond page 255` | Cross-page binary include would exceed page 255 |
+
 | `Page N overflow: X bytes exceeds 256` | Page content exceeds 256 bytes |
 | `jump target 'X' is on page N, but IP executes only on page 0` | JMP/CALL from page 0 to a label on page > 0 |
 | `cross-page jump from page N to page M` | JMP/CALL from page N to a label on a different page (N > 0) |
-| `VU format suffix required` | VU data instruction used without format suffix (e.g., `VADD VC, VA, VB`) |
-| `Invalid VU format suffix: X` | Unknown VU format suffix (not .F/.H/.BF/.O3/.O2/.U/.I) |
-| `VCMP requires condition suffix` | VCMP used without condition (e.g., `VCMP.U VM, VA, VB` — missing .EQ/.LT/etc.) |
-| `Invalid VU condition suffix: X` | Unknown condition suffix (not .EQ/.NE/.LT/.LE/.GT/.GE) |
-| `Invalid VU mode for instruction: X` | Explicit mode suffix not valid for that instruction (e.g., VDOT.vv) |
-| `VSET target must be VA/VB/VC/VM/VL` | Unknown VU register name as VSET target |
-| `VSET immediate out of range` | 16-bit VSET immediate > 65535 |
-| `VSET composite operand out of range` | VSET hi-byte or lo-byte out of 0–255 |
-| `VCVT requires two format suffixes` | VCVT used with only one format suffix |
-| `VCVT does not support reduction mode` | Explicit `.r` mode suffix on VCVT |
-
----
-
-## 5.12 VU Assembly Syntax
-
-VU instructions use format suffixes (and optionally mode/condition suffixes) to select the element format and addressing mode. For full VU architecture and instruction semantics, see [Vector Unit](vu.md).
-
-### VU Register Operands
-
-| Register | Description |
-|----------|-------------|
-| VA, VB, VC | 16-bit address pointers (source/destination) |
-| VM | 16-bit mask pointer |
-| VL | 16-bit element count |
-
-VU registers are used with VU instructions only (opcodes 163–187). VL is set by VSET; VA/VB/VC/VM may be set by VSET or read by VSET with a GPR source.
-
-### Format Suffixes
-
-All VU data instructions require a format suffix:
-
-| Suffix | Format |
-|--------|--------|
-| `.F` | float32 |
-| `.H` | float16 |
-| `.BF` | bfloat16 |
-| `.O3` | OFP8 E4M3 |
-| `.O2` | OFP8 E5M2 |
-| `.U` | UINT8 |
-| `.I` | INT8 |
-
-### Mode Inference
-
-The addressing mode is inferred from operand types — no explicit mode suffix is needed in most cases:
-
-| Operands | Mode | Example |
-|----------|------|---------|
-| 3 VU registers | vv (vector-vector) | `VADD.F VC, VA, VB` |
-| 2 VU regs + GPR (A–D) | vs (scalar broadcast) | `VADD.F.vs VC, VA, B` |
-| 2 VU regs + immediate | vi (immediate broadcast) | `VADD.F VC, VA, 1` |
-| 2 VU registers | r (reduction) | `VADD.F VC, VA` |
-
-Mode suffix (`.vv`, `.vs`, `.vi`, `.r`) can be written explicitly as an optional third suffix after the format suffix. Mismatched explicit mode causes an assembler error.
-
-### VCMP — Condition Suffix
-
-VCMP requires a mandatory condition suffix after the format:
-
-```asm
-VCMP.U.LT VM, VA, VB   ; VM[i] = (VA[i] < VB[i]) ? 1 : 0
-VCMP.F.GE VM, VA, VB
-```
-
-Supported conditions: `.EQ`, `.NE`, `.LT`, `.LE`, `.GT`, `.GE`
-
-### VCVT — Dual Format Suffix
-
-VCVT requires two format suffixes: first is destination, second is source.
-
-```asm
-VCVT.H.F  VC, VA        ; float32 → float16 (FCVT analogue)
-VCVT.F.U  VC, VA        ; UINT8 → float32 (FITOF analogue)
-VCVT.U.F  VC, VA        ; float32 → UINT8 saturating (FFTOI analogue)
-VCVT.F.U  VC, 42        ; vi: uint8(42) → float32, broadcast VL times
-VCVT.H.F.vs VC, VB      ; vs: convert scalar float32 at mem[VB] → float16, broadcast
-```
-
-Mode r is not valid for VCVT (no reduction operator for a conversion).
-
-### VSET
-
-```asm
-VSET VL, 0, 100        ; VL = 0×256 + 100 = 100 (composite hi, lo)
-VSET VA, 1, 0          ; VA = 0x0100
-VSET VB, A             ; VB = (B-reg high byte) × 256 + (A-reg low byte)
-```
-
-### Synchronization
-
-```asm
-VWAIT                   ; drain VU queue; propagate any deferred faults
-VFSTAT                  ; read VFPSR → register A
-VFCLR                   ; clear VFPSR
-```

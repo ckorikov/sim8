@@ -17,13 +17,11 @@ pysim8-disasm = "pysim8.disasm.cli:main"
 [dependency-groups]
 dev = [
     "hypothesis>=6.151.9",
-    "ipykernel>=7.2.0",
     "ml-dtypes>=0.5.4",
     "mypy>=1.19.1",
     "numpy>=2.4.2",
     "pytest",
     "pytest-cov>=7.0.0",
-    "pytest-xdist>=3.8.0",
     "ruff>=0.15.5",
 ]
 

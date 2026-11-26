@@ -1,6 +1,6 @@
 # 1. Instruction Set Architecture (ISA)
 
-> Architecture v3 | Part of [Technical Specification](spec.md) | See also: [Memory Model & Addressing](mem.md), [CPU Architecture](cpu.md), [Microarchitecture](uarch.md), [Assembler](asm.md), [FPU](fp.md), [Vector Unit](vu.md)
+> Architecture v2 | Part of [Technical Specification](spec.md) | See also: [Memory Model & Addressing](mem.md), [CPU Architecture](cpu.md), [Microarchitecture](uarch.md), [Assembler](asm.md), [Opcode Table](opcodes.md), [FPU](fp.md)
 
 ## 1.1 Overview
 
@@ -10,8 +10,7 @@
 | Address Space | 64 KB (256 pages × 256 bytes) |
 | General Purpose Registers | 4 (A, B, C, D) |
 | FP Registers | 2 physical × 32-bit (30 named sub-register views; encoding supports up to 4 physical); see [FPU](fp.md) |
-| Vector Registers | VA, VB, VC, VM, VL (16-bit), VFPSR (8-bit); see [Vector Unit](vu.md) |
-| Instruction Encoding | 1–7 bytes per instruction |
+| Instruction Encoding | 1-4 bytes per instruction |
 
 ## 1.2 Registers
 
@@ -28,7 +27,7 @@
 
 | Register | Code | Initial Value | Description |
 |----------|------|---------------|-------------|
-| IP | — | 0 | Instruction Pointer (8-bit, range 0–255); not directly accessible |
+| IP | — | 0 | Instruction Pointer (internal, wider than 8 bits); not directly accessible |
 | SP | 4 | 231 (0xE7) | Stack Pointer; grows downward |
 | DP | 5 | 0 | Data Page register (0-255); selects active 256-byte page for data access |
 
@@ -82,21 +81,6 @@ The FPU provides two 32-bit physical registers (FA phys=0, FB phys=1), each with
 
 For full register model, aliasing rules, and format details, see [FPU](fp.md).
 
-### Vector Unit Registers
-
-The VU has its own register file. The CPU reads and writes these registers via synchronous instructions (VSET, VFSTAT, VFCLR). At command issue time, the CPU snapshots register values into a fully-resolved command entry.
-
-| Register | Code | Width | Initial Value | Description |
-|----------|------|-------|---------------|-------------|
-| VA | 0 | 16-bit | 0x0000 | Address pointer |
-| VB | 1 | 16-bit | 0x0000 | Address pointer |
-| VC | 2 | 16-bit | 0x0000 | Address pointer |
-| VM | 3 | 16-bit | 0x0000 | Mask pointer |
-| VL | 4 | 16-bit | 0x0000 | Vector length in elements (0–65535); byte footprint depends on format |
-| VFPSR | — | 8-bit | 0 | Vector FP Status: sticky exception flags (same layout as FPSR) |
-
-VA, VB, VC, VM hold absolute 16-bit addresses (0x0000–0xFFFF). Vector addressing is not affected by DP. For full VU architecture, command queue model, and instruction reference, see [Vector Unit](vu.md).
-
 ## 1.3 Memory Model
 
 For a concise reference on page layout, DP behavior, console I/O, and effective address formulas, see [Memory Model & Addressing](mem.md).
@@ -105,7 +89,7 @@ For a concise reference on page layout, DP behavior, console I/O, and effective 
 
 Total: 64 KB organized as 256 pages of 256 bytes each.
 
-**Initialization:** All memory is initialized to 0 at reset. Program code is loaded starting at address 0. Display cells (0xE8–0xFB) show as blank initially; UART ports (0xFC–0xFF) start at 0.
+**Initialization:** All memory is initialized to 0 at reset. Program code is loaded starting at address 0. The I/O region (232-255) displays as blank spaces initially.
 
 | Page | Absolute Range | Usage |
 |------|----------------|-------|
@@ -117,8 +101,7 @@ Total: 64 KB organized as 256 pages of 256 bytes each.
 | Region | Offset | Size | Usage |
 |--------|--------|------|-------|
 | Program/Data/Stack | 0x00 - 0xE7 | 232 bytes | Code, variables, stack |
-| Display cells | 0xE8 - 0xFB | 20 bytes | Memory-mapped character output |
-| UART terminal | 0xFC - 0xFF | 4 bytes | TX/RX streaming I/O |
+| Console Output | 0xE8 - 0xFF | 24 bytes | Memory-mapped I/O |
 
 **Key constraints:**
 
@@ -136,13 +119,16 @@ Total: 64 KB organized as 256 pages of 256 bytes each.
 
 See also: [DP interaction with I/O](mem.md#dp-interaction-important).
 
-### Memory-Mapped I/O
+### Console Output (Memory-Mapped I/O)
 
-Page 0 offsets 232–255 (0xE8–0xFF) are divided into two I/O subsystems:
+Addresses 232-255 (0xE8-0xFF) on page 0 serve as a memory-mapped character display:
 
-**Display cells (0xE8–0xFB, 20 bytes):** Each byte is an ASCII character code rendered left-to-right. Readable and writable. See [I/O Display](io-display.md).
-
-**UART terminal (0xFC–0xFF, 4 bytes):** TX data/status and RX data/status ports for streaming I/O. See [I/O UART](io-uart.md).
+- Each byte is interpreted as an ASCII character code for display
+- Writing to these addresses (via MOV or any store operation) updates the display
+- Non-printable and whitespace characters render as blank space
+- The region is readable and writable — no special access restrictions
+- Display order: left to right, address 232 first, 255 last
+- Total display capacity: 24 characters
 
 ## 1.4 Addressing Modes
 
@@ -422,17 +408,15 @@ C and Z can both be set simultaneously (e.g., `255 + 1` = 256 wraps to 0: C=1, Z
 [label:] mnemonic [operand1 [, operand2]]  [; comment]
 ```
 
-**Number formats:** `200` (decimal), `200d` (decimal explicit), `200u` (unsigned explicit), `0xC8` (hex), `0o310` (octal), `11001000b` (binary), `'A'` (char), `-5` (negative decimal)
-
-**Signed literals:** All byte operands accept the range −128..255. Negative decimals are stored as two's complement: `-5` → 0xFB, `-128` → 0x80. The `u` suffix is optional and documents unsigned intent: `200u`. Without `-`, values are unsigned by convention.
+**Number formats:** `200` (decimal), `200d` (decimal explicit), `0xC8` (hex), `0o310` (octal), `11001000b` (binary), `'A'` (char)
 
 For label rules, comment syntax, and error handling, see [Assembler Specification](asm.md).
 
 ## 1.8 Instruction Encoding Format
 
-Integer and FP instructions are encoded as 1–4 bytes; vector instructions may be up to 7 bytes (see [Vector Unit](vu.md)). Operand bytes follow syntactic operand order (see [FP encoding exceptions](#19-floating-point-instructions-opcodes-128-162) for FFTOI and FCLASS).
+All instructions are encoded as 1-4 bytes. Operand bytes follow syntactic operand order (see [FP encoding exceptions](#19-floating-point-instructions-opcodes-128-160) for FFTOI and FCLASS).
 
-Opcodes are defined in `spec/isa.json`.
+For the complete opcode mapping, see [Opcode Table](opcodes.md).
 
 ### Operand Byte Types
 

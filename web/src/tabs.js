@@ -307,7 +307,7 @@ export function getVirtualFiles() {
     const out = {};
     for (const [name, entry] of files.entries()) {
         if (name === MAIN_FILE) continue;
-        out[name] = entry.content;
+        out[name] = entry.type === "binary" ? entry.content : entry.content;
     }
     return out;
 }

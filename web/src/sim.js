@@ -1,26 +1,23 @@
 /**
- * sim8 v3 — Browser UI orchestrator.
+ * sim8 v2 — Browser UI orchestrator.
  * Wires CPU, assembler, and all UI modules together.
  */
 
 import { assembleAsync, AsmError } from "../lib/asm.js";
 import { CpuState } from "../lib/core.js";
-import { BY_CODE_FP, BY_CODE_VU } from "../lib/isa.js";
-import { cpu, asm, pad, refreshColors, IO_BASE, IO_DISPLAY_END } from "./state.js";
+import { BY_CODE_FP } from "../lib/isa.js";
+
+import { cpu, asm, refreshColors, IO_BASE, PAGE_SIZE } from "./state.js";
 import { renderCPU } from "./ui/cpu.js";
 import { renderFPU } from "./ui/fpu.js";
-import { renderVU } from "./ui/vu.js";
 import { renderMemory } from "./ui/mem.js";
 import { renderDisplay } from "./ui/display.js";
-import { renderPad, initPad } from "./ui/pad.js";
-import { initTerm, termPreStep, termPostStep, termEndFrame, resetTerm, applyTermTheme, fitTerm } from "./ui/term.js";
 import { renderLabels } from "./ui/labels.js";
-import { onToggle } from "./ui/marker-toggle.js";
 import { setupControls, stopRun, isRunning, updateRunBtnColor } from "./controls.js";
 import { initEditor, highlightExecLine, clearExecLine, showDiagnostic, clearDiagnostics } from "./editor.js";
 import { initTabs, saveCurrentTab, getVirtualFiles, getMainSource, switchTabForExec } from "./tabs.js";
 import { breakpoints } from "./breakpoints.js";
-import { flashWire, initWires, updateWireColors, WIRE_DATA, WIRE_FP, WIRE_VU_A, WIRE_IO, WIRE_PAD } from "./wires.js";
+import { flashWire, initWires, updateWireColors, WIRE_DATA, WIRE_FP, WIRE_IO } from "./wires.js";
 import { fitDiagram, setupSplitHandle, adjustBlockPositions } from "./layout.js";
 
 // ── Render all ─────────────────────────────────────────────────
@@ -43,77 +40,47 @@ function showExecLine() {
 function renderAll() {
     renderCPU();
     renderFPU();
-    renderVU(cpu.vu);
     renderMemory();
     renderDisplay();
-    renderPad();
     showExecLine();
 }
 
-onToggle(() => {
-    renderCPU();
-    renderVU(cpu.vu);
-    renderMemory();
-});
-
 // ── Assembly ───────────────────────────────────────────────────
-
-const _errEl = document.getElementById("asm-error");
-
-function clearAssemblyError() {
-    _errEl.classList.add("hidden");
-    _errEl.textContent = "";
-    clearDiagnostics();
-}
-
-function prepareForAssembly() {
-    cpu.reset();
-    resetTerm({ clearScreen: false });
-    Object.assign(asm, {
-        labels: {},
-        mapping: {},
-        lineMap: null,
-        lastCode: null,
-        lastUsedBytes: 0,
-        instrStarts: new Set(),
-        labelAddrs: new Set(),
-        labelNames: new Map(),
-    });
-}
-
-function applyAssemblyResult(result) {
-    const allLabels = Object.entries(result.labels);
-    Object.assign(asm, {
-        labels: result.labels,
-        mapping: result.mapping,
-        lineMap: result.lineMap,
-        lastCode: result.code,
-        lastUsedBytes: result.usedBytes,
-        instrStarts: new Set(Object.keys(result.mapping).map(Number)),
-        labelAddrs: new Set(allLabels.map(([, v]) => v)),
-        labelNames: new Map(allLabels.map(([n, v]) => [v, n])),
-    });
-    cpu.load(result.code, result.usedBytes);
-}
-
-function showAssemblyError(e) {
-    _errEl.textContent = e instanceof AsmError ? String(e) : "Internal error: " + e.message;
-    _errEl.classList.remove("hidden");
-    if (e instanceof AsmError && e.line >= 1) showDiagnostic(e.line, e.message);
-}
 
 async function doAssemble() {
     saveCurrentTab();
-    clearAssemblyError();
-    prepareForAssembly();
+    const errEl = document.getElementById("asm-error");
+    errEl.classList.add("hidden");
+    errEl.textContent = "";
+    clearDiagnostics();
+
+    cpu.reset();
+    asm.codeLen = 0;
+    asm.labels = {};
+    asm.mapping = {};
+    asm.lineMap = null;
+    asm.instrStarts = new Set();
+    asm.labelAddrs = new Set();
+    asm.labelNames = new Map();
+
     try {
-        const result = await assembleAsync(getMainSource(), 3, getVirtualFiles());
-        applyAssemblyResult(result);
+        const result = await assembleAsync(getMainSource(), 2, getVirtualFiles());
+        asm.codeLen = result.code.length;
+        asm.labels = result.labels;
+        asm.mapping = result.mapping;
+        asm.lineMap = result.lineMap;
+        asm.instrStarts = new Set(Object.keys(result.mapping).map(Number));
+        const allLabels = Object.entries(result.labels);
+        asm.labelAddrs = new Set(allLabels.map(([, v]) => v));
+        asm.labelNames = new Map(allLabels.map(([n, v]) => [v, n]));
+        cpu.load(result.code);
         renderLabels();
         renderAll();
         return true;
     } catch (e) {
-        showAssemblyError(e);
+        errEl.textContent = e instanceof AsmError ? String(e) : "Internal error: " + e.message;
+        errEl.classList.remove("hidden");
+        if (e instanceof AsmError && e.line >= 1) showDiagnostic(e.line, e.message);
         renderLabels();
         renderAll();
         return false;
@@ -122,87 +89,36 @@ async function doAssemble() {
 
 // ── Step / Reset ───────────────────────────────────────────────
 
-const _ioSnap = new Uint8Array(IO_DISPLAY_END - IO_BASE); // display chars only (232-251)
-
-function captureIOSnapshot() {
-    _ioSnap.forEach((_, i) => {
-        _ioSnap[i] = cpu.mem.get(IO_BASE + i);
-    });
-}
+const _ioSnap = new Uint8Array(PAGE_SIZE - IO_BASE);
 
 function ioChanged() {
     return _ioSnap.some((v, i) => cpu.mem.get(IO_BASE + i) !== v);
 }
 
-let _padChecksum = 0;
-
-function padChecksum() {
-    return Array.from({ length: pad.end - pad.start }, (_, i) => cpu.mem.get(pad.start + i)).reduce(
-        (acc, b) => acc + b,
-        0,
-    );
-}
-
-function padChanged() {
-    const cs = padChecksum();
-    if (cs !== _padChecksum) {
-        _padChecksum = cs;
-        return true;
-    }
-    return false;
-}
-
-function flashActiveWires(cpuDid, vuDid, opcode, txEmitted) {
-    const wires = _activeWires(cpuDid, vuDid, opcode);
-    if (txEmitted && !wires.includes(WIRE_IO)) wires.push(WIRE_IO);
-    for (const w of wires) flashWire(w);
-}
-
-function _activeWires(cpuDid, vuDid, opcode) {
-    const wires = [];
-    if (vuDid) wires.push(WIRE_VU_A);
-    if (cpuDid) {
-        if (BY_CODE_VU[opcode] !== undefined) {
-            wires.push(WIRE_DATA, WIRE_VU_A);
-        } else if (BY_CODE_FP[opcode] !== undefined) {
-            wires.push(WIRE_FP);
-        } else {
-            wires.push(WIRE_DATA);
-        }
-    }
-    if (ioChanged()) wires.push(WIRE_IO);
-    if (pad.visible && padChanged()) wires.push(WIRE_PAD);
-    return wires;
-}
-
 function stepCPU() {
-    if (cpu.state === CpuState.FAULT) return 0;
+    if (cpu.state === CpuState.FAULT || cpu.state === CpuState.HALTED) return 0;
 
-    captureIOSnapshot();
-    if (pad.visible) _padChecksum = padChecksum();
+    const prevCycles = cpu.cycles;
     const opcode = cpu.mem.get(cpu.ip);
 
-    termPreStep();
-    const vuDid = cpu.vuTick(); // VU ticks first — newly issued commands appear in queue for 1 UI frame
-    const cpuDid = cpu.step();
-    const txEmitted = termPostStep();
+    for (let i = 0; i < _ioSnap.length; i++) _ioSnap[i] = cpu.mem.get(IO_BASE + i);
 
-    if (!cpuDid && !vuDid && !cpu.vuWaiting) return 0;
+    const wasRunning = cpu.step();
 
-    flashActiveWires(cpuDid, vuDid, opcode, txEmitted);
+    if (BY_CODE_FP[opcode] !== undefined) {
+        flashWire(WIRE_FP);
+    } else {
+        flashWire(WIRE_DATA);
+    }
+    if (ioChanged()) flashWire(WIRE_IO);
+
     renderAll();
-    return 1;
+    return wasRunning ? cpu.cycles - prevCycles : 0;
 }
 
-function resetCPU() {
+async function resetCPU() {
     if (isRunning()) stopRun();
-    if (asm.lastCode) {
-        cpu.load(asm.lastCode, asm.lastUsedBytes);
-    } else {
-        cpu.reset();
-    }
-    resetTerm();
-    renderAll();
+    await doAssemble();
 }
 
 // ── Controls wiring ────────────────────────────────────────────
@@ -214,7 +130,6 @@ function getExecLine() {
 setupControls({
     onStep: stepCPU,
     onReset: resetCPU,
-    onBatchEnd: termEndFrame,
     renderAll,
     checkBp: (flatLine) => breakpoints.checkFlat(flatLine, asm.lineMap),
     getExecLine,
@@ -236,15 +151,14 @@ function applyTheme(dark) {
     document.getElementById("theme-label").textContent = dark ? "light" : "dark";
 }
 
-let isDark = localStorage.getItem("sim8-theme") !== "light";
+let isDark = localStorage.getItem("theme") !== "light";
 applyTheme(isDark);
 refreshColors();
 
 document.getElementById("btn-theme").addEventListener("click", () => {
     isDark = !isDark;
-    localStorage.setItem("sim8-theme", isDark ? "dark" : "light");
+    localStorage.setItem("theme", isDark ? "dark" : "light");
     applyTheme(isDark);
-    applyTermTheme(isDark);
     refreshColors();
     renderAll();
     updateRunBtnColor();
@@ -255,15 +169,9 @@ document.getElementById("btn-theme").addEventListener("click", () => {
 
 renderAll();
 
-function relayout() {
+requestAnimationFrame(() => {
     adjustBlockPositions(initWires);
-    fitTerm();
-}
-
-initPad(relayout, renderMemory);
-initTerm(relayout, isDark);
-resetTerm();
-requestAnimationFrame(relayout);
+});
 
 setupSplitHandle(fitDiagram);
 

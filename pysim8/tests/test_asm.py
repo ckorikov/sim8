@@ -1,4 +1,4 @@
-"""Assembler tests from spec/tests/tests-cpu.md (tests 110-184).
+"""Assembler tests from spec/tests.md (tests 110-184).
 
 Tests are assembler-only: assemble source → verify bytes / labels / mapping / errors.
 """
@@ -11,7 +11,7 @@ from hypothesis import assume, given
 from hypothesis import strategies as st
 
 from pysim8.asm import AssemblerError, assemble
-from pysim8.asm._codegen_core import _operand_matches
+from pysim8.asm.codegen import _operand_matches
 from pysim8.asm.parser import Operand, ParseError, parse_number
 from pysim8.isa import OpType
 
@@ -153,7 +153,7 @@ class TestErrorHandling:
 
     def test_138_out_of_range(self) -> None:
         err = asm_error("MOV A, 256")
-        assert "value between -128 and 255" in err.message
+        assert "value between 0-255" in err.message
 
     def test_139_offset_too_large(self) -> None:
         err = asm_error("MOV A, [B+16]")
@@ -607,36 +607,6 @@ class TestLabelEdgeCases:
         r2 = assemble("JMP s\nx: DB 7\ns: MOV A, [2]\nHLT")
         assert r1.code == r2.code
 
-    def test_label_offset_plus(self) -> None:
-        """[label + N] resolves to label offset + N."""
-        r1 = assemble("JMP s\ndata: DB 10, 20\ns: MOV A, [data + 1]\nHLT")
-        r2 = assemble("JMP s\ndata: DB 10, 20\ns: MOV A, [3]\nHLT")
-        assert r1.code == r2.code
-
-    def test_label_offset_minus(self) -> None:
-        """[label - N] resolves to label offset - N."""
-        r1 = assemble("DB 99\ndata: DB 10\nMOV A, [data - 1]\nHLT")
-        assert r1.labels["data"] == 1
-        # [data - 1] = [0]
-        r2 = assemble("DB 99\ndata: DB 10\nMOV A, [0]\nHLT")
-        assert r1.code == r2.code
-
-    def test_label_offset_zero(self) -> None:
-        """[label + 0] ≡ [label]."""
-        r1 = assemble("JMP s\nx: DB 7\ns: MOV A, [x + 0]\nHLT")
-        r2 = assemble("JMP s\nx: DB 7\ns: MOV A, [x]\nHLT")
-        assert r1.code == r2.code
-
-    def test_label_offset_overflow(self) -> None:
-        """[label + N] that exceeds 255 is an error."""
-        err = asm_error("DB 0\nlbl: DB 0\nMOV A, [lbl + 255]")
-        assert "out of range" in err.message.lower()
-
-    def test_label_offset_underflow(self) -> None:
-        """[label - N] that goes below 0 is an error."""
-        err = asm_error("lbl: DB 0\nMOV A, [lbl - 1]")
-        assert "out of range" in err.message.lower()
-
 
 # ── DB edge cases ────────────────────────────────────────────────────
 
@@ -664,15 +634,7 @@ class TestDbEdgeCases:
 
     def test_db_256_error(self) -> None:
         err = asm_error("DB 256")
-        assert "value between -128 and 255" in err.message
-
-    def test_db_negative_ok(self) -> None:
-        code = asm_bytes("DB -5, -128, -1\nHLT")
-        assert code[:3] == [251, 128, 255]
-
-    def test_db_negative_out_of_range(self) -> None:
-        err = asm_error("DB -129")
-        assert "value between -128 and 255" in err.message
+        assert "value between 0-255" in err.message
 
     def test_db_float_e4m3_ok(self) -> None:
         # 1.5 is representable in E4M3 → 1 byte
@@ -791,9 +753,9 @@ class TestParserEdges:
         cpu.run()
         assert cpu.a == ord("X")
 
-    def test_label_offset_undefined(self) -> None:
-        """[XYZ+5] where XYZ is an undefined label."""
-        with pytest.raises(AssemblerError, match="Undefined label"):
+    def test_invalid_register_in_offset(self) -> None:
+        """[XYZ+5] where XYZ is not a register (parser line 230)."""
+        with pytest.raises(AssemblerError, match="Invalid register"):
             assemble("MOV A, [XYZ+5]\nHLT")
 
     def test_multi_char_literal_in_parse_number(self) -> None:
@@ -808,7 +770,7 @@ class TestParserEdges:
 
     def test_multi_char_in_try_parse_number(self) -> None:
         """Multi-char literal returns None in _try_parse_number (line 181)."""
-        from pysim8.asm._parser_operands import _try_parse_number
+        from pysim8.asm.parser import _try_parse_number
 
         assert _try_parse_number("'abc'") is None
 
@@ -817,7 +779,7 @@ class TestParserEdges:
         result = assemble('DB "a,b"\nHLT')
         assert result.code[:3] == [ord("a"), ord(","), ord("b")]
 
-    def test_empty_operands_no_arg_instr(self) -> None:
+    def test_empty_operands_no_arg_insn(self) -> None:
         """No-arg instruction sets operands=[] (line 657)."""
         result = assemble("HLT")
         assert result.code == [0]
@@ -871,10 +833,10 @@ class TestPropParser:
         st.sampled_from(
             [
                 "MOV A, 256",
-                "MOV A, -129",
+                "MOV A, -1",
                 "MOV A, 300",
                 "DB 256",
-                "DB -129",
+                "DB -1",
                 "DB 999",
             ]
         )
@@ -984,8 +946,7 @@ class TestParserDirect:
 
     def test_try_string_in_operand_chain(self) -> None:
         """_parse_operand with quoted string → OpString (line 282)."""
-        from pysim8.asm._parser_operands import _parse_operand
-        from pysim8.asm.parser import OpString
+        from pysim8.asm.parser import OpString, _parse_operand
 
         result = _parse_operand('"hello"', 1)
         assert isinstance(result, OpString)
@@ -995,7 +956,7 @@ class TestParserDirect:
         """_try_fp_imm with unparseable float → ParseError."""
         import unittest.mock as mock
 
-        from pysim8.asm._parser_operands import _try_fp_imm
+        from pysim8.asm.parser import _try_fp_imm
 
         with mock.patch("builtins.float", side_effect=ValueError("bad")):
             with pytest.raises(ParseError, match="Invalid float"):
@@ -1005,7 +966,7 @@ class TestParserDirect:
         """_parse_float_literal with unparseable float → ParseError."""
         import unittest.mock as mock
 
-        from pysim8.asm._parser_operands import _parse_float_literal
+        from pysim8.asm.parser import _parse_float_literal
 
         with mock.patch("builtins.float", side_effect=ValueError("bad")):
             with pytest.raises(ParseError, match="Invalid float"):
@@ -1013,14 +974,14 @@ class TestParserDirect:
 
     def test_split_operands_with_string(self) -> None:
         """_split_operands with quoted string containing comma (line 535)."""
-        from pysim8.asm._parser_operands import _split_operands
+        from pysim8.asm.parser import _split_operands
 
         result = _split_operands('"a,b"')
         assert result == ['"a,b"']
 
     def test_split_operands_empty_input(self) -> None:
         """_split_operands with empty string (line 546→548)."""
-        from pysim8.asm._parser_operands import _split_operands
+        from pysim8.asm.parser import _split_operands
 
         result = _split_operands("")
         assert result == []

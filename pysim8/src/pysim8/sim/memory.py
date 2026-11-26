@@ -1,8 +1,11 @@
 """Memory unit: 64KB byte-addressable memory."""
 
-from pysim8.constants import DISPLAY_END, IO_START, MEM_SIZE, PAGE_SIZE, SP_INIT
+__all__ = ["Memory", "MEMORY_SIZE", "PAGE_SIZE", "IO_START", "SP_INIT"]
 
-__all__ = ["Memory", "MEM_SIZE", "PAGE_SIZE", "IO_START", "DISPLAY_END", "SP_INIT"]
+MEMORY_SIZE = 65536
+PAGE_SIZE = 256
+IO_START = 232
+SP_INIT = 231
 
 
 class Memory:
@@ -11,7 +14,7 @@ class Memory:
     __slots__ = ("_data", "_non_zero")
 
     def __init__(self) -> None:
-        self._data = bytearray(MEM_SIZE)
+        self._data = bytearray(MEMORY_SIZE)
         self._non_zero = 0
 
     def _is_io(self, addr: int) -> bool:
@@ -32,14 +35,14 @@ class Memory:
 
     def load(self, data: bytes | list[int], offset: int = 0) -> None:
         """Load data into memory at the given offset."""
-        if offset + len(data) > MEM_SIZE:
-            raise ValueError(f"Data ({len(data)} bytes at offset {offset}) exceeds memory size ({MEM_SIZE})")
+        if offset + len(data) > MEMORY_SIZE:
+            raise ValueError(f"Data ({len(data)} bytes at offset {offset}) exceeds memory size ({MEMORY_SIZE})")
         for i, b in enumerate(data):
             self[offset + i] = b
 
     def reset(self) -> None:
         """Zero-fill memory in-place."""
-        self._data[:] = b"\x00" * MEM_SIZE
+        self._data[:] = b"\x00" * MEMORY_SIZE
         self._non_zero = 0
 
     def used_bytes(self) -> int:

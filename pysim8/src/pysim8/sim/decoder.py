@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from pysim8.isa import BY_CODE, BY_CODE_FP, BY_CODE_MU, BY_CODE_VU, VU_ASYNC_OPS, Op, vu_instr_size
+from pysim8.isa import BY_CODE, BY_CODE_FP, Op
 
 from .errors import CpuFault, ErrorCode
 from .memory import PAGE_SIZE, Memory
@@ -29,24 +29,15 @@ class Decoder:
         Raises CpuFault for invalid opcode or page boundary violation.
         """
         opcode = mem[ip]
-        instr_def = BY_CODE.get(opcode)
-        if instr_def is None and arch >= 2:
-            instr_def = BY_CODE_FP.get(opcode)
-        if instr_def is None and arch >= 3:
-            instr_def = BY_CODE_VU.get(opcode)
-        if instr_def is None and arch >= 3:
-            instr_def = BY_CODE_MU.get(opcode)
-        if instr_def is None:
+        defn = BY_CODE.get(opcode)
+        if defn is None and arch >= 2:
+            defn = BY_CODE_FP.get(opcode)
+        if defn is None:
             raise CpuFault(ErrorCode.INVALID_OPCODE, ip)
 
-        # VU async instructions have variable size (depends on VFM mode/fmt)
-        if opcode in VU_ASYNC_OPS:
-            vfm_enc = mem[ip + 1] if ip + 1 < PAGE_SIZE else 0
-            size = vu_instr_size(opcode, vfm_enc)
-        else:
-            size = instr_def.size
+        size = defn.size
         if ip + size > PAGE_SIZE:
             raise CpuFault(ErrorCode.PAGE_BOUNDARY, ip)
 
         operands = tuple(mem[ip + k] for k in range(1, size))
-        return DecodedInstr(op=instr_def.op, size=size, operands=operands)
+        return DecodedInstr(op=defn.op, size=size, operands=operands)

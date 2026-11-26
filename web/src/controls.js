@@ -14,7 +14,6 @@ let stepTimer = null;
 
 let _onStep;
 let _onReset;
-let _onBatchEnd;
 let _renderCPU;
 let _checkBp;
 let _getExecLine;
@@ -24,32 +23,9 @@ export function updateRunBtnColor() {
     btnRun.style.color = btnRun.dataset.state === "run" ? colors.gr : colors.rd;
 }
 
-const BATCH_THRESHOLD = 128;
-
-function cancelTimer(ref) {
-    if (ref) clearTimeout(ref);
-    return null;
-}
-
-function isCpuTerminated() {
-    return cpu.state === CpuState.FAULT || cpu.state === CpuState.HALTED;
-}
-
-function getSpeedHz() {
-    return parseInt(speedSel.value) || 4;
-}
-
-function batchSize(hz) {
-    return hz > BATCH_THRESHOLD ? Math.round(hz / 60) : 1;
-}
-
-function tickDelay(hz) {
-    return hz > BATCH_THRESHOLD ? 16 : Math.round(1000 / hz);
-}
-
-function _isBreakpointHit() {
-    const execLine = _getExecLine?.();
-    return !!_checkBp?.(execLine);
+function getSpeedMs() {
+    const hz = parseInt(speedSel.value) || 4;
+    return Math.round(1000 / hz);
 }
 
 function setRunUI(running) {
@@ -62,35 +38,33 @@ function setRunUI(running) {
 }
 
 function tick() {
-    const hz = getSpeedHz();
-
-    for (let i = 0; i < batchSize(hz); i++) {
-        if (!_skipBpOnce && _isBreakpointHit()) {
-            stopRun();
-            return;
-        }
-        _skipBpOnce = false;
-        let cost;
-        try {
-            cost = _onStep();
-        } catch (e) {
-            console.error("Step error:", e);
-            stopRun();
-            return;
-        }
-        if (!cost) {
+    if (!_skipBpOnce) {
+        const execLine = _getExecLine?.();
+        if (_checkBp?.(execLine)) {
             stopRun();
             return;
         }
     }
-    _onBatchEnd?.();
-    runTimer = setTimeout(tick, tickDelay(hz));
+    _skipBpOnce = false;
+    let cost;
+    try {
+        cost = _onStep();
+    } catch (e) {
+        console.error("Step error:", e);
+        stopRun();
+        return;
+    }
+    if (!cost) {
+        stopRun();
+        return;
+    }
+    runTimer = setTimeout(tick, getSpeedMs() * cost);
 }
 
-function startRun() {
+async function startRun() {
     if (runTimer) return;
-    if (isCpuTerminated()) {
-        cpu.restart();
+    if (cpu.state === CpuState.HALTED || cpu.state === CpuState.FAULT) {
+        await _onReset();
     }
     _skipBpOnce = true;
     setRunUI(true);
@@ -98,8 +72,14 @@ function startRun() {
 }
 
 export function stopRun() {
-    stepTimer = cancelTimer(stepTimer);
-    runTimer = cancelTimer(runTimer);
+    if (stepTimer) {
+        clearTimeout(stepTimer);
+        stepTimer = null;
+    }
+    if (runTimer) {
+        clearTimeout(runTimer);
+        runTimer = null;
+    }
     cpu.pause();
     setRunUI(false);
     _renderCPU();
@@ -109,10 +89,9 @@ export function isRunning() {
     return runTimer !== null;
 }
 
-export function setupControls({ onStep, onReset, onBatchEnd, renderAll, checkBp, getExecLine }) {
+export function setupControls({ onStep, onReset, renderAll, checkBp, getExecLine }) {
     _onStep = onStep;
     _onReset = onReset;
-    _onBatchEnd = onBatchEnd;
     _renderCPU = renderAll;
     _checkBp = checkBp;
     _getExecLine = getExecLine;
@@ -124,22 +103,21 @@ export function setupControls({ onStep, onReset, onBatchEnd, renderAll, checkBp,
 
     btnStep.addEventListener("click", () => {
         if (runTimer) stopRun();
-        if (isCpuTerminated()) return;
-        stepTimer = cancelTimer(stepTimer);
+        if (cpu.state === CpuState.HALTED || cpu.state === CpuState.FAULT) return;
+        if (stepTimer) {
+            clearTimeout(stepTimer);
+            stepTimer = null;
+        }
         // Skip BP check on step — user explicitly requested one step
         const cost = _onStep();
-        _onBatchEnd?.();
         if (cpu.state === CpuState.RUNNING && cost > 0) {
-            stepTimer = setTimeout(
-                () => {
-                    stepTimer = null;
-                    if (!isRunning()) {
-                        cpu.pause();
-                        _renderCPU();
-                    }
-                },
-                Math.round(1000 / getSpeedHz()),
-            );
+            stepTimer = setTimeout(() => {
+                stepTimer = null;
+                if (!isRunning()) {
+                    cpu.pause();
+                    _renderCPU();
+                }
+            }, getSpeedMs() * cost);
         }
     });
 
@@ -147,8 +125,8 @@ export function setupControls({ onStep, onReset, onBatchEnd, renderAll, checkBp,
 
     speedSel.addEventListener("change", () => {
         if (runTimer) {
-            runTimer = cancelTimer(runTimer);
-            runTimer = setTimeout(tick, tickDelay(getSpeedHz()));
+            clearTimeout(runTimer);
+            runTimer = setTimeout(tick, getSpeedMs());
         }
     });
 }
