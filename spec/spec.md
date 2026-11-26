@@ -86,7 +86,7 @@ Redesigned architecture with formal specification and verification. Key changes 
 - Python implementation (pysim8): assembler, TUI simulator, disassembler
 - Three-phase assembler: preprocessing (`@include` resolution) + two-pass assembly with forward label resolution, strict validation
 - Terminal TUI (Rich): scrolling trace, register panel, I/O display, playback control
-- MCP server for LLM integration (Claude Code / Claude Desktop)
+- MCP server for LLM integration
 
 ### v2 — sim8 FPU extension (current)
 
